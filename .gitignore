@@ -1,0 +1,16 @@
+package-lock.json
+*.js
+node_modules
+bin/
+.DS_Store
+**/.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.editor
+# generated / reinstallable
+main.crdt
+main1.crdt
+.agents/
+.claude/
+agent/
