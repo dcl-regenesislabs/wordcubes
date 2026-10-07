@@ -1,14 +1,18 @@
 // Local push prediction. The server owns the cube pile, so a cube you walk into only moves once the server has seen
 // you move, which feels laggy. Here the client runs the same sim (sim/physics.ts) on a local copy of the free cubes
-// around the local player, with the player as a zero-latency pusher:
+// around the players, with every player as a pusher *where this client sees them*:
 //
 // - A cube the local sim moves becomes "predicted": its real (synced) entity is hidden and a pooled local copy is
 //   drawn where the local sim says it is.
 // - Once you have stopped touching it and it has settled, it glides to the position the server sent, and when it
 //   gets there the real cube is shown again and the copy goes back to the pool.
 //
-// Other players are unaffected: they still see your pushes through the server, exactly as before. Cubes pushed by
-// other players are mirrored from the server and act as obstacles in the local sim.
+// - You push with your real position, so your own pushes react on the same frame.
+// - Other players push with the position their avatar is drawn at here. Their avatar reaches us through comms
+//   faster than the server's cube updates do, so without this you would see them walk through the pile and the cubes
+//   react a moment later. Now the cubes move when their avatar touches them on your screen.
+//
+// The server stays the only truth: every predicted cube ends up where the server put it.
 import {
   engine,
   Transform,
@@ -17,7 +21,8 @@ import {
   VisibilityComponent,
   ColliderLayer,
   pointerEventsSystem,
-  InputAction
+  InputAction,
+  PlayerIdentityData
 } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
@@ -26,7 +31,8 @@ import { CubeData, modelFor } from '../shared/schemas'
 import { room } from '../shared/messages'
 import { worldParams } from '../shared/world'
 import { createWorld, addBody, removeBody, setPushers, step } from '../sim/physics'
-import type { Body } from '../sim/physics'
+import type { Body, Pusher } from '../sim/physics'
+import { cs } from './state'
 
 const LOADING_FINISHED = 4 // LoadingState.FINISHED
 const POOL_Y = -40 // pooled copies wait underground (visible, so their model stays loaded)
@@ -59,6 +65,47 @@ const STEP_MAX = 1 / 30
 let lastPlayer: Vector3 | null = null
 let playerVx = 0
 let playerVz = 0
+
+/** Speed estimate per remote avatar. Their positions arrive in bursts, so (like the server) speed is measured over
+ *  the time since the position last changed and then smoothed, or it alternates between 0 and spikes. */
+const remoteTracks = new Map<string, { x: number; z: number; since: number; vx: number; vz: number }>()
+
+function remotePushers(dt: number, out: Pusher[]) {
+  const present = new Set<string>()
+  for (const [entity, identity, t] of engine.getEntitiesWith(PlayerIdentityData, Transform)) {
+    if (entity === engine.PlayerEntity) continue
+    const address = identity.address.toLowerCase()
+    if (address === cs.myAddress) continue
+    present.add(address)
+    const p = t.position
+    let tr = remoteTracks.get(address)
+    if (!tr) {
+      tr = { x: p.x, z: p.z, since: 0, vx: 0, vz: 0 }
+      remoteTracks.set(address, tr)
+    }
+    tr.since += dt
+    const dx = p.x - tr.x
+    const dz = p.z - tr.z
+    if (dx !== 0 || dz !== 0) {
+      if (dx * dx + dz * dz > 6 * 6) {
+        tr.vx = tr.vz = 0 // teleport
+      } else {
+        const span = Math.max(tr.since, 1 / 60)
+        const k = Math.min(1, span / 0.2)
+        tr.vx += (dx / span - tr.vx) * k
+        tr.vz += (dz / span - tr.vz) * k
+      }
+      tr.x = p.x
+      tr.z = p.z
+      tr.since = 0
+    } else if (tr.since > 0.25) {
+      tr.vx *= 0.8
+      tr.vz *= 0.8
+    }
+    out.push({ x: p.x, y: p.y, z: p.z, vx: tr.vx, vz: tr.vz })
+  }
+  for (const address of Array.from(remoteTracks.keys())) if (!present.has(address)) remoteTracks.delete(address)
+}
 
 /** True while the local copy is drawn instead of the real cube (cubes.ts skips its own smoothing then). */
 export function isPredicted(entity: Entity): boolean {
@@ -169,12 +216,24 @@ function forget(entity: Entity, l: Local) {
   locals.delete(entity)
 }
 
-function touching(b: Body, px: number, py: number, pz: number): boolean {
-  if (b.y + C.CUBE_HALF < py || b.y - C.CUBE_HALF > py + C.PLAYER_HEIGHT) return false
+function touching(b: Body, pushers: Pusher[]): boolean {
   const reach = C.PLAYER_RADIUS + C.CUBE_RADIUS + 0.05
-  const dx = b.x - px
-  const dz = b.z - pz
-  return dx * dx + dz * dz < reach * reach
+  for (const pu of pushers) {
+    if (b.y + C.CUBE_HALF < pu.y || b.y - C.CUBE_HALF > pu.y + C.PLAYER_HEIGHT) continue
+    const dx = b.x - pu.x
+    const dz = b.z - pu.z
+    if (dx * dx + dz * dz < reach * reach) return true
+  }
+  return false
+}
+
+function nearAny(x: number, z: number, pushers: Pusher[], r2: number): boolean {
+  for (const pu of pushers) {
+    const dx = x - pu.x
+    const dz = z - pu.z
+    if (dx * dx + dz * dz < r2) return true
+  }
+  return false
 }
 
 // ---------- per frame ----------
@@ -199,8 +258,14 @@ export function predictSystem(dt: number) {
   }
   lastPlayer = Vector3.create(pp.x, pp.y, pp.z)
 
-  // 1. mirror the free cubes around the player into the local world
+  // every player pushes: you with your real position, the others where their avatar is drawn on this screen
+  const pushers: Pusher[] = [{ x: pp.x, y: pp.y, z: pp.z, vx: playerVx, vz: playerVz }]
+  if (C.PREDICT_REMOTE_PUSHES) remotePushers(dt, pushers)
+
+  // 1. mirror the free cubes around the players into the local world
   const r2 = C.PREDICT_RADIUS * C.PREDICT_RADIUS
+  const rOut = C.PREDICT_RADIUS + 1
+  const rOut2 = rOut * rOut
   const seen = new Set<Entity>()
   for (const [entity, data, tr] of engine.getEntitiesWith(CubeData, Transform)) {
     const l = locals.get(entity)
@@ -209,9 +274,7 @@ export function predictSystem(dt: number) {
       continue
     }
     const pos = tr.position
-    const dx = pos.x - pp.x
-    const dz = pos.z - pp.z
-    const inRange = dx * dx + dz * dz < r2
+    const inRange = nearAny(pos.x, pos.z, pushers, r2)
     if (!l) {
       if (!inRange) continue
       const body = addBody(world, pos.x, pos.y, pos.z)
@@ -234,8 +297,7 @@ export function predictSystem(dt: number) {
       }
       continue
     }
-    const rOut = C.PREDICT_RADIUS + 1
-    if (dx * dx + dz * dz > rOut * rOut) {
+    if (!nearAny(pos.x, pos.z, pushers, rOut2)) {
       forget(entity, l)
       continue
     }
@@ -244,8 +306,8 @@ export function predictSystem(dt: number) {
   for (const [entity, l] of Array.from(locals.entries())) if (!seen.has(entity)) forget(entity, l)
   if (locals.size === 0) return
 
-  // 2. run the shared sim with the local player as the only pusher
-  setPushers(world, [{ x: pp.x, y: pp.y, z: pp.z, vx: playerVx, vz: playerVz }])
+  // 2. run the shared sim with every player as a pusher
+  setPushers(world, pushers)
   let left = dt
   while (left > 1e-4) {
     const h = Math.min(left, STEP_MAX)
@@ -257,7 +319,7 @@ export function predictSystem(dt: number) {
   const blend = 1 - Math.exp(-dt * C.PREDICT_BLEND_RATE)
   for (const l of locals.values()) {
     const b = l.body
-    if (touching(b, pp.x, pp.y, pp.z)) l.sinceTouch = 0
+    if (touching(b, pushers)) l.sinceTouch = 0
     else l.sinceTouch += dt
 
     if (!l.copy) {

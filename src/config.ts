@@ -78,6 +78,8 @@ export const SMOOTH_FREE_CUBES = false
 // a copy), then glide to where the server put them once you stop touching them. Other players still see your pushes
 // through the server, as before.
 export const PREDICT_PUSHES = true
+// Also predict other players' pushes from where their avatar is drawn here (it arrives before the server's cubes).
+export const PREDICT_REMOTE_PUSHES = true
 export const PREDICT_RADIUS = 4 // m around you: free cubes mirrored into the local sim
 export const PREDICT_HANDOFF = 0.35 // s after your last touch before a cube starts following the server again
 export const PREDICT_BLEND_RATE = 6 // 1/s: how fast a predicted cube glides to the server's position
