@@ -6,6 +6,7 @@ import * as C from '../config'
 import { WORDS } from './words'
 import { room } from '../shared/messages'
 import { CubeData, GameState, protectServerEntity, modelFor } from '../shared/schemas'
+import { worldParams } from '../shared/world'
 import { createWorld, addBody, removeBody, clearBodies, step, applyImpulse, wake, wakeNear, setPushers } from '../sim/physics'
 import type { Body, Pusher } from '../sim/physics'
 
@@ -28,24 +29,7 @@ const FLIGHT_TOTAL = C.THROW_RELEASE_DELAY + C.THROW_FLIGHT_TIME
 const SPAWN_PER_TICK = 40
 const PARK_Y = -30
 
-const world = createWorld({
-  centerX: C.CENTER.x,
-  centerZ: C.CENTER.z,
-  arenaRadius: C.ARENA_RADIUS,
-  floorY: C.FLOOR_Y,
-  stageRadius: C.STAGE_RADIUS,
-  stageTop: C.STAGE_TOP,
-  stageUpperRadius: C.STAGE_UPPER_RADIUS,
-  stageUpperTop: C.STAGE_UPPER_TOP,
-  cubeRadius: C.CUBE_RADIUS,
-  cubeHalf: C.CUBE_HALF,
-  gravity: C.GRAVITY,
-  restitution: C.RESTITUTION,
-  floorFriction: C.FLOOR_FRICTION,
-  airDrag: C.AIR_DRAG,
-  pusherRadius: C.PLAYER_RADIUS,
-  pusherHeight: C.PLAYER_HEIGHT
-})
+const world = createWorld(worldParams())
 
 const cubes = new Map<number, SCube>()
 let nextCubeId = 1

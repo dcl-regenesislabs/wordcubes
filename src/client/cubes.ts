@@ -20,6 +20,7 @@ import { room } from '../shared/messages'
 import { slotPosition } from './arena'
 import { playHoldEmote } from './emotes'
 import { cs } from './state'
+import { isPredicted } from './predict'
 
 interface ClientCube {
   mode: string
@@ -212,7 +213,7 @@ export function cubesSystem(dt: number) {
     if (data.mode !== c.mode || data.holder !== c.holder || data.slot !== c.slot) enterMode(entity, c, data.mode, data.holder, data.slot)
 
     c.t += dt
-    if (c.mode === 'free' && C.SMOOTH_FREE_CUBES) smoothFree(entity, c, dt)
+    if (c.mode === 'free' && C.SMOOTH_FREE_CUBES && !isPredicted(entity)) smoothFree(entity, c, dt)
     if (c.mode === 'flying' && c.proxy) {
       const delay = C.THROW_RELEASE_DELAY
       const u = Math.max(0, Math.min(1, (c.t - delay) / C.THROW_FLIGHT_TIME))
