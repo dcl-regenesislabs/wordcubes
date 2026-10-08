@@ -20,6 +20,7 @@ import * as C from '../config'
 import { CubeData, modelFor } from '../shared/schemas'
 import { room } from '../shared/messages'
 import { slotPosition } from './arena'
+import { envOrigin } from '../shared/env'
 import { playHoldEmote } from './emotes'
 import { cs } from './state'
 import { isPredicted } from './predict'
@@ -87,7 +88,7 @@ function handPos(address: string): Vector3 {
       }
     }
   }
-  if (!t) return Vector3.create(C.CENTER.x, C.HAND_HEIGHT, C.CENTER.z)
+  if (!t) return envOrigin()
   const fwd = Vector3.rotate(Vector3.Forward(), t.rotation)
   const right = Vector3.rotate(Vector3.Right(), t.rotation)
   return Vector3.create(

@@ -5,8 +5,9 @@ import { syncEntity } from '@dcl/sdk/network'
 import * as C from '../config'
 import { WORDS } from './words'
 import { room } from '../shared/messages'
+import { envOrigin } from '../shared/env'
 import { CubeData, GameState, protectServerEntity, modelFor } from '../shared/schemas'
-import { worldParams } from '../shared/world'
+import { worldParams, syncEnvParams } from '../shared/world'
 import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, clearBodies, step, applyImpulse, wake, wakeNear, setPushers } from '../sim/physics'
 import type { Body, Pusher } from '../sim/physics'
@@ -30,7 +31,12 @@ const FLIGHT_TOTAL = C.THROW_RELEASE_DELAY + C.THROW_FLIGHT_TIME
 const SPAWN_PER_TICK = 40
 const PARK_Y = -30
 
-const world = createWorld(worldParams())
+function fallbackDrop(): Vector3 {
+  const o = envOrigin()
+  return Vector3.create(o.x + 8, o.y + 2, o.z)
+}
+
+const world = createWorld(worldParams()) // local params; syncEnvParams() moves them onto GameEnv
 
 const cubes = new Map<number, SCube>()
 let nextCubeId = 1
@@ -87,9 +93,15 @@ function rand(min: number, max: number) {
   return min + Math.random() * (max - min)
 }
 
+// Re-read GameEnv every tick so moving it in the editor moves the whole sim (floor, platform, centre).
+function syncEnv() {
+  syncEnvParams(world.params)
+}
+
 function slotPos(index: number): Vector3 {
   const offset = (index - (slots.length - 1) / 2) * C.SLOT_SPACING
-  return Vector3.create(C.CENTER.x + offset, C.SLOT_Y, C.CENTER.z)
+  const o = envOrigin()
+  return Vector3.create(o.x + offset, o.y + C.SLOT_Y, o.z)
 }
 
 function handPos(p: PlayerInfo): Vector3 {
@@ -213,7 +225,8 @@ function spawnSome() {
     const letter = spawnQueue.pop()!
     const a = Math.random() * Math.PI * 2
     const r = Math.sqrt(rand(C.SPAWN_MIN_RADIUS ** 2, C.SPAWN_MAX_RADIUS ** 2))
-    spawnCube(letter, C.CENTER.x + Math.cos(a) * r, rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), C.CENTER.z + Math.sin(a) * r)
+    const o = envOrigin()
+    spawnCube(letter, o.x + Math.cos(a) * r, o.y + rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), o.z + Math.sin(a) * r)
   }
 }
 
@@ -357,6 +370,7 @@ function gameSystem(dt: number) {
   simAcc += dt
   let steps = 0
   while (simAcc >= SIM_DT && steps < 3) {
+    syncEnv()
     step(world, SIM_DT)
     simAcc -= SIM_DT
     steps++
@@ -395,7 +409,7 @@ function gameSystem(dt: number) {
     pendingToss.splice(i, 1)
     const p = playerOf(x.addr)
     if (!p) {
-      release(x.cube, lastPos.get(x.addr) ?? Vector3.create(C.CENTER.x + 8, 2, C.CENTER.z), 0, 0, 0)
+      release(x.cube, lastPos.get(x.addr) ?? fallbackDrop(), 0, 0, 0)
       continue
     }
     const fwd = Vector3.rotate(Vector3.Forward(), p.rot)
@@ -423,7 +437,7 @@ function gameSystem(dt: number) {
     for (const [addr, cube] of Array.from(holders.entries())) {
       if (present.has(addr)) continue
       holders.delete(addr)
-      release(cube, lastPos.get(addr) ?? Vector3.create(C.CENTER.x + 8, 2, C.CENTER.z), 0, 0, 0)
+      release(cube, lastPos.get(addr) ?? fallbackDrop(), 0, 0, 0)
     }
     pusherTracker.prune(present)
   }

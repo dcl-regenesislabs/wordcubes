@@ -30,7 +30,8 @@ import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { CubeData, modelFor } from '../shared/schemas'
 import { room } from '../shared/messages'
-import { worldParams } from '../shared/world'
+import { worldParams, syncEnvParams } from '../shared/world'
+import { envOrigin } from '../shared/env'
 import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, setPushers, step } from '../sim/physics'
 import type { Body, Pusher } from '../sim/physics'
@@ -93,10 +94,15 @@ export function isPredicted(entity: Entity): boolean {
 
 // ---------- pooled copies ----------
 
+function poolPos(): Vector3 {
+  const o = envOrigin()
+  return Vector3.create(o.x, POOL_Y, o.z)
+}
+
 function newCopy(letter: string): Copy {
   const entity = engine.addEntity()
   Transform.create(entity, {
-    position: Vector3.create(C.CENTER.x, POOL_Y, C.CENTER.z),
+    position: poolPos(),
     scale: Vector3.scale(Vector3.One(), C.CUBE_SCALE)
   })
   GltfContainer.create(entity, {
@@ -150,7 +156,7 @@ function returnCopy(copy: Copy) {
     return
   }
   VisibilityComponent.getMutable(copy.entity).visible = false
-  Transform.getMutable(copy.entity).position = Vector3.create(C.CENTER.x, POOL_Y, C.CENTER.z)
+  Transform.getMutable(copy.entity).position = poolPos()
   list.push(copy)
 }
 
@@ -281,6 +287,7 @@ export function predictSystem(dt: number) {
   if (locals.size === 0) return
 
   // 2. run the shared sim with every player as a pusher
+  syncEnvParams(world.params) // same GameEnv placement as the server
   setPushers(world, pushers)
   let left = dt
   for (let n = 0; n < MAX_STEPS && left > 1e-4; n++) {
