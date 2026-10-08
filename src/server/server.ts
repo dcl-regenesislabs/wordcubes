@@ -6,6 +6,8 @@ import * as C from '../config'
 import { WORDS } from './words'
 import { room } from '../shared/messages'
 import { CubeData, GameState, protectServerEntity, modelFor } from '../shared/schemas'
+import { worldParams } from '../shared/world'
+import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, clearBodies, step, applyImpulse, wake, wakeNear, setPushers } from '../sim/physics'
 import type { Body, Pusher } from '../sim/physics'
 
@@ -28,24 +30,7 @@ const FLIGHT_TOTAL = C.THROW_RELEASE_DELAY + C.THROW_FLIGHT_TIME
 const SPAWN_PER_TICK = 40
 const PARK_Y = -30
 
-const world = createWorld({
-  centerX: C.CENTER.x,
-  centerZ: C.CENTER.z,
-  arenaRadius: C.ARENA_RADIUS,
-  floorY: C.FLOOR_Y,
-  stageRadius: C.STAGE_RADIUS,
-  stageTop: C.STAGE_TOP,
-  stageUpperRadius: C.STAGE_UPPER_RADIUS,
-  stageUpperTop: C.STAGE_UPPER_TOP,
-  cubeRadius: C.CUBE_RADIUS,
-  cubeHalf: C.CUBE_HALF,
-  gravity: C.GRAVITY,
-  restitution: C.RESTITUTION,
-  floorFriction: C.FLOOR_FRICTION,
-  airDrag: C.AIR_DRAG,
-  pusherRadius: C.PLAYER_RADIUS,
-  pusherHeight: C.PLAYER_HEIGHT
-})
+const world = createWorld(worldParams())
 
 const cubes = new Map<number, SCube>()
 let nextCubeId = 1
@@ -158,7 +143,9 @@ function spawnCube(letter: string, x: number, y: number, z: number) {
     rotation: Quaternion.fromEulerDegrees(0, (body.yaw * 180) / Math.PI, 0),
     scale: Vector3.scale(Vector3.One(), C.CUBE_SCALE)
   })
-  GltfContainer.create(entity, { src: modelFor(letter), invisibleMeshesCollisionMask: ColliderLayer.CL_POINTER })
+  // No collider on the synced cube: each client adds its own click target (cubes.ts), which it can move onto its
+  // locally predicted copy. A server-side pointer collider would stay at the server position and steal clicks.
+  GltfContainer.create(entity, { src: modelFor(letter), invisibleMeshesCollisionMask: ColliderLayer.CL_NONE, visibleMeshesCollisionMask: ColliderLayer.CL_NONE })
   CubeData.create(entity, { id, letter, mode: 'free', slot: -1, holder: '' })
   protectServerEntity(entity, [Transform, GltfContainer])
   syncEntity(entity, [Transform.componentId, GltfContainer.componentId, CubeData.componentId])
@@ -352,43 +339,18 @@ let simAcc = 0
 let sendAcc = 0
 let housekeepAcc = 0
 let heartbeatAcc = 0
-const tracks = new Map<string, { x: number; z: number; since: number; vx: number; vz: number }>()
+const pusherTracker = new PusherTracker()
 
 function gameSystem(dt: number) {
   spawnSome()
 
-  // players shove cubes. Player positions arrive in bursts, so speed is measured over the time since the position
-  // last changed and then smoothed, otherwise it alternates between 0 and huge spikes that fling cubes.
+  // players shove cubes (PusherTracker: same speed smoothing + lookahead as the clients' prediction)
   const pushers: Pusher[] = []
   const present = new Set<string>()
   for (const p of players()) {
     present.add(p.address)
-    let tr = tracks.get(p.address)
-    if (!tr) {
-      tr = { x: p.pos.x, z: p.pos.z, since: 0, vx: 0, vz: 0 }
-      tracks.set(p.address, tr)
-    }
-    tr.since += dt
-    const dx = p.pos.x - tr.x
-    const dz = p.pos.z - tr.z
-    if (dx !== 0 || dz !== 0) {
-      if (dx * dx + dz * dz > 6 * 6) {
-        tr.vx = tr.vz = 0 // teleport
-      } else {
-        const span = Math.max(tr.since, 1 / 30)
-        const k = Math.min(1, span / 0.25)
-        tr.vx += (dx / span - tr.vx) * k
-        tr.vz += (dz / span - tr.vz) * k
-      }
-      tr.x = p.pos.x
-      tr.z = p.pos.z
-      tr.since = 0
-    } else if (tr.since > 0.25) {
-      tr.vx *= 0.8
-      tr.vz *= 0.8
-    }
     lastPos.set(p.address, Vector3.create(p.pos.x, p.pos.y, p.pos.z))
-    pushers.push({ x: p.pos.x + tr.vx * C.PUSH_LOOKAHEAD, y: p.pos.y, z: p.pos.z + tr.vz * C.PUSH_LOOKAHEAD, vx: tr.vx, vz: tr.vz })
+    pushers.push(pusherTracker.update(p.address, p.pos.x, p.pos.y, p.pos.z, dt))
   }
   setPushers(world, pushers)
 
@@ -463,7 +425,7 @@ function gameSystem(dt: number) {
       holders.delete(addr)
       release(cube, lastPos.get(addr) ?? Vector3.create(C.CENTER.x + 8, 2, C.CENTER.z), 0, 0, 0)
     }
-    for (const addr of Array.from(tracks.keys())) if (!present.has(addr)) tracks.delete(addr)
+    pusherTracker.prune(present)
   }
 
   heartbeatAcc += dt

@@ -99,19 +99,22 @@ word complete wave, new round), hints, break-for-coins, multiple players sharing
 - **Latency of pushes.** All physics runs on the server and positions are written to the synced `Transform`s, so a cube
   only reacts after the server has seen the player move. Mitigations in place: cubes within `NEAR_RADIUS` of a player are
   written every tick (30 Hz), the rest at 10 Hz; pushers are predicted `PUSH_LOOKAHEAD` ahead; player speed is smoothed
-  because positions arrive in bursts. Ideas: client-side prediction of the local player's pushes, a velocity-based
-  snapshot format with client interpolation, or moving the pile to client-simulated physics with the server only
-  arbitrating.
+  because positions arrive in bursts. Clients also predict pushes locally (`client/predict.ts`, `PREDICT_*` in
+  `config.ts`): each client runs the same sim on a copy of the nearby cubes with every player as a pusher (built by
+  `shared/pushers.ts`, same as the server), draws the moved cubes as pooled local copies and glides them back to the
+  server's position once they settle. Further ideas: a velocity-based snapshot format with client interpolation, or
+  moving the pile to client-simulated physics with the server only arbitrating.
 - **Chaotic pushing.** Walking through the dense pile can still send cubes in odd directions. The sim measures calm in
   isolation (a simulated 5 m/s run moves no cube faster than ~3 m/s), so the rest is probably network and rendering. The
-  push logic is in `sim/physics.ts` (`PUSH_*` constants) and the server-side speed estimate is in `server.ts`.
+  push logic is in `sim/physics.ts` (`PUSH_*` constants) and the speed estimate is in `shared/pushers.ts`.
 - **Client smoothing is off.** `SMOOTH_FREE_CUBES` in `config.ts` shows a local interpolated copy of moving cubes, but a
   copy created on the fly can take a moment to load, so cubes blink and pop. Turning it on works best with preloaded,
   pooled proxies.
 - **Cube count.** 300 cubes per round is the most we tried. The opening drop is the heaviest sync moment. A deeper heap
   (like the concept art) needs several times more cubes.
-- **Cubes do not block the player.** They only get a pointer collider. Players push them instead. `CUBES_BLOCK_PLAYER`
-  would also give settled cubes a physics collider.
+- **Cubes do not block the player.** The synced cube has no collider at all; each client adds a local click target to
+  it (`cubes.ts`), switched off while the cube is drawn as a predicted copy. Players push cubes instead.
+  `CUBES_BLOCK_PLAYER` (not wired yet) would also give settled cubes a physics collider.
 
 Other known gaps and untested assumptions:
 
