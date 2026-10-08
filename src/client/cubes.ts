@@ -10,7 +10,9 @@ import {
   AvatarAnchorPointType,
   PlayerIdentityData,
   pointerEventsSystem,
-  InputAction
+  InputAction,
+  MeshCollider,
+  ColliderLayer
 } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
@@ -21,6 +23,7 @@ import { slotPosition } from './arena'
 import { envOrigin } from '../shared/env'
 import { playHoldEmote } from './emotes'
 import { cs } from './state'
+import { isPredicted } from './predict'
 
 interface ClientCube {
   mode: string
@@ -37,6 +40,10 @@ interface ClientCube {
   sinceSnap: number
   idle: number
   smooth: Entity | null
+  // Local click target riding on the synced cube (the server gives the cube no collider). Switched off while the
+  // cube is drawn as a predicted copy (the copy carries its own click) so there is never a second, invisible target.
+  hit: Entity
+  hitOn: boolean
 }
 
 const known = new Map<Entity, ClientCube>()
@@ -201,19 +208,29 @@ export function cubesSystem(dt: number) {
     seen.add(entity)
     let c = known.get(entity)
     if (!c) {
-      c = { mode: 'free', holder: '', slot: -1, letter: data.letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null }
+      const hit = engine.addEntity()
+      // Child of the cube: the GLB's collider is a 0.5 m box, the parent already carries CUBE_SCALE.
+      Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
+      MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
+      c = { mode: 'free', holder: '', slot: -1, letter: data.letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true }
       known.set(entity, c)
       const id = data.id
       const letter = data.letter
       pointerEventsSystem.onPointerDown(
-        { entity, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letter}`, maxDistance: C.INTERACT_DISTANCE } },
+        { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letter}`, maxDistance: C.INTERACT_DISTANCE } },
         () => room.send('grab', { cubeId: id })
       )
     }
     if (data.mode !== c.mode || data.holder !== c.holder || data.slot !== c.slot) enterMode(entity, c, data.mode, data.holder, data.slot)
 
     c.t += dt
-    if (c.mode === 'free' && C.SMOOTH_FREE_CUBES) smoothFree(entity, c, dt)
+    const predicted = isPredicted(entity)
+    const hitOn = c.mode === 'free' && !predicted
+    if (hitOn !== c.hitOn) {
+      c.hitOn = hitOn
+      MeshCollider.setBox(c.hit, hitOn ? ColliderLayer.CL_POINTER : ColliderLayer.CL_NONE)
+    }
+    if (c.mode === 'free' && C.SMOOTH_FREE_CUBES && !predicted) smoothFree(entity, c, dt)
     if (c.mode === 'flying' && c.proxy) {
       const delay = C.THROW_RELEASE_DELAY
       const u = Math.max(0, Math.min(1, (c.t - delay) / C.THROW_FLIGHT_TIME))
@@ -238,7 +255,8 @@ export function cubesSystem(dt: number) {
     if (seen.has(entity)) continue
     if (c.smooth) engine.removeEntity(c.smooth)
     dropProxy(c)
-    pointerEventsSystem.removeOnPointerDown(entity)
+    pointerEventsSystem.removeOnPointerDown(c.hit)
+    engine.removeEntity(c.hit)
     known.delete(entity)
   }
 }

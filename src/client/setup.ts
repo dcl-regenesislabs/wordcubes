@@ -6,6 +6,7 @@ import { GameState } from '../shared/schemas'
 import { buildSlots, setSlotClickHandler } from './arena'
 import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './frames'
 import { cubesSystem, isHolding, setWordLength } from './cubes'
+import { predictSystem } from './predict'
 import { playThrowEmote, stopHoldEmote } from './emotes'
 import { cs, showMessage } from './state'
 import { setupUi } from './ui'
@@ -44,6 +45,7 @@ function clientSystem(dt: number) {
   }
 
   cubesSystem(dt)
+  predictSystem(dt) // your own pushes move cubes right away, before the server confirms them
   framesSystem(dt)
 
   // E = break held cube, F = throw it away, 1 = hint

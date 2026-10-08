@@ -71,3 +71,15 @@ export const PUSH_LOOKAHEAD = 0.05 // seconds: pushers are predicted ahead to hi
 // Client-side smoothing of moving free cubes (hides the real cube and shows a local copy). Off: a copy created on the
 // fly can take a moment to load, so cubes blink out and pop back in. Real cubes are sent at 30 Hz near players instead.
 export const SMOOTH_FREE_CUBES = false
+
+// Local push prediction: cubes you walk into move on your screen right away (same sim as the server, run locally on
+// a copy), then glide to where the server put them once you stop touching them. Other players still see your pushes
+// through the server, as before.
+export const PREDICT_PUSHES = true
+// Also predict other players' pushes from where their avatar is drawn here (it arrives before the server's cubes).
+export const PREDICT_REMOTE_PUSHES = true
+export const PREDICT_RADIUS = 4 // m around you: free cubes mirrored into the local sim
+export const PREDICT_HANDOFF = 0.35 // s after your last touch before a cube starts following the server again
+export const PREDICT_BLEND_RATE = 6 // 1/s: how fast a predicted cube glides to the server's position
+export const PREDICT_SNAP = 3 // m: further than this from the server's position and the prediction is dropped
+export const PREDICT_MAX_TIME = 6 // s: a prediction never lasts longer than this
