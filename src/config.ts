@@ -1,17 +1,15 @@
-// Central tuning values. Arena is a circle centred in parcel (1,1) area of the 32x32 scene.
-export const CENTER = { x: 16, z: 16 }
-export const ARENA_RADIUS = 14
-export const FLOOR_Y = 0.1 // top of the arena floor disc
-export const WALL_HEIGHT = 9
-export const WALL_SEGMENTS = 48
+// Central tuning values. All positions below are LOCAL to the "GameEnv" entity (see shared/env.ts):
+// x/z = 0 is the centre of the arena, y = 0 is the top of GameFloor.glb.
+// Keep these in step with the environment models (GameFloor / GameWalls / MidPlatform).
+export const ARENA_RADIUS = 14 // inner face of GameWalls (collider ~14.0)
+export const FLOOR_Y = 0 // top of GameFloor
 
-// Central stage (cubes are kept out of it, slots float above it)
-// Two-tier pedestal. The sim treats the outer tier as a solid column that cubes cannot enter.
+// MidPlatform (cubes are kept out of it, slots float above it). Single cylinder, solid for the sim.
 export const STAGE_RADIUS = 5
-export const STAGE_TOP = 1.0 // taller than a cube (~0.83m) so cubes can't be on it
-export const STAGE_UPPER_RADIUS = 3.6
-export const STAGE_UPPER_TOP = 1.5
-export const SLOT_Y = 3.1 // letter frames float about head height over the stage
+export const STAGE_TOP = 1.5
+export const STAGE_UPPER_RADIUS = 0 // no second tier any more
+export const STAGE_UPPER_TOP = STAGE_TOP
+export const SLOT_Y = 3.1 // letter frames float about head height over the platform
 export const SLOT_SPACING = 1.15
 
 // Cubes (GLB collider is a 0.5m box, visual ~0.51m)
@@ -23,7 +21,7 @@ export const CUBES_PER_ROUND = 300
 export const SPAWN_MIN_RADIUS = STAGE_RADIUS + 1.5
 export const SPAWN_MAX_RADIUS = 10 // piled in a heap around the stage, not spread to the wall
 export const SPAWN_MIN_Y = 3
-export const SPAWN_MAX_Y = 22
+export const SPAWN_MAX_Y = 22 // local to GameEnv
 
 // Interaction
 // The Carry_Box pose holds the box overhead in both raised hands, so the cube rides above the head bone.

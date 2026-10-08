@@ -3,7 +3,7 @@ import { getPlayer } from '@dcl/sdk/players'
 import { isStateSyncronized } from '@dcl/sdk/network'
 import { room } from '../shared/messages'
 import { GameState } from '../shared/schemas'
-import { buildArena, buildSlots, setSlotClickHandler } from './arena'
+import { buildSlots, setSlotClickHandler } from './arena'
 import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './frames'
 import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { playThrowEmote, stopHoldEmote } from './emotes'
@@ -66,7 +66,6 @@ function clientSystem(dt: number) {
 }
 
 export function initClient() {
-  buildArena()
   setupUi()
 
   setSlotClickHandler((slot) => {

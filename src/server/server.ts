@@ -5,6 +5,7 @@ import { syncEntity } from '@dcl/sdk/network'
 import * as C from '../config'
 import { WORDS } from './words'
 import { room } from '../shared/messages'
+import { envOrigin } from '../shared/env'
 import { CubeData, GameState, protectServerEntity, modelFor } from '../shared/schemas'
 import { createWorld, addBody, removeBody, clearBodies, step, applyImpulse, wake, wakeNear, setPushers } from '../sim/physics'
 import type { Body, Pusher } from '../sim/physics'
@@ -28,15 +29,20 @@ const FLIGHT_TOTAL = C.THROW_RELEASE_DELAY + C.THROW_FLIGHT_TIME
 const SPAWN_PER_TICK = 40
 const PARK_Y = -30
 
+function fallbackDrop(): Vector3 {
+  const o = envOrigin()
+  return Vector3.create(o.x + 8, o.y + 2, o.z)
+}
+
 const world = createWorld({
-  centerX: C.CENTER.x,
-  centerZ: C.CENTER.z,
+  centerX: 0,
+  centerZ: 0,
   arenaRadius: C.ARENA_RADIUS,
-  floorY: C.FLOOR_Y,
+  floorY: 0,
   stageRadius: C.STAGE_RADIUS,
-  stageTop: C.STAGE_TOP,
+  stageTop: 0,
   stageUpperRadius: C.STAGE_UPPER_RADIUS,
-  stageUpperTop: C.STAGE_UPPER_TOP,
+  stageUpperTop: 0,
   cubeRadius: C.CUBE_RADIUS,
   cubeHalf: C.CUBE_HALF,
   gravity: C.GRAVITY,
@@ -102,9 +108,21 @@ function rand(min: number, max: number) {
   return min + Math.random() * (max - min)
 }
 
+// Re-read GameEnv every tick so moving it in the editor moves the whole sim (floor, platform, centre).
+function syncEnv() {
+  const o = envOrigin()
+  const p = world.params
+  p.centerX = o.x
+  p.centerZ = o.z
+  p.floorY = o.y + C.FLOOR_Y
+  p.stageTop = o.y + C.STAGE_TOP
+  p.stageUpperTop = o.y + C.STAGE_UPPER_TOP
+}
+
 function slotPos(index: number): Vector3 {
   const offset = (index - (slots.length - 1) / 2) * C.SLOT_SPACING
-  return Vector3.create(C.CENTER.x + offset, C.SLOT_Y, C.CENTER.z)
+  const o = envOrigin()
+  return Vector3.create(o.x + offset, o.y + C.SLOT_Y, o.z)
 }
 
 function handPos(p: PlayerInfo): Vector3 {
@@ -226,7 +244,8 @@ function spawnSome() {
     const letter = spawnQueue.pop()!
     const a = Math.random() * Math.PI * 2
     const r = Math.sqrt(rand(C.SPAWN_MIN_RADIUS ** 2, C.SPAWN_MAX_RADIUS ** 2))
-    spawnCube(letter, C.CENTER.x + Math.cos(a) * r, rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), C.CENTER.z + Math.sin(a) * r)
+    const o = envOrigin()
+    spawnCube(letter, o.x + Math.cos(a) * r, o.y + rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), o.z + Math.sin(a) * r)
   }
 }
 
@@ -395,6 +414,7 @@ function gameSystem(dt: number) {
   simAcc += dt
   let steps = 0
   while (simAcc >= SIM_DT && steps < 3) {
+    syncEnv()
     step(world, SIM_DT)
     simAcc -= SIM_DT
     steps++
@@ -433,7 +453,7 @@ function gameSystem(dt: number) {
     pendingToss.splice(i, 1)
     const p = playerOf(x.addr)
     if (!p) {
-      release(x.cube, lastPos.get(x.addr) ?? Vector3.create(C.CENTER.x + 8, 2, C.CENTER.z), 0, 0, 0)
+      release(x.cube, lastPos.get(x.addr) ?? fallbackDrop(), 0, 0, 0)
       continue
     }
     const fwd = Vector3.rotate(Vector3.Forward(), p.rot)
@@ -461,7 +481,7 @@ function gameSystem(dt: number) {
     for (const [addr, cube] of Array.from(holders.entries())) {
       if (present.has(addr)) continue
       holders.delete(addr)
-      release(cube, lastPos.get(addr) ?? Vector3.create(C.CENTER.x + 8, 2, C.CENTER.z), 0, 0, 0)
+      release(cube, lastPos.get(addr) ?? fallbackDrop(), 0, 0, 0)
     }
     for (const addr of Array.from(tracks.keys())) if (!present.has(addr)) tracks.delete(addr)
   }
