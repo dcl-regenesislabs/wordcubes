@@ -9,6 +9,7 @@ import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { predictSystem } from './predict'
 import { playThrowEmote, stopHoldEmote } from './emotes'
 import { cs, showMessage } from './state'
+import { grassSystem } from './grass'
 import { setupUi } from './ui'
 
 let joined = false
@@ -87,4 +88,5 @@ export function initClient() {
   })
 
   engine.addSystem(clientSystem, 1, 'word-cubes-client')
+  engine.addSystem(grassSystem, 1, 'word-cubes-grass')
 }

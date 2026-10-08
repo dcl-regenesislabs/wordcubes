@@ -83,3 +83,14 @@ export const PREDICT_HANDOFF = 0.35 // s after your last touch before a cube sta
 export const PREDICT_BLEND_RATE = 6 // 1/s: how fast a predicted cube glides to the server's position
 export const PREDICT_SNAP = 3 // m: further than this from the server's position and the prediction is dropped
 export const PREDICT_MAX_TIME = 6 // s: a prediction never lasts longer than this
+
+// Grass (client-only decoration). Children of the composite entity named "Grass" sway in the wind and bend away from players.
+export const GRASS_ENTITY_NAME = 'Grass'
+export const GRASS_LEAN_AXIS: 'x' | 'z' = 'x' // the model's OWN local axis that both wind sway and player push rotate around
+export const GRASS_WIND_SPEED = 1.4 // rad/s of the main sway
+export const GRASS_WIND_AMPLITUDE = 4 // degrees
+export const GRASS_WIND_WAVELENGTH = 9 // metres between wind crests (phase shift across the field)
+export const GRASS_PUSH_RADIUS = 2.2 // metres: players closer than this bend the grass
+export const GRASS_PUSH_ANGLE = 14 // degrees of lean at point-blank range
+export const GRASS_SPRING = 12 // stiffness: higher snaps back faster
+export const GRASS_DAMPING = 6 // lower = more wobble after a player passes
