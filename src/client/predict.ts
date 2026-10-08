@@ -22,7 +22,8 @@ import {
   ColliderLayer,
   pointerEventsSystem,
   InputAction,
-  PlayerIdentityData
+  PlayerIdentityData,
+  LoadingState
 } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
@@ -30,16 +31,17 @@ import * as C from '../config'
 import { CubeData, modelFor } from '../shared/schemas'
 import { room } from '../shared/messages'
 import { worldParams } from '../shared/world'
+import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, setPushers, step } from '../sim/physics'
 import type { Body, Pusher } from '../sim/physics'
 import { cs } from './state'
 
-const LOADING_FINISHED = 4 // LoadingState.FINISHED
-const POOL_Y = -40 // pooled copies wait underground (visible, so their model stays loaded)
+const POOL_Y = -40 // pooled copies wait hidden, underground
 const SETTLED_SPEED = 0.5 // m/s: below this a cube counts as settled for the handoff
 const ARRIVED = 0.04 // m: close enough to the server position to swap back to the real cube
 const MOVED = 0.02 // m: a woken cube that has not moved this far keeps showing the real cube
-const SPARES = 2 // loaded idle copies kept per letter near the player
+const SPARES = 2 // loaded idle copies kept per letter near the player; extras are freed when they come back
+const MAX_STEPS = 3 // sim sub-steps per frame, like the server (a long frame drops the rest instead of spiralling)
 
 interface Copy {
   entity: Entity
@@ -62,52 +64,29 @@ const locals = new Map<Entity, Local>()
 const pool = new Map<string, Copy[]>() // letter -> idle copies
 const STEP_MAX = 1 / 30
 
-let lastPlayer: Vector3 | null = null
-let playerVx = 0
-let playerVz = 0
+/** Same pusher construction as the server (speed smoothing + PUSH_LOOKAHEAD), so the local sim shoves cubes the way
+ *  the server will and the hand-off back to the server's position has as little error as possible. */
+const pusherTracker = new PusherTracker()
 
-/** Speed estimate per remote avatar. Their positions arrive in bursts, so (like the server) speed is measured over
- *  the time since the position last changed and then smoothed, or it alternates between 0 and spikes. */
-const remoteTracks = new Map<string, { x: number; z: number; since: number; vx: number; vz: number }>()
-
-function remotePushers(dt: number, out: Pusher[]) {
-  const present = new Set<string>()
-  for (const [entity, identity, t] of engine.getEntitiesWith(PlayerIdentityData, Transform)) {
-    if (entity === engine.PlayerEntity) continue
-    const address = identity.address.toLowerCase()
-    if (address === cs.myAddress) continue
-    present.add(address)
-    const p = t.position
-    let tr = remoteTracks.get(address)
-    if (!tr) {
-      tr = { x: p.x, z: p.z, since: 0, vx: 0, vz: 0 }
-      remoteTracks.set(address, tr)
+function playerPushers(dt: number, self: Vector3): Pusher[] {
+  const present = new Set<string>(['self'])
+  const out: Pusher[] = [pusherTracker.update('self', self.x, self.y, self.z, dt)]
+  if (C.PREDICT_REMOTE_PUSHES) {
+    // other players push from where their avatar is drawn on this screen
+    for (const [entity, identity, t] of engine.getEntitiesWith(PlayerIdentityData, Transform)) {
+      if (entity === engine.PlayerEntity) continue
+      const address = identity.address.toLowerCase()
+      if (address === cs.myAddress) continue
+      present.add(address)
+      out.push(pusherTracker.update(address, t.position.x, t.position.y, t.position.z, dt))
     }
-    tr.since += dt
-    const dx = p.x - tr.x
-    const dz = p.z - tr.z
-    if (dx !== 0 || dz !== 0) {
-      if (dx * dx + dz * dz > 6 * 6) {
-        tr.vx = tr.vz = 0 // teleport
-      } else {
-        const span = Math.max(tr.since, 1 / 60)
-        const k = Math.min(1, span / 0.2)
-        tr.vx += (dx / span - tr.vx) * k
-        tr.vz += (dz / span - tr.vz) * k
-      }
-      tr.x = p.x
-      tr.z = p.z
-      tr.since = 0
-    } else if (tr.since > 0.25) {
-      tr.vx *= 0.8
-      tr.vz *= 0.8
-    }
-    out.push({ x: p.x, y: p.y, z: p.z, vx: tr.vx, vz: tr.vz })
   }
-  for (const address of Array.from(remoteTracks.keys())) if (!present.has(address)) remoteTracks.delete(address)
+  pusherTracker.prune(present)
+  return out
 }
 
-/** True while the local copy is drawn instead of the real cube (cubes.ts skips its own smoothing then). */
+/** True while the local copy is drawn instead of the real cube. cubes.ts then switches off the real cube's click
+ *  target (the copy carries its own) and skips its optional SMOOTH_FREE_CUBES smoothing. */
 export function isPredicted(entity: Entity): boolean {
   return !!locals.get(entity)?.copy
 }
@@ -125,6 +104,7 @@ function newCopy(letter: string): Copy {
     invisibleMeshesCollisionMask: ColliderLayer.CL_POINTER,
     visibleMeshesCollisionMask: 0
   })
+  VisibilityComponent.create(entity, { visible: false }) // shown only while it draws a predicted cube
   const copy: Copy = { entity, letter, cubeId: -1 }
   // The copy is what you see, so it is also what you click to grab the cube.
   pointerEventsSystem.onPointerDown(
@@ -137,7 +117,7 @@ function newCopy(letter: string): Copy {
 }
 
 function ready(copy: Copy): boolean {
-  return GltfContainerLoadingState.getOrNull(copy.entity)?.currentState === LOADING_FINISHED
+  return GltfContainerLoadingState.getOrNull(copy.entity)?.currentState === LoadingState.FINISHED
 }
 
 /** Keep loaded spares for every letter near the player, so a push never waits on a model load. */
@@ -162,8 +142,16 @@ function takeCopy(letter: string): Copy | null {
 
 function returnCopy(copy: Copy) {
   copy.cubeId = -1
+  const list = pool.get(copy.letter)!
+  if (list.length >= SPARES) {
+    // enough spares of this letter already: free it instead of keeping it loaded forever
+    pointerEventsSystem.removeOnPointerDown(copy.entity)
+    engine.removeEntity(copy.entity)
+    return
+  }
+  VisibilityComponent.getMutable(copy.entity).visible = false
   Transform.getMutable(copy.entity).position = Vector3.create(C.CENTER.x, POOL_Y, C.CENTER.z)
-  pool.get(copy.letter)!.push(copy)
+  list.push(copy)
 }
 
 // ---------- predicted cubes ----------
@@ -172,6 +160,7 @@ function startPredicting(l: Local): boolean {
   const copy = takeCopy(l.letter)
   if (!copy) return false
   copy.cubeId = l.id
+  VisibilityComponent.getMutable(copy.entity).visible = true
   l.copy = copy
   l.age = 0
   VisibilityComponent.createOrReplace(l.entity, { visible: false })
@@ -244,23 +233,8 @@ export function predictSystem(dt: number) {
   if (!pt) return
   const pp = pt.position
 
-  // the local player's real speed (no network in between), lightly smoothed
-  if (lastPlayer) {
-    const dx = pp.x - lastPlayer.x
-    const dz = pp.z - lastPlayer.z
-    if (dx * dx + dz * dz > 6 * 6) {
-      playerVx = playerVz = 0 // teleport
-    } else {
-      const k = Math.min(1, dt / 0.08)
-      playerVx += (dx / dt - playerVx) * k
-      playerVz += (dz / dt - playerVz) * k
-    }
-  }
-  lastPlayer = Vector3.create(pp.x, pp.y, pp.z)
-
   // every player pushes: you with your real position, the others where their avatar is drawn on this screen
-  const pushers: Pusher[] = [{ x: pp.x, y: pp.y, z: pp.z, vx: playerVx, vz: playerVz }]
-  if (C.PREDICT_REMOTE_PUSHES) remotePushers(dt, pushers)
+  const pushers = playerPushers(dt, pp)
 
   // 1. mirror the free cubes around the players into the local world
   const r2 = C.PREDICT_RADIUS * C.PREDICT_RADIUS
@@ -309,7 +283,7 @@ export function predictSystem(dt: number) {
   // 2. run the shared sim with every player as a pusher
   setPushers(world, pushers)
   let left = dt
-  while (left > 1e-4) {
+  for (let n = 0; n < MAX_STEPS && left > 1e-4; n++) {
     const h = Math.min(left, STEP_MAX)
     step(world, h)
     left -= h
