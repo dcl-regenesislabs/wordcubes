@@ -11,6 +11,7 @@ import { playThrowEmote, stopHoldEmote } from './emotes'
 import { cs, showMessage } from './state'
 import { grassSystem } from './grass'
 import { setupUi } from './ui'
+import { setupLobby } from './lobby'
 
 let joined = false
 let lastRound = -1
@@ -49,7 +50,13 @@ function clientSystem(dt: number) {
   predictSystem(dt) // your own pushes move cubes right away, before the server confirms them
   framesSystem(dt)
 
-  // E = break held cube, F = throw it away, 1 = hint
+  if (cs.messageTime > 0) {
+    cs.messageTime -= dt
+    if (cs.messageTime <= 0) cs.message = ''
+  }
+
+  // E = break held cube, F = throw it away, 1 = hint (game only, not in the lobby)
+  if (!cs.inGame) return
   if (inputSystem.isTriggered(InputAction.IA_PRIMARY, PointerEventType.PET_DOWN)) {
     if (isHolding()) {
       stopHoldEmote()
@@ -61,15 +68,11 @@ function clientSystem(dt: number) {
     room.send('toss', { n: 0 })
   }
   if (inputSystem.isTriggered(InputAction.IA_ACTION_3, PointerEventType.PET_DOWN)) useHint()
-
-  if (cs.messageTime > 0) {
-    cs.messageTime -= dt
-    if (cs.messageTime <= 0) cs.message = ''
-  }
 }
 
 export function initClient() {
   setupUi()
+  setupLobby()
 
   setSlotClickHandler((slot) => {
     if (!isHolding()) return showMessage('Grab a cube first (click it), then click a frame.', 2)

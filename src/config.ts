@@ -94,3 +94,22 @@ export const GRASS_PUSH_RADIUS = 2.2 // metres: players closer than this bend th
 export const GRASS_PUSH_ANGLE = 14 // degrees of lean at point-blank range
 export const GRASS_SPRING = 12 // stiffness: higher snaps back faster
 export const GRASS_DAMPING = 6 // lower = more wobble after a player passes
+
+// Lobby: one start pad. Stand on it and the lights spin up, a countdown runs, then you are teleported to the game.
+export const LOBBY_PAD_NAME = 'StartPad.glb_6' // the one pad (child of "Lobby") that starts the game
+export const LOBBY_LIGHTS_MODEL = 'assets/models/environment/StartPadLight.glb' // lights spawned over that pad
+export const PAD_RADIUS = 4.4 // m from the pad centre that counts as standing on it
+export const PAD_LEAVE_MARGIN = 1 // extra metres before you count as having left (no flicker on the rim)
+export const PAD_HEIGHT_RANGE = 6 // m: vertical window around the pad
+export const LOBBY_COUNTDOWN_SECONDS = 10
+export const GAME_SPAWN_RADIUS = 11 // m from GameEnv centre, outside the cube heap, where lobby players land
+export const LOBBY_LIGHTS_SPIN_SLOW = 30 // deg/s with someone on the pad
+export const LOBBY_LIGHTS_SPIN_FAST = 540 // deg/s at the end of the countdown
+export const LOBBY_LIGHTS_TALL = 1.5 // vertical stretch for the last 3 seconds
+
+// Falling off the floating lobby / arena: below this many metres under the floor you are sent back
+export const LOBBY_ENTITY_NAME = 'Lobby'
+export const LOBBY_RADIUS = 60 // m from the Lobby centre that counts as "in the lobby" (for choosing where to respawn)
+export const FALL_RESPAWN_DEPTH = 15 // m below the floor
+export const LOBBY_RESPAWN_HEIGHT = 2.8 // m above the Lobby origin (top of the island floor)
+export const PAD_LABEL_HEIGHT = 5 // m above the pad centre to the "Join game" text
