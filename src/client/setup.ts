@@ -3,7 +3,7 @@ import { getPlayer } from '@dcl/sdk/players'
 import { isStateSyncronized } from '@dcl/sdk/network'
 import { room } from '../shared/messages'
 import { GameState } from '../shared/schemas'
-import { buildSlots, setSlotClickHandler } from './arena'
+import { buildSlots, disableArenaPassports, setSlotClickHandler } from './arena'
 import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './frames'
 import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { predictSystem } from './predict'
@@ -21,6 +21,8 @@ function useHint() {
 export { useHint }
 
 function clientSystem(dt: number) {
+  disableArenaPassports()
+
   if (!cs.myAddress) {
     const p = getPlayer()
     if (p) cs.myAddress = p.userId.toLowerCase()
