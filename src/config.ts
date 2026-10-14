@@ -11,6 +11,9 @@ export const STAGE_UPPER_RADIUS = 0 // no second tier any more
 export const STAGE_UPPER_TOP = STAGE_TOP
 export const SLOT_Y = 3.1 // letter frames float about head height over the platform
 export const SLOT_SPACING = 1.15
+// PathArrow marker standing left of the first frame, level with its centre, tip pointing at it.
+export const START_ARROW_SCALE = 1
+export const START_ARROW_GAP = 0.15 // metres between the arrow's tip and the first frame
 
 // Cubes (GLB collider is a 0.5m box, visual ~0.51m)
 export const CUBE_SCALE = 1.6 // GLB is ~0.51m, so cubes are ~0.82m in the world

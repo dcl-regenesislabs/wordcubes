@@ -2,16 +2,20 @@ import {
   engine,
   Transform,
   GltfContainer,
+  Animator,
+  MeshCollider,
   ColliderLayer,
   pointerEventsSystem,
   InputAction
 } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
-import { Vector3 } from '@dcl/sdk/math'
+import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { envOrigin } from '../shared/env'
 
 let slotEntities: Entity[] = []
+let slotHits: Entity[] = []
+let startArrow: Entity | null = null
 let onSlotClick: (index: number) => void = () => {}
 export function setSlotClickHandler(fn: (index: number) => void) {
   onSlotClick = fn
@@ -34,12 +38,41 @@ export function buildSlots(count: number) {
       // the frame GLB has no `_collider` node, so make the visible mesh clickable
       visibleMeshesCollisionMask: ColliderLayer.CL_POINTER
     })
-    pointerEventsSystem.onPointerDown(
-      { entity: e, opts: { button: InputAction.IA_POINTER, hoverText: 'Place cube', maxDistance: C.INTERACT_DISTANCE } },
-      () => onSlotClick(i)
-    )
+    // Invisible box filling the frame's hole, so clicking the middle works too (not just the thin border).
+    // Child of the frame: it follows the frame's pulse/shake/wave. Same 0.5 m size as the cube collider.
+    const hit = engine.addEntity()
+    Transform.create(hit, { parent: e, scale: Vector3.create(0.5, 0.5, 0.5) })
+    MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
+    for (const target of [e, hit]) {
+      pointerEventsSystem.onPointerDown(
+        { entity: target, opts: { button: InputAction.IA_POINTER, hoverText: 'Place cube', maxDistance: C.INTERACT_DISTANCE } },
+        () => onSlotClick(i)
+      )
+    }
     slotEntities.push(e)
+    slotHits.push(hit)
   }
+  buildStartArrow(count)
+}
+
+// Arrow beside the first frame, pointing along the word (+x), so you can tell where it starts and which
+// way it reads from any side of the stage. The GLB is a flat arrow lying down, pointing along +z, and sits
+// off its own origin (tip at ~(0, 0.72, 1.16)). Roll it 90° around its length so it stands upright,
+// yaw it to +x, then place it so the tip lands START_ARROW_GAP before the first frame.
+const ARROW_TIP = Vector3.create(0, 0.72, 1.16)
+function buildStartArrow(count: number) {
+  const first = slotPosition(0, count)
+  const rotation = Quaternion.multiply(Quaternion.fromEulerDegrees(0, 90, 0), Quaternion.fromEulerDegrees(0, 0, 90))
+  const tip = Vector3.rotate(Vector3.scale(ARROW_TIP, C.START_ARROW_SCALE), rotation)
+  const frameHalf = 0.255 * C.CUBE_SCALE
+  startArrow = engine.addEntity()
+  Transform.create(startArrow, {
+    position: Vector3.create(first.x - frameHalf - C.START_ARROW_GAP - tip.x, first.y - tip.y, first.z - tip.z),
+    rotation,
+    scale: Vector3.scale(Vector3.One(), C.START_ARROW_SCALE)
+  })
+  GltfContainer.create(startArrow, { src: 'models/PathArrow.glb' })
+  Animator.create(startArrow, { states: [{ clip: 'Cube.008Action', playing: true, loop: true }] })
 }
 
 export function getSlotEntities(): Entity[] {
@@ -47,9 +80,12 @@ export function getSlotEntities(): Entity[] {
 }
 
 export function clearSlots() {
-  for (const e of slotEntities) {
+  for (const e of [...slotHits, ...slotEntities]) {
     pointerEventsSystem.removeOnPointerDown(e)
     engine.removeEntity(e)
   }
   slotEntities = []
+  slotHits = []
+  if (startArrow) engine.removeEntity(startArrow)
+  startArrow = null
 }
