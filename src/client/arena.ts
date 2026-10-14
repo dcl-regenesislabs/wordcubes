@@ -1,5 +1,7 @@
 import {
   engine,
+  AvatarModifierArea,
+  AvatarModifierType,
   Transform,
   GltfContainer,
   Animator,
@@ -12,6 +14,20 @@ import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { envOrigin } from '../shared/env'
+import { EntityNames } from '../../assets/scene/entity-names'
+
+// Apply on each client once the composite has loaded. Using GameEnv keeps the
+// region centred on the arena when it moves, with enough height for stage jumps.
+export function disableArenaPassports() {
+  const arena = engine.getEntityOrNullByName(EntityNames.GameEnv)
+  if (!arena || !Transform.has(arena) || AvatarModifierArea.has(arena)) return
+  const diameter = C.ARENA_RADIUS * 2
+  AvatarModifierArea.create(arena, {
+    area: Vector3.create(diameter, diameter, diameter),
+    excludeIds: [],
+    modifiers: [AvatarModifierType.AMT_DISABLE_PASSPORTS]
+  })
+}
 
 let slotEntities: Entity[] = []
 let slotHits: Entity[] = []
