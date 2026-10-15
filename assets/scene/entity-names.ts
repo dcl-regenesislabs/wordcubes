@@ -131,4 +131,6 @@ export enum EntityNames {
   Tree03_glb_4 = "Tree03.glb_4",
   Tree03_glb_5 = "Tree03.glb_5",
   Tree03_glb_6 = "Tree03.glb_6",
+  VendorNpc = "VendorNpc",
+  VendorNpc_2 = "VendorNpc_2",
 } 
