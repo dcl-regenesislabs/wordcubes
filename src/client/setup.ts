@@ -7,7 +7,8 @@ import { buildSlots, disableArenaPassports, setSlotClickHandler } from './arena'
 import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './frames'
 import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { predictSystem } from './predict'
-import { playThrowEmote, stopHoldEmote } from './emotes'
+import { playThrowEmote } from './emotes'
+import { breakHeldCube, tossHeldCube, useHint } from './actions'
 import { cs, showMessage } from './state'
 import { setupUi } from './ui'
 
@@ -15,10 +16,7 @@ let joined = false
 let lastRound = -1
 let lastLength = -1
 
-function useHint() {
-  room.send('hint', { n: 0 })
-}
-export { useHint }
+export { useHint } from './actions'
 
 function clientSystem(dt: number) {
   disableArenaPassports()
@@ -52,14 +50,10 @@ function clientSystem(dt: number) {
 
   // E = break held cube, F = throw it away, 1 = hint
   if (inputSystem.isTriggered(InputAction.IA_PRIMARY, PointerEventType.PET_DOWN)) {
-    if (isHolding()) {
-      stopHoldEmote()
-      room.send('breakCube', { n: 0 })
-    } else showMessage('Nothing to break. Click a cube to grab it first.', 2)
+    breakHeldCube()
   }
-  if (inputSystem.isTriggered(InputAction.IA_SECONDARY, PointerEventType.PET_DOWN) && isHolding()) {
-    playThrowEmote()
-    room.send('toss', { n: 0 })
+  if (inputSystem.isTriggered(InputAction.IA_SECONDARY, PointerEventType.PET_DOWN)) {
+    tossHeldCube()
   }
   if (inputSystem.isTriggered(InputAction.IA_ACTION_3, PointerEventType.PET_DOWN)) useHint()
 

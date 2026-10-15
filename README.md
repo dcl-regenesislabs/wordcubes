@@ -70,10 +70,35 @@ src/
     arena.ts          floor, two-tier stage, wall, letter frames (all local, static)
     frames.ts         frame effects: lock-in, fail shake, win wave
     emotes.ts         carry / throw emotes
-    ui.tsx            HUD (React-ECS, not editable in the UI Designer)
+    actions.ts        shared keyboard and HUD actions (hint, break, toss)
+    ui.tsx            HUD state and responsive layout driver
+    ui-layout.ts      viewport and safe-area sizing
+    runtime-hud.tsx   dynamic desktop word cells and conditionally mounted feedback
+    touch-controls.ts native mobile action icons and visibility
+  ui/
+    WordCubesHud.tsx   slim word strip, editable in the Creator Hub UI Designer
+    DesktopHud.tsx     desktop status and keyboard guide, hidden on mobile
+    index.tsx         UI Designer renderer wiring
 assets/models/        Cube<A-Z>.glb, CubeNh (N with tilde), CubeWildCard (unused), CubeFrame
+assets/images/ui/     generated cartoon panel, button and action icons
 models/               emote clips (must end in _emote.glb)
 ```
+
+**HUD.** The clue and word are shown in two compact lines at the top centre inside the device safe area.
+Desktop letters use separate square cells: mint for placed letters, gold for hints and lavender for empty cells.
+Mobile keeps its compact text row. The static frame stays editable; the runtime-sized cell row uses its own renderer.
+Feedback is only mounted while there is a nonblank message, so it leaves no empty background behind. All HUD elements
+let clicks through. Optional desktop panels use actual display visibility rather than transparent hidden backgrounds.
+The cartoon strip uses separate end caps at their original proportions, with only the plain middle stretching to fit.
+Mobile uses the native action cluster with cartoon icons for Hint, Break and Toss, alongside interaction and jump.
+Unused numbered actions are hidden so all five controls fit without the '+' overflow menu. The joystick and crosshair
+remain enabled. Desktop uses a wider word strip, a small top-right coin/round/held-cube card, and a bottom-right
+keyboard guide. The scene uses the reported native HUD margins to stay clear of Unity's sidebar and Bevy's overlays.
+In narrow desktop windows the status card hides to leave space for the clue. These panels are passive: keyboard and
+world clicks still perform the actions. Mobile keeps its compact strip and native controls.
+
+Run `node --test tests/hud.test.cjs` for viewport, pointer-blocking and action checks. Device testing is still needed
+to verify font rendering and native control overlap in Unity, Bevy and the mobile Explorer.
 
 **Server authority.** Clients never write game state. They send `grab`, `place`, `toss`, `breakCube`, `hint`, and the
 server validates each one (phase, ownership, distance to the cube). Whether a thrown cube is correct is decided on the
@@ -131,7 +156,7 @@ Other known gaps and untested assumptions:
   numbered frames with a START marker, a glow on the next empty frame, or a ring of mirrored rows.
 - **Content.** The word bank is 21 hardcoded English entries. The GDD calls for a large bank and per-language rooms
   (Brazil / LatAm). Power-ups (time freeze, reroll, wildcard) and the `CubeWildCard` model are not wired up yet.
-- **HUD** is coded React-ECS, so the Creator Hub UI Designer cannot edit it.
+- **HUD** layout is editable in the Creator Hub UI Designer; responsive sizing and live game state come from its driver.
 
 ## Tuning
 
