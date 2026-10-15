@@ -52,19 +52,37 @@ export const CUBES_BLOCK_PLAYER = false
 
 // Economy / rules
 // Difficulty: one level per room (1..7), set by the players' vote (not built yet; see docs/round-system-design.md).
-// Level 1 is easy. The first build tunes the word (length) and the round timer; the table can grow more levers later.
-// Word length stands in for "tier" until the question bank is tagged by level.
+// Level 1 is easy. Each level has its own word list (server/words.ts) and round timer; the table can grow more levers later.
 export const START_DIFFICULTY = 1
-export const LEVELS: { minLen: number; maxLen: number; seconds: number }[] = [
-  { minLen: 3, maxLen: 5, seconds: 240 }, // 1
-  { minLen: 4, maxLen: 6, seconds: 240 }, // 2
-  { minLen: 5, maxLen: 6, seconds: 210 }, // 3
-  { minLen: 6, maxLen: 7, seconds: 210 }, // 4
-  { minLen: 7, maxLen: 8, seconds: 180 }, // 5
-  { minLen: 8, maxLen: 9, seconds: 180 }, // 6
-  { minLen: 9, maxLen: 14, seconds: 150 } // 7
+export const LEVELS: { seconds: number }[] = [
+  { seconds: 240 }, // 1
+  { seconds: 240 }, // 2
+  { seconds: 210 }, // 3
+  { seconds: 210 }, // 4
+  { seconds: 180 }, // 5
+  { seconds: 180 }, // 6
+  { seconds: 150 } // 7
 ]
 export const MAX_DIFFICULTY = LEVELS.length
+
+// Rating (Elo style, see docs/round-system-design.md). Level L counts as an opponent rated in the middle of rank L.
+export const RATING_PER_RANK = 200
+export const RATING_K = 40 // points a fully surprising win or loss is worth
+export const PROVISIONAL_ROUNDS = 5 // new players: bigger gains and very small losses for their first rounds
+export const VOTE_BONUS_COINS = 3 // for everyone in the arena who voted
+export const PROFILE_SAVE_SECONDS = 15 // changed profiles are written to storage at most this often
+
+// Vendor items. Bought with coins, kept in each player's inventory (saved), used in the arena.
+export type ItemId = 'wildcard' | 'reroll' | 'freeze' | 'bomb'
+export const ITEMS: { id: ItemId; name: string; price: number; desc: string }[] = [
+  { id: 'wildcard', name: 'Wildcard', price: 250, desc: 'A box that fits any frame and stays put when the word collapses. One per round.' },
+  { id: 'freeze', name: 'Time Freeze', price: 90, desc: 'Stops the round timer for 20 seconds.' },
+  { id: 'reroll', name: 'Reroll', price: 60, desc: 'Throws out the pile and drops a fresh set of cubes.' },
+  { id: 'bomb', name: 'Bomb', price: 70, desc: 'Blasts away the extra letters around you.' }
+]
+export const ITEM_COOLDOWN = 30 // seconds between power-ups for one player (wildcards are limited to one per round instead)
+export const FREEZE_SECONDS = 20
+export const BOMB_RADIUS = 7
 
 // Anti-troll: whoever's cube makes the word collapse cannot place cubes for this long (they can still grab, break and throw away).
 export const COLLAPSE_LOCKOUT_SECONDS = 25

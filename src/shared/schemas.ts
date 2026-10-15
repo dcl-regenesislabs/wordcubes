@@ -18,6 +18,7 @@ export const GameState = engine.defineComponent('wc:GameState', {
   round: Schemas.Int,
   difficulty: Schemas.Int, // room level, 1..7
   timeLeft: Schemas.Int, // whole seconds left in the round (stops while nobody is in the arena)
+  frozen: Schemas.Int, // seconds of Time Freeze left (the round timer is stopped)
   players: Schemas.Int, // players standing in the arena
   builders: Schemas.Int, // how many players built the last finished word
   voteLeft: Schemas.Int, // whole seconds left in the vote (phase 'vote')
@@ -50,6 +51,7 @@ export function protectServerEntity(entity: Entity, components: ComponentWithVal
 }
 
 export function modelFor(letter: string): string {
+  if (letter === '*') return 'assets/models/CubeWildCard.glb' // the wildcard box
   if (letter === 'Ñ') return 'assets/models/CubeNh.glb'
   return `assets/models/Cube${letter}.glb`
 }

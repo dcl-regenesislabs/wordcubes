@@ -4,6 +4,7 @@ import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import { syncEntity } from '@dcl/sdk/network'
 import * as C from '../config'
 import { pickWord } from './words'
+import { loadProfile, profileOf, touch, saveSome, release as releaseProfile, allCached, ratingDelta } from './profiles'
 import { room } from '../shared/messages'
 import { envOrigin } from '../shared/env'
 import { CubeData, GameState, protectServerEntity, modelFor } from '../shared/schemas'
@@ -62,7 +63,11 @@ const holders = new Map<string, SCube>()
 const lockedUntil = new Map<string, number>() // address -> clock time when placing is allowed again
 // Who took part in this round: locked in at least one correct cube (even one a later collapse knocked out).
 const participants = new Set<string>()
-const coins = new Map<string, number>()
+let wildcardUsed = false // one wildcard per round, in the whole room
+let freezeLeft = 0 // seconds of Time Freeze left
+const itemReady = new Map<string, number>() // address -> clock time their next power-up is ready
+const absent = new Map<string, number>() // address -> housekeeping checks without finding the player
+let saveAcc = 0
 const lastPos = new Map<string, Vector3>()
 const pendingToss: { cube: SCube; t: number; addr: string }[] = []
 // settle reports: each player's recent path, and when each cube last took a report
@@ -108,10 +113,25 @@ function toast(text: string, to?: string) {
   else room.send('toast', { text })
 }
 
+const coinsOf = (address: string): number => profileOf(address)?.coins ?? 0
+
+function sendProfile(address: string) {
+  const p = profileOf(address)
+  if (!p) return
+  room.send('coins', { value: p.coins }, { to: [address] })
+  room.send(
+    'profile',
+    { rating: Math.round(p.rating), wildcard: p.items.wildcard ?? 0, reroll: p.items.reroll ?? 0, freeze: p.items.freeze ?? 0, bomb: p.items.bomb ?? 0 },
+    { to: [address] }
+  )
+}
+
 function giveCoins(address: string, amount: number) {
-  const value = (coins.get(address) ?? 0) + amount
-  coins.set(address, value)
-  room.send('coins', { value }, { to: [address] })
+  const p = profileOf(address)
+  if (!p) return
+  p.coins = Math.max(0, p.coins + amount)
+  touch(address)
+  room.send('coins', { value: p.coins }, { to: [address] })
 }
 
 function rand(min: number, max: number) {
@@ -207,7 +227,7 @@ function updateGameState() {
 
 // ---------- cubes ----------
 
-function spawnCube(letter: string, x: number, y: number, z: number) {
+function spawnCube(letter: string, x: number, y: number, z: number): SCube {
   const entity = engine.addEntity()
   const body = addBody(world, x, y, z)
   const id = nextCubeId++
@@ -222,7 +242,9 @@ function spawnCube(letter: string, x: number, y: number, z: number) {
   CubeData.create(entity, { id, letter, mode: 'free', slot: -1, holder: '' })
   protectServerEntity(entity, [Transform, GltfContainer])
   syncEntity(entity, [Transform.componentId, GltfContainer.componentId, CubeData.componentId])
-  cubes.set(id, { id, letter, entity, body, mode: 'free', slot: -1, holder: '', placer: '', sentAsleep: false })
+  const cube: SCube = { id, letter, entity, body, mode: 'free', slot: -1, holder: '', placer: '', sentAsleep: false }
+  cubes.set(id, cube)
+  return cube
 }
 
 function removeCube(cube: SCube) {
@@ -260,7 +282,7 @@ function startRound(message = 'New round! Find the letters.') {
   flights.length = 0
 
   const level = C.LEVELS[difficulty - 1]
-  const entry = pickWord(level.minLen, level.maxLen, lastWord)
+  const entry = pickWord(difficulty, lastWord)
   lastWord = entry.answer
   timeLeft = level.seconds
   lastTimeShown = -1
@@ -268,7 +290,10 @@ function startRound(message = 'New round! Find the letters.') {
   slots = new Array(answer.length).fill(null)
   hintsUsed = 0
   participants.clear()
+  wildcardUsed = false
+  freezeLeft = 0
   GameState.getMutable(stateEntity).builders = 0
+  GameState.getMutable(stateEntity).frozen = 0
   phase = 'playing'
   round++
 
@@ -316,10 +341,12 @@ function ensureSupply() {
   }
 }
 
-function clearPlaced() {
+// keepWildcards: a collapse leaves wildcard boxes in their frames; the end of a round lets everything go.
+function clearPlaced(keepWildcards: boolean) {
   for (let i = 0; i < slots.length; i++) {
     const cube = slots[i]
     if (!cube) continue
+    if (keepWildcards && cube.letter === '*') continue
     const idx = flights.findIndex((f) => f.cube === cube)
     if (idx >= 0) flights.splice(idx, 1)
     release(cube, slotPos(i), rand(-3, 3), rand(0, 3), rand(-3, 3))
@@ -328,7 +355,7 @@ function clearPlaced() {
 }
 
 function collapse(causedBy: string) {
-  clearPlaced()
+  clearPlaced(true)
   updateGameState()
   room.send('fx', { kind: 'fail', slot: -1 })
   toast('Wrong cube! The whole word collapsed.')
@@ -344,9 +371,11 @@ function timeUp() {
   phase = 'timeout'
   nextRoundIn = C.NEXT_ROUND_DELAY
   flights.length = 0
-  clearPlaced()
+  clearPlaced(false)
   updateGameState()
   room.send('fx', { kind: 'fail', slot: -1 })
+  const deltas = settleRound(false, Array.from(participants))
+  for (const [addr, delta] of deltas) room.send('result', { coins: 0, delta }, { to: [addr] })
   toast(`Time's up! The word was ${answer}`)
   console.log('[ROUND]', 'timeout', answer, 'level', difficulty, 'participants', Array.from(participants).join(','))
 }
@@ -360,9 +389,27 @@ function finishWord(): string[] {
   return Array.from(builders)
 }
 
+// Rating: builders gain after a win, players who took part lose after a timeout. Only players still in the arena count.
+function settleRound(won: boolean, who: string[]): Map<string, number> {
+  const out = new Map<string, number>()
+  const present = new Set(arenaPlayers().map((p) => p.address))
+  for (const addr of who) {
+    const p = profileOf(addr)
+    if (!p || !present.has(addr)) continue
+    const delta = ratingDelta(p.rating, p.rounds, difficulty, won, C.RATING_K, C.RATING_PER_RANK, C.PROVISIONAL_ROUNDS)
+    p.rating = Math.max(0, p.rating + delta)
+    p.rounds++
+    if (won) p.wins++
+    touch(addr)
+    sendProfile(addr)
+    out.set(addr, delta)
+  }
+  return out
+}
+
 function land(cube: SCube) {
   const slot = cube.slot
-  if (cube.letter !== answer[slot]) {
+  if (cube.letter !== '*' && cube.letter !== answer[slot]) {
     collapse(cube.placer)
     return
   }
@@ -379,19 +426,78 @@ function land(cube: SCube) {
     nextRoundIn = C.NEXT_ROUND_DELAY
     const builders = finishWord()
     GameState.getMutable(stateEntity).builders = builders.length
+    const deltas = settleRound(true, builders)
     room.send('fx', { kind: 'win', slot: -1 })
-    let msg = `${answer}! Built by ${builders.length} player${builders.length === 1 ? '' : 's'}`
-    if (completed >= C.ROUNDS_FOR_REWARD) msg += ' - Wearable reward (stub)'
-    toast(msg)
+    toast(`${answer}! Built by ${builders.length} player${builders.length === 1 ? '' : 's'}`)
     // sent after the group message so each builder's own message is the one they see
     for (const addr of builders) {
       giveCoins(addr, C.COINS_PER_WORD)
-      room.send('result', { coins: C.COINS_PER_WORD }, { to: [addr] })
+      room.send('result', { coins: C.COINS_PER_WORD, delta: deltas.get(addr) ?? 0 }, { to: [addr] })
       toast(`You built ${answer}! +${C.COINS_PER_WORD} coins`, addr)
+      const p = profileOf(addr)
+      if (p && p.wins >= C.ROUNDS_FOR_REWARD && !p.rewarded) {
+        p.rewarded = true
+        touch(addr)
+        toast('Wearable reward unlocked! (stub: not delivered yet)', addr)
+      }
     }
     console.log('[ROUND]', 'won', answer, 'level', difficulty, 'builders', builders.join(','), 'participants', Array.from(participants).join(','))
   }
   updateGameState()
+}
+
+// ---------- items ----------
+
+const itemOf = (id: string) => C.ITEMS.find((i) => i.id === id)
+
+// Fresh pile: the letters the word still needs plus random ones; cubes in hands and frames stay where they are.
+function rerollPile() {
+  for (const cube of Array.from(cubes.values())) if (cube.mode === 'free') removeCube(cube)
+  const letters: string[] = []
+  for (let i = 0; i < answer.length; i++) if (!(slots[i] && slots[i]!.mode === 'placed')) letters.push(answer[i])
+  while (letters.length < C.CUBES_PER_ROUND) letters.push(LETTERS[Math.floor(Math.random() * LETTERS.length)])
+  for (let i = letters.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[letters[i], letters[j]] = [letters[j], letters[i]]
+  }
+  spawnQueue = letters
+}
+
+// Removes the loose letters around the player that the word does not use, and shoves the useful ones away.
+function bombAt(addr: string): boolean {
+  const p = playerOf(addr)
+  if (!p) return false
+  const r2 = C.BOMB_RADIUS * C.BOMB_RADIUS
+  const gone: SCube[] = []
+  for (const cube of cubes.values()) {
+    if (cube.mode !== 'free') continue
+    const dx = cube.body.x - p.pos.x
+    const dz = cube.body.z - p.pos.z
+    const d2 = dx * dx + dz * dz
+    if (d2 > r2) continue
+    if (answer.includes(cube.letter)) {
+      const d = Math.sqrt(d2) || 1
+      wake(cube.body)
+      applyImpulse(cube.body, (dx / d) * 6, 4, (dz / d) * 6)
+    } else gone.push(cube)
+  }
+  for (const cube of gone) removeCube(cube)
+  room.send('burst', { x: p.pos.x, y: p.pos.y + 1, z: p.pos.z, gold: 2 })
+  return true
+}
+
+function giveWildcard(addr: string): boolean {
+  const p = playerOf(addr)
+  if (!p) return false
+  const at = handPos(p)
+  const cube = spawnCube('*', at.x, at.y, at.z)
+  cube.mode = 'held'
+  cube.holder = addr
+  cube.body.active = false
+  holders.set(addr, cube)
+  park(cube)
+  sync(cube)
+  return true
 }
 
 // ---------- vote ----------
@@ -437,6 +543,10 @@ function endVote() {
   let step = 0
   if (up > down && up > same) step = 1
   else if (down > up && down > same) step = -1
+  for (const p of present) {
+    if (!votes.has(p.address)) continue
+    giveCoins(p.address, C.VOTE_BONUS_COINS)
+  }
   const next = Math.min(C.MAX_DIFFICULTY, Math.max(1, difficulty + step))
   const changed = next !== difficulty
   difficulty = next
@@ -449,7 +559,7 @@ function init() {
   room.onMessage('join', (_data, ctx) => {
     if (!ctx) return
     const addr = ctx.from.toLowerCase()
-    room.send('coins', { value: coins.get(addr) ?? 0 }, { to: [addr] })
+    void loadProfile(addr).then(() => sendProfile(addr))
   })
 
   room.onMessage('grab', (data, ctx) => {
@@ -501,6 +611,7 @@ function init() {
     const addr = ctx.from.toLowerCase()
     const cube = holders.get(addr)
     if (!cube) return toast('Nothing to break. Click a cube to grab it first.', addr)
+    if (cube.letter === '*') return toast('A wildcard cannot be broken. Place it in a frame or throw it away.', addr)
     holders.delete(addr)
     const needed = answer.includes(cube.letter)
     const letter = cube.letter
@@ -557,12 +668,62 @@ function init() {
     updateVoteState()
   })
 
+  room.onMessage('buy', (data, ctx) => {
+    if (!ctx) return
+    const addr = ctx.from.toLowerCase()
+    const item = itemOf(data.item)
+    const p = profileOf(addr)
+    if (!item || !p) return
+    if ((p.items[item.id] ?? 0) >= 9) return toast(`You already carry 9 ${item.name}s.`, addr)
+    if (p.coins < item.price) return toast(`${item.name} costs ${item.price} coins. You have ${p.coins}.`, addr)
+    giveCoins(addr, -item.price)
+    p.items[item.id] = (p.items[item.id] ?? 0) + 1
+    touch(addr)
+    sendProfile(addr)
+    toast(`Bought ${item.name}!`, addr)
+  })
+
+  room.onMessage('useItem', (data, ctx) => {
+    if (!ctx) return
+    const addr = ctx.from.toLowerCase()
+    const item = itemOf(data.item)
+    const p = profileOf(addr)
+    if (!item || !p) return
+    if (phase !== 'playing') return toast('Power-ups only work while a round is running.', addr)
+    if (!arenaPlayers().some((a) => a.address === addr)) return
+    if ((p.items[item.id] ?? 0) <= 0) return toast(`You have no ${item.name}. The vendor sells them.`, addr)
+    if (item.id === 'wildcard') {
+      if (wildcardUsed) return toast('A wildcard was already used this round.', addr)
+      if (holders.has(addr)) return toast('Free your hands first: throw or place the cube you hold.', addr)
+    } else {
+      const wait = (itemReady.get(addr) ?? 0) - clock
+      if (wait > 0) return toast(`Power-ups recharge in ${Math.ceil(wait)}s.`, addr)
+      if (item.id === 'freeze' && freezeLeft > 0) return toast('Time is already frozen.', addr)
+    }
+    let ok = true
+    if (item.id === 'wildcard') {
+      ok = giveWildcard(addr)
+      if (ok) wildcardUsed = true
+    } else if (item.id === 'freeze') {
+      freezeLeft = C.FREEZE_SECONDS
+      toast(`${C.FREEZE_SECONDS}s of Time Freeze!`)
+    } else if (item.id === 'reroll') {
+      rerollPile()
+      toast('A fresh pile of cubes!')
+    } else if (item.id === 'bomb') ok = bombAt(addr)
+    if (!ok) return
+    p.items[item.id]--
+    if (item.id !== 'wildcard') itemReady.set(addr, clock + C.ITEM_COOLDOWN)
+    touch(addr)
+    sendProfile(addr)
+  })
+
   room.onMessage('hint', (_data, ctx) => {
     if (!ctx || phase !== 'playing') return
     const addr = ctx.from.toLowerCase()
     if (hintsUsed >= answer.length - 1) return toast('No more hints for this word!', addr)
     const cost = hintCost()
-    const have = coins.get(addr) ?? 0
+    const have = coinsOf(addr)
     if (have < cost) return toast(`A hint costs ${cost} coins. You have ${have}.`, addr)
     giveCoins(addr, -cost)
     hintsUsed++
@@ -653,7 +814,11 @@ function gameSystem(dt: number) {
   }
 
   if (phase === 'playing' && arenaPlayers().length > 0) {
-    timeLeft -= dt
+    if (freezeLeft > 0) {
+      freezeLeft = Math.max(0, freezeLeft - dt)
+      const shown = Math.ceil(freezeLeft)
+      if (GameState.get(stateEntity).frozen !== shown) GameState.getMutable(stateEntity).frozen = shown
+    } else timeLeft -= dt
     if (timeLeft <= 0) timeUp()
     else if (Math.ceil(timeLeft) !== lastTimeShown) {
       lastTimeShown = Math.ceil(timeLeft)
@@ -686,6 +851,18 @@ function gameSystem(dt: number) {
     }
     pusherTracker.prune(present)
     ensureSupply()
+    for (const [addr] of allCached()) {
+      if (present.has(addr)) absent.delete(addr)
+      else if ((absent.get(addr) ?? 0) >= 2) {
+        absent.delete(addr)
+        releaseProfile(addr)
+      } else absent.set(addr, (absent.get(addr) ?? 0) + 1)
+    }
+    saveAcc += 1
+    if (saveAcc >= C.PROFILE_SAVE_SECONDS) {
+      saveAcc = 0
+      saveSome()
+    }
     const inArena = arenaPlayers().length
     if (GameState.get(stateEntity).players !== inArena) GameState.getMutable(stateEntity).players = inArena
     for (const addr of Array.from(trails.keys())) if (!present.has(addr)) trails.delete(addr)
@@ -718,6 +895,7 @@ export function initServer() {
     round: 0,
     difficulty: C.START_DIFFICULTY,
     timeLeft: 0,
+    frozen: 0,
     players: 0,
     builders: 0,
     voteLeft: 0,

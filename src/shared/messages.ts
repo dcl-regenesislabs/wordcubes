@@ -10,13 +10,16 @@ export const room = registerMessages({
   breakCube: Schemas.Map({ n: Schemas.Int }),
   hint: Schemas.Map({ n: Schemas.Int }),
   vote: Schemas.Map({ choice: Schemas.Int }), // -1 easier, 0 same, 1 harder
+  buy: Schemas.Map({ item: Schemas.String }), // vendor: buy one of ITEMS with coins
+  useItem: Schemas.Map({ item: Schemas.String }), // arena: use one from your inventory
   // where a cube you pushed came to rest in your local prediction (predict.ts); the server checks it and adopts it
   settle: Schemas.Map({ cubeId: Schemas.Int, x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, yaw: Schemas.Number }),
   // server -> client
   toast: Schemas.Map({ text: Schemas.String }),
   fx: Schemas.Map({ kind: Schemas.String, slot: Schemas.Int }), // 'lock' | 'fail' | 'win'
   coins: Schemas.Map({ value: Schemas.Int }),
-  burst: Schemas.Map({ x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, gold: Schemas.Int }), // a cube was broken here (gold = it paid coins)
-  result: Schemas.Map({ coins: Schemas.Int }), // you helped build the word: this many coins
+  burst: Schemas.Map({ x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, gold: Schemas.Int }), // effect here: 0 grey puff (needed letter broken), 1 gold sparks (coin break), 2 bomb blast
+  result: Schemas.Map({ coins: Schemas.Int, delta: Schemas.Int }), // end of round, for players who took part: coins earned and rating change
+  profile: Schemas.Map({ rating: Schemas.Int, wildcard: Schemas.Int, reroll: Schemas.Int, freeze: Schemas.Int, bomb: Schemas.Int }), // your saved data
   lockout: Schemas.Map({ seconds: Schemas.Int }) // you caused a collapse: no placing for this many seconds
 })
