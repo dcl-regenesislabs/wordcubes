@@ -6,9 +6,9 @@ import type { Entity } from '@dcl/sdk/ecs'
 import { Color4, Vector3 } from '@dcl/sdk/math'
 import { PlayerRanks } from '../shared/schemas'
 import { rankName, rankIndex } from './ui/rank'
-import { cs } from './state'
+import { cs, setting } from './state'
 
-const ABOVE_NAME_TAG = 0.4 // metres above the name tag
+const ABOVE_NAME_TAG = 0.7 // metres above the name tag
 const SHOW_DISTANCE = 28
 const COLORS = [
   Color4.create(0.85, 0.8, 0.95, 1),
@@ -47,6 +47,7 @@ function readRatings() {
 export function rankTagSystem() {
   readRatings()
   const me = Transform.getOrNull(engine.PlayerEntity)?.position
+  const enabled = setting('showRanks') // Settings panel switch
   const seen = new Set<string>()
   for (const [entity, identity] of engine.getEntitiesWith(PlayerIdentityData)) {
     const address = identity.address.toLowerCase()
@@ -82,7 +83,7 @@ export function rankTagSystem() {
       ts.textColor = COLORS[rankIndex(rating)]
     }
     const far = me !== undefined && Vector3.distance(me, t.position) > SHOW_DISTANCE
-    Transform.getMutable(tag.label).scale = far ? Vector3.Zero() : Vector3.One()
+    Transform.getMutable(tag.label).scale = far || !enabled ? Vector3.Zero() : Vector3.One()
   }
   for (const [address, tag] of Array.from(tags.entries())) {
     if (seen.has(address)) continue

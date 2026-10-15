@@ -9,10 +9,11 @@ export interface Profile {
   wins: number
   rewarded: boolean // the wearable reward (stub) was announced
   items: Record<string, number>
+  settings: Record<string, boolean>
 }
 
 const KEY = 'wc:profile'
-const fresh = (): Profile => ({ coins: 0, rating: 0, rounds: 0, wins: 0, rewarded: false, items: {} })
+const fresh = (): Profile => ({ coins: 0, rating: 0, rounds: 0, wins: 0, rewarded: false, items: {}, settings: {} })
 
 const cache = new Map<string, Profile>()
 const unsafe = new Set<string>() // the read failed: keep playing with an empty profile, but never overwrite the stored one
@@ -28,7 +29,7 @@ export function loadProfile(address: string): Promise<Profile> {
   if (pending) return pending
   const p = Storage.player
     .get<Profile>(address, KEY)
-    .then((stored) => ({ ...fresh(), ...(stored ?? {}), items: { ...(stored?.items ?? {}) } }))
+    .then((stored) => ({ ...fresh(), ...(stored ?? {}), items: { ...(stored?.items ?? {}) }, settings: { ...(stored?.settings ?? {}) } }))
     .catch((e) => {
       console.log('[SERVER] profile read failed', address, e)
       unsafe.add(address)

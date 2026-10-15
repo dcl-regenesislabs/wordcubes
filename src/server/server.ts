@@ -127,7 +127,7 @@ function sendProfile(address: string) {
   room.send('coins', { value: p.coins }, { to: [address] })
   room.send(
     'profile',
-    { rating: Math.round(p.rating), wildcard: p.items.wildcard ?? 0, reroll: p.items.reroll ?? 0, freeze: p.items.freeze ?? 0, bomb: p.items.bomb ?? 0 },
+    { rating: Math.round(p.rating), wildcard: p.items.wildcard ?? 0, reroll: p.items.reroll ?? 0, freeze: p.items.freeze ?? 0, bomb: p.items.bomb ?? 0, settings: JSON.stringify(p.settings) },
     { to: [address] }
   )
 }
@@ -695,6 +695,15 @@ function init() {
     if (!arenaPlayers().some((p) => p.address === addr)) return
     votes.set(addr, Math.max(-1, Math.min(1, Math.round(data.choice))))
     updateVoteState()
+  })
+
+  room.onMessage('setSetting', (data, ctx) => {
+    if (!ctx) return
+    const addr = ctx.from.toLowerCase()
+    const p = profileOf(addr)
+    if (!p || !C.SETTINGS.some((s) => s.id === data.key)) return // only switches listed in config
+    p.settings[data.key] = data.value === 1
+    touch(addr)
   })
 
   room.onMessage('buy', (data, ctx) => {

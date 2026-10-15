@@ -1,3 +1,5 @@
+import { SETTINGS } from '../config'
+
 // Client-only UI state. Game state itself comes from the server's synced components.
 export const cs = {
   myAddress: '',
@@ -6,6 +8,8 @@ export const cs = {
   items: { wildcard: 0, reroll: 0, freeze: 0, bomb: 0 } as Record<string, number>, // your inventory
   delta: 0, // rating change after the last round you took part in
   shop: false, // the vendor's shop is open
+  showSettings: false, // the Settings panel is open
+  settings: {} as Record<string, boolean>, // your saved switches (see SETTINGS in config); missing = the default
   message: '',
   messageTime: 0,
   inGame: false, // false in the lobby, true once teleported into (or standing in) the game
@@ -24,3 +28,10 @@ export function showMessage(text: string, seconds = 3) {
 
 /** Seconds left of your placing lockout, 0 when free. */
 export const lockoutLeft = () => Math.max(0, Math.ceil((cs.lockoutUntil - Date.now()) / 1000))
+
+/** Current value of a Settings switch (its default until the server has sent yours). */
+export function setting(id: string): boolean {
+  const v = cs.settings[id]
+  if (v !== undefined) return v
+  return SETTINGS.find((x) => x.id === id)?.default ?? false
+}

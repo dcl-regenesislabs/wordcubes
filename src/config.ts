@@ -72,6 +72,11 @@ export const PROVISIONAL_ROUNDS = 5 // new players: bigger gains and very small 
 export const VOTE_BONUS_COINS = 3 // for everyone in the arena who voted
 export const PROFILE_SAVE_SECONDS = 15 // changed profiles are written to storage at most this often
 
+// Player settings (saved with the profile, on/off). Add a line here and it shows up in the Settings panel and is saved.
+export const SETTINGS: { id: string; label: string; desc: string; default: boolean }[] = [
+  { id: 'showRanks', label: 'Rank over heads', desc: 'Show the rank label floating over each player', default: true }
+]
+
 // Vendor items. Bought with coins, kept in each player's inventory (saved), used in the arena.
 export type ItemId = 'wildcard' | 'reroll' | 'freeze' | 'bomb'
 export const ITEMS: { id: ItemId; name: string; price: number; desc: string }[] = [

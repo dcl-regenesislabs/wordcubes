@@ -126,6 +126,7 @@ Built, and kept in one UI kit (`src/client/ui/`) so desktop and phone share the 
 - **Break effect:** gold sparks when a cube pays coins, a grey puff when it was a letter the word needs.
 
 - **Frame glow:** while you hold a cube, the empty frames pulse gold, and so do the empty letter tiles.
+- **Settings panel:** on/off switches saved with the player's profile. The first switch hides the rank labels over heads. New switches are one line in `SETTINGS` in `config.ts`.
 - **Item bar:** the power-ups you own appear as buttons on the right while a round runs.
 - **Rank up message** when your rating crosses into a new rank, and the rating change in the round result.
 

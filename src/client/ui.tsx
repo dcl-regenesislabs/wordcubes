@@ -2,7 +2,7 @@ import ReactEcs, { ReactEcsRenderer, UiEntity } from '@dcl/sdk/react-ecs'
 import { cs } from './state'
 import { UI_PREVIEW } from '../config'
 import { resolvePlatform, canvas } from './ui/platform'
-import { GameHud, LobbyHud, LobbyCountdown, HowToPlay, NpcDialog, ShopPanel, LeaderboardPanel, setupHudMessages } from './ui/hud'
+import { GameHud, LobbyHud, LobbyCountdown, HowToPlay, NpcDialog, ShopPanel, SettingsPanel, LeaderboardPanel, setupHudMessages } from './ui/hud'
 
 // The UI canvas depends on the device (1920x1080 desktop, 1600x720 phone), so the renderer is set up once and
 // again as soon as the platform lookup answers.
@@ -23,5 +23,6 @@ export const uiMenu = () => (
     {cs.showHowTo && <HowToPlay />}
     {cs.dialog && <NpcDialog />}
     {cs.shop && <ShopPanel />}
+    {cs.showSettings && <SettingsPanel />}
   </UiEntity>
 )

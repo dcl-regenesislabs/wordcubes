@@ -1,13 +1,13 @@
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
 import { GameState } from '../../shared/schemas'
-import { cs, lockoutLeft, showMessage } from '../state'
+import { cs, lockoutLeft, showMessage, setting } from '../state'
 import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
 import { room } from '../../shared/messages'
 import { returnToLobby } from '../lobby'
 import { clickSlot } from '../arena'
-import { MAX_DIFFICULTY, ITEMS } from '../../config'
+import { MAX_DIFFICULTY, ITEMS, SETTINGS } from '../../config'
 import { canvas, mobile, EDGE, fs, sz } from './platform'
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c } from './theme'
 import { rankName, rankIndex } from './rank'
@@ -180,6 +180,7 @@ function SidePanel(props: { g: Game | null }) {
       </Frame>
       <PillButton id="hint" label={g && g.hintCost > 0 ? 'Hint' : 'No hints'} cost={g && g.hintCost > 0 ? g.hintCost : undefined} width={w} height={sz(66, 54)} font={fs(sz(28, 22))} tint={PAL.pink} margin={{ top: 10 }} onClick={() => room.send('hint', { n: 0 })} />
       <PillButton id="howto-game" label="How to play" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} margin={{ top: 8 }} onClick={() => (cs.showHowTo = true)} />
+      <PillButton id="settings-game" label="Settings" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} margin={{ top: 8 }} onClick={() => (cs.showSettings = true)} />
       <PillButton id="lobby" label="Back to lobby" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} tint={PAL.cyan} margin={{ top: 8 }} onClick={returnToLobby} />
     </UiEntity>
   )
@@ -396,7 +397,7 @@ function ItemBar(props: { g: Game | null }) {
   const w = sz(250, 210)
   return (
     <UiEntity
-      uiTransform={{ positionType: 'absolute', position: { top: sz(480, 372), right: EDGE() }, width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}
+      uiTransform={{ positionType: 'absolute', position: { top: sz(500, 384), right: EDGE() }, width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}
     >
       {owned.map((i) => (
         <PillButton
@@ -411,6 +412,39 @@ function ItemBar(props: { g: Game | null }) {
           onClick={() => room.send('useItem', { item: i.id })}
         />
       ))}
+    </UiEntity>
+  )
+}
+
+// ---- settings: on/off switches, saved with your profile ----
+export function SettingsPanel() {
+  const w = sz(820, 700)
+  const rowH = sz(96, 72)
+  const h = sz(110, 84) + SETTINGS.length * rowH + sz(90, 70)
+  const toggle = (id: string, on: boolean) => {
+    cs.settings = { ...cs.settings, [id]: on }
+    if (!C.UI_PREVIEW) room.send('setSetting', { key: id, value: on ? 1 : 0 })
+  }
+  return (
+    <UiEntity
+      uiTransform={{ positionType: 'absolute', position: { top: Math.round((canvas().virtualHeight - h) / 2), left: centerLeft(w) }, width: w, pointerFilter: 'none' }}
+    >
+      <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={30} border={6} pad={sz(22, 14)} align="center" justify="flex-start" block>
+        <Label value="Settings" fontSize={fs(sz(44, 30))} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: sz(64, 46) }} />
+        {SETTINGS.map((s) => {
+          const on = setting(s.id)
+          return (
+            <UiEntity key={`set-${s.id}`} uiTransform={{ width: '100%', height: rowH, flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
+              <UiEntity uiTransform={{ width: w - sz(260, 210), height: rowH, flexDirection: 'column', justifyContent: 'center', pointerFilter: 'none' }}>
+                <Label value={s.label} fontSize={fs(sz(30, 22))} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: '100%', height: sz(42, 32) }} />
+                <Label value={s.desc} fontSize={fs(sz(20, 16))} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: sz(44, 34) }} />
+              </UiEntity>
+              <PillButton id={`set-btn-${s.id}`} label={on ? 'On' : 'Off'} width={sz(150, 110)} height={sz(56, 44)} font={fs(sz(26, 20))} tint={on ? PAL.green : c(0.6, 0.55, 0.7, 0.8)} onClick={() => toggle(s.id, !on)} />
+            </UiEntity>
+          )
+        })}
+        <PillButton id="settings-close" label="Close" width={sz(220, 170)} height={sz(60, 46)} font={fs(sz(28, 22))} margin={{ top: 10 }} onClick={() => (cs.showSettings = false)} />
+      </Frame>
     </UiEntity>
   )
 }
@@ -532,6 +566,11 @@ export function setupHudMessages() {
     if (rankIndex(d.rating) > rankIndex(cs.rating) && cs.rating > 0) showMessage(`Rank up! You are now a ${rankName(d.rating)}`, 4)
     cs.rating = d.rating
     cs.items = { wildcard: d.wildcard, reroll: d.reroll, freeze: d.freeze, bomb: d.bomb }
+    try {
+      cs.settings = JSON.parse(d.settings || '{}')
+    } catch (e) {
+      cs.settings = {}
+    }
   })
   room.onMessage('result', (d) => {
     cs.delta = d.delta
@@ -555,6 +594,7 @@ export function LobbyHud() {
         <OutlineLabel value={rankName(cs.rating)} fontSize={fs(sz(30, 24))} color={PAL.pink} width="100%" height={sz(38, 30)} />
       </Frame>
       <PillButton id="howto-lobby" label="How to play" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} tint={PAL.cyan} margin={{ top: 10 }} onClick={() => (cs.showHowTo = true)} />
+      <PillButton id="settings-lobby" label="Settings" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} margin={{ top: 8 }} onClick={() => (cs.showSettings = true)} />
     </UiEntity>
   )
 }
