@@ -1,13 +1,14 @@
 // A small rank label floating over every player's head (yours too, which you see in third person).
-// Ratings come from the server's synced PlayerRanks entity; the label is a billboarded TextShape that follows the player.
-import { engine, Transform, TextShape, TextAlignMode, Billboard, BillboardMode, PlayerIdentityData } from '@dcl/sdk/ecs'
+// Ratings come from the server's synced PlayerRanks entity. The label is attached to the avatar's name tag (so it follows every
+// animation exactly) and the text is a child that always turns to face the camera: the attached entity's own rotation belongs to the avatar.
+import { engine, Transform, TextShape, TextAlignMode, Billboard, BillboardMode, PlayerIdentityData, AvatarAttach, AvatarAnchorPointType } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Color4, Vector3 } from '@dcl/sdk/math'
 import { PlayerRanks } from '../shared/schemas'
 import { rankName, rankIndex } from './ui/rank'
 import { cs } from './state'
 
-const HEIGHT = 2.65 // metres above the player's feet (above the name tag)
+const ABOVE_NAME_TAG = 0.4 // metres above the name tag
 const SHOW_DISTANCE = 28
 const COLORS = [
   Color4.create(0.85, 0.8, 0.95, 1),
@@ -19,7 +20,7 @@ const COLORS = [
   Color4.create(0.8, 0.5, 1, 1)
 ]
 
-const tags = new Map<string, Entity>()
+const tags = new Map<string, { root: Entity; label: Entity }>()
 let lastData = ''
 let ratings = new Map<string, number>()
 
@@ -54,33 +55,39 @@ export function rankTagSystem() {
     seen.add(address)
     let tag = tags.get(address)
     if (tag === undefined) {
-      tag = engine.addEntity()
-      Transform.create(tag, { position: t.position })
-      TextShape.create(tag, {
+      const root = engine.addEntity()
+      Transform.create(root, {})
+      AvatarAttach.create(root, {
+        avatarId: entity === engine.PlayerEntity ? undefined : address, // undefined = the local player
+        anchorPointId: AvatarAnchorPointType.AAPT_NAME_TAG
+      })
+      const label = engine.addEntity()
+      Transform.create(label, { parent: root, position: Vector3.create(0, ABOVE_NAME_TAG, 0) })
+      TextShape.create(label, {
         text: '',
         fontSize: 2,
         outlineColor: Color4.create(0.12, 0.05, 0.22, 1),
         outlineWidth: 0.25,
         textAlign: TextAlignMode.TAM_MIDDLE_CENTER
       })
-      Billboard.create(tag, { billboardMode: BillboardMode.BM_Y })
+      Billboard.create(label, { billboardMode: BillboardMode.BM_Y })
+      tag = { root, label }
       tags.set(address, tag)
     }
     const rating = entity === engine.PlayerEntity ? cs.rating : ratingOf(address) // your own is known right away from your profile
     const text = rankName(rating)
-    const ts = TextShape.getMutable(tag)
+    const ts = TextShape.getMutable(tag.label)
     if (ts.text !== text) {
       ts.text = text
       ts.textColor = COLORS[rankIndex(rating)]
     }
-    const tt = Transform.getMutable(tag)
-    tt.position = Vector3.create(t.position.x, t.position.y + HEIGHT, t.position.z)
     const far = me !== undefined && Vector3.distance(me, t.position) > SHOW_DISTANCE
-    tt.scale = far ? Vector3.Zero() : Vector3.One()
+    Transform.getMutable(tag.label).scale = far ? Vector3.Zero() : Vector3.One()
   }
   for (const [address, tag] of Array.from(tags.entries())) {
     if (seen.has(address)) continue
-    engine.removeEntity(tag)
+    engine.removeEntity(tag.label)
+    engine.removeEntity(tag.root)
     tags.delete(address)
   }
 }
