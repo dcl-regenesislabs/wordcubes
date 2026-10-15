@@ -91,3 +91,8 @@ export const PREDICT_MAX_TIME = 6 // s: a prediction never lasts longer than thi
 export const SETTLE_REPORTS = true
 export const SETTLE_WAIT = 1 // s: a reported cube holds still this long waiting for the server to confirm it
 export const SETTLE_REACH = PREDICT_RADIUS + 2 // m: the server ignores reports of cubes further than this from the player
+// A report is only taken from a player whose own path (as the server saw it) came within touching distance of the cube
+// recently. Measured against the path, not the server sim's pushes: those are what miss in the first place.
+export const SETTLE_TOUCH_WINDOW = 3 // s of each player's path the server keeps for this check
+export const SETTLE_TOUCH_SLACK = 0.6 // m added to the touching distance (player positions are late and sparse)
+export const SETTLE_COOLDOWN = 0.5 // s: a cube takes at most one report per this interval

@@ -54,6 +54,10 @@ const holders = new Map<string, SCube>()
 const coins = new Map<string, number>()
 const lastPos = new Map<string, Vector3>()
 const pendingToss: { cube: SCube; t: number; addr: string }[] = []
+// settle reports: each player's recent path, and when each cube last took a report
+let clock = 0
+const trails = new Map<string, { x: number; y: number; z: number; t: number }[]>()
+const lastSettle = new Map<number, number>()
 const flights: { cube: SCube; t: number }[] = []
 
 // ---------- helpers ----------
@@ -114,6 +118,39 @@ function handPos(p: PlayerInfo): Vector3 {
   )
 }
 
+function recordTrail(address: string, pos: Vector3) {
+  let trail = trails.get(address)
+  if (!trail) {
+    trail = []
+    trails.set(address, trail)
+  }
+  const last = trail[trail.length - 1]
+  if (!last || last.x !== pos.x || last.y !== pos.y || last.z !== pos.z) trail.push({ x: pos.x, y: pos.y, z: pos.z, t: clock })
+  while (trail.length > 1 && clock - trail[0].t > C.SETTLE_TOUCH_WINDOW) trail.shift()
+}
+
+// Did this player's recent path (segments between the positions the server saw, up to where they are now) pass
+// within touching distance of the cube's current server position?
+function touchedRecently(address: string, b: Body, now: Vector3): boolean {
+  const reach = C.PLAYER_RADIUS + C.CUBE_RADIUS + C.SETTLE_TOUCH_SLACK
+  const points = [...(trails.get(address) ?? []), now]
+  for (let i = 0; i < points.length; i++) {
+    const a = points[Math.max(0, i - 1)]
+    const c = points[i]
+    const minY = Math.min(a.y, c.y)
+    const maxY = Math.max(a.y, c.y)
+    if (b.y + C.CUBE_HALF < minY - C.SETTLE_TOUCH_SLACK || b.y - C.CUBE_HALF > maxY + C.PLAYER_HEIGHT + C.SETTLE_TOUCH_SLACK) continue
+    const sx = c.x - a.x
+    const sz = c.z - a.z
+    const len2 = sx * sx + sz * sz
+    const u = len2 > 0 ? Math.max(0, Math.min(1, ((b.x - a.x) * sx + (b.z - a.z) * sz) / len2)) : 0
+    const dx = b.x - (a.x + sx * u)
+    const dz = b.z - (a.z + sz * u)
+    if (dx * dx + dz * dz <= reach * reach) return true
+  }
+  return false
+}
+
 function sync(cube: SCube) {
   const d = CubeData.getMutable(cube.entity)
   d.mode = cube.mode
@@ -167,6 +204,7 @@ function spawnCube(letter: string, x: number, y: number, z: number) {
 function removeCube(cube: SCube) {
   removeBody(world, cube.body)
   cubes.delete(cube.id)
+  lastSettle.delete(cube.id)
   engine.removeEntity(cube.entity)
 }
 
@@ -343,9 +381,14 @@ function init() {
     if (!ctx || !C.SETTLE_REPORTS) return
     const cube = cubes.get(data.cubeId)
     if (!cube || cube.mode !== 'free') return
-    const p = playerOf(ctx.from.toLowerCase())
+    const addr = ctx.from.toLowerCase()
+    const p = playerOf(addr)
     if (!p) return
     const b = cube.body
+    // only the player who was actually next to the cube, and at most one report per cube per cooldown, so a client
+    // cannot chain reports to walk cubes it never touched
+    if (clock - (lastSettle.get(cube.id) ?? -Infinity) < C.SETTLE_COOLDOWN) return
+    if (!touchedRecently(addr, b, p.pos)) return
     const pr = world.params
     const moved = Vector3.distance(Vector3.create(b.x, b.y, b.z), Vector3.create(data.x, data.y, data.z))
     const fromPlayer = Math.hypot(data.x - p.pos.x, data.z - p.pos.z)
@@ -362,6 +405,7 @@ function init() {
     b.asleep = true
     b.sleepTime = 0
     cube.sentAsleep = false // goes out on the next tick
+    lastSettle.set(cube.id, clock)
   })
 
   room.onMessage('hint', (_data, ctx) => {
@@ -382,6 +426,7 @@ let heartbeatAcc = 0
 const pusherTracker = new PusherTracker()
 
 function gameSystem(dt: number) {
+  clock += dt
   spawnSome()
 
   // players shove cubes (PusherTracker: same speed smoothing + lookahead as the clients' prediction)
@@ -390,6 +435,7 @@ function gameSystem(dt: number) {
   for (const p of players()) {
     present.add(p.address)
     lastPos.set(p.address, Vector3.create(p.pos.x, p.pos.y, p.pos.z))
+    recordTrail(p.address, p.pos)
     pushers.push(pusherTracker.update(p.address, p.pos.x, p.pos.y, p.pos.z, dt))
   }
   setPushers(world, pushers)
@@ -467,6 +513,7 @@ function gameSystem(dt: number) {
       release(cube, lastPos.get(addr) ?? fallbackDrop(), 0, 0, 0)
     }
     pusherTracker.prune(present)
+    for (const addr of Array.from(trails.keys())) if (!present.has(addr)) trails.delete(addr)
   }
 
   heartbeatAcc += dt
