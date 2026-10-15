@@ -6,6 +6,10 @@ export const cs = {
   message: '',
   messageTime: 0,
   inGame: false, // false in the lobby, true once teleported into (or standing in) the game
+  earned: 0, // coins you got for the last finished word
+  earnedRound: -1, // the round that was
+  showHowTo: false, // the how-to-play card is open
+  howToShown: false, // it opened by itself once already this session
   lockoutUntil: 0, // Date.now() time when you may place again (after you collapsed the word)
   lobbyCountdown: 0 // seconds left on the lobby start pad, 0 when not counting
 }

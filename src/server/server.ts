@@ -268,6 +268,7 @@ function startRound(message = 'New round! Find the letters.') {
   slots = new Array(answer.length).fill(null)
   hintsUsed = 0
   participants.clear()
+  GameState.getMutable(stateEntity).builders = 0
   phase = 'playing'
   round++
 
@@ -377,6 +378,7 @@ function land(cube: SCube) {
     completed++
     nextRoundIn = C.NEXT_ROUND_DELAY
     const builders = finishWord()
+    GameState.getMutable(stateEntity).builders = builders.length
     room.send('fx', { kind: 'win', slot: -1 })
     let msg = `${answer}! Built by ${builders.length} player${builders.length === 1 ? '' : 's'}`
     if (completed >= C.ROUNDS_FOR_REWARD) msg += ' - Wearable reward (stub)'
@@ -384,6 +386,7 @@ function land(cube: SCube) {
     // sent after the group message so each builder's own message is the one they see
     for (const addr of builders) {
       giveCoins(addr, C.COINS_PER_WORD)
+      room.send('result', { coins: C.COINS_PER_WORD }, { to: [addr] })
       toast(`You built ${answer}! +${C.COINS_PER_WORD} coins`, addr)
     }
     console.log('[ROUND]', 'won', answer, 'level', difficulty, 'builders', builders.join(','), 'participants', Array.from(participants).join(','))
@@ -680,6 +683,8 @@ function gameSystem(dt: number) {
     }
     pusherTracker.prune(present)
     ensureSupply()
+    const inArena = arenaPlayers().length
+    if (GameState.get(stateEntity).players !== inArena) GameState.getMutable(stateEntity).players = inArena
     for (const addr of Array.from(trails.keys())) if (!present.has(addr)) trails.delete(addr)
   }
 
@@ -710,6 +715,8 @@ export function initServer() {
     round: 0,
     difficulty: C.START_DIFFICULTY,
     timeLeft: 0,
+    players: 0,
+    builders: 0,
     voteLeft: 0,
     voteDown: 0,
     voteSame: 0,

@@ -13,6 +13,7 @@ import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
 import { movePlayerTo } from '~system/RestrictedActions'
 import * as C from '../config'
 import { envOrigin } from '../shared/env'
+import { GameState } from '../shared/schemas'
 import { cs } from './state'
 
 const SCALE_STIFFNESS = 90
@@ -94,6 +95,18 @@ export function setupLobby() {
     textAlign: TextAlignMode.TAM_MIDDLE_CENTER
   })
   Billboard.create(label, { billboardMode: BillboardMode.BM_Y })
+  // Smaller line under it: the room's difficulty level and how many are playing
+  const info = engine.addEntity()
+  Transform.create(info, { position: Vector3.Zero(), scale: Vector3.Zero() })
+  TextShape.create(info, {
+    text: '',
+    fontSize: 3,
+    textColor: Color4.create(1, 0.95, 0.6, 1),
+    outlineColor: Color4.create(0.1, 0.1, 0.1, 1),
+    outlineWidth: 0.2,
+    textAlign: TextAlignMode.TAM_MIDDLE_CENTER
+  })
+  Billboard.create(info, { billboardMode: BillboardMode.BM_Y })
   let labelShown = 0
   let time = 0
 
@@ -192,6 +205,17 @@ export function setupLobby() {
     const ls = labelShown < 0.02 ? 0 : labelShown
     lt.position = Vector3.create(padPos.x, padPos.y + C.PAD_LABEL_HEIGHT + Math.sin(time * 2) * 0.2, padPos.z)
     lt.scale = Vector3.create(ls, ls, ls)
+
+    let roomText = ''
+    for (const [, g] of engine.getEntitiesWith(GameState)) {
+      roomText = `Level ${g.difficulty}  -  ${g.players} playing`
+      break
+    }
+    const ts = TextShape.getMutable(info)
+    if (ts.text !== roomText) ts.text = roomText
+    const it = Transform.getMutable(info)
+    it.position = Vector3.create(padPos.x, lt.position.y - 1.6, padPos.z)
+    it.scale = Vector3.create(ls, ls, ls)
 
     // Lights
     const finalSeconds = counting && timer <= 3

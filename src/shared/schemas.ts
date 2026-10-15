@@ -18,6 +18,8 @@ export const GameState = engine.defineComponent('wc:GameState', {
   round: Schemas.Int,
   difficulty: Schemas.Int, // room level, 1..7
   timeLeft: Schemas.Int, // whole seconds left in the round (stops while nobody is in the arena)
+  players: Schemas.Int, // players standing in the arena
+  builders: Schemas.Int, // how many players built the last finished word
   voteLeft: Schemas.Int, // whole seconds left in the vote (phase 'vote')
   voteDown: Schemas.Int, // votes cast so far: easier / same / harder
   voteSame: Schemas.Int,
