@@ -191,6 +191,6 @@ Prices are a first guess. Coins come from 25 per finished word, 5 per broken non
 
 ## Regression checks
 
-Run `node --test tests/*.test.cjs` and `npm run build`. The pull-request CI runs these commands on Node 22 after `npm install --no-package-lock`, since the repository does not version a lockfile; no package.json change is required. Automated tests replace SDK/network boundaries and cover profile races, rank pagination, UI transitions, economy, a winning round with voting, and shared-cube protection. They do not substitute for a playtest in the Explorer or on a physical phone.
+Run `node --test tests/*.test.cjs` and `npm run build`. The pull-request CI runs these commands on Node 22. Since the repository does not version a lockfile, CI installs the SDK at the exact version already pinned for `@dcl/js-runtime`, using `--no-save --no-package-lock`. This preserves the multiplayer APIs and avoids dependency changes to package.json. Automated tests replace SDK/network boundaries and cover profile races, rank pagination, UI transitions, economy, a winning round with voting, and shared-cube protection. They do not substitute for a playtest in the Explorer or on a physical phone.
 
 The test cheat remains enabled intentionally during this review. NPC anchors and GLB positions are unchanged by request.
