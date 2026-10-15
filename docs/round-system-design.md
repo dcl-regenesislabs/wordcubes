@@ -108,7 +108,7 @@ Where ranks show:
 
 - In the lobby, next to your coins.
 - On the in-game badge, next to the level.
-- Over every other player's head, as a small floating label (the SDK has no way to edit the built-in name tag).
+- Over every player's head (yours too), as a small floating label (the SDK has no way to edit the built-in name tag).
 - On a Top players panel that appears when you stand near the Leaderboard sign in the lobby.
 
 There is no matchmaking. Players choose a room from the pad and leave to find another if it is not for them.

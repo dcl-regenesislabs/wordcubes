@@ -1,10 +1,11 @@
-// A small rank label floating over every other player's head, so you can see who you are playing with.
+// A small rank label floating over every player's head (yours too, which you see in third person).
 // Ratings come from the server's synced PlayerRanks entity; the label is a billboarded TextShape that follows the player.
 import { engine, Transform, TextShape, TextAlignMode, Billboard, BillboardMode, PlayerIdentityData } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Color4, Vector3 } from '@dcl/sdk/math'
 import { PlayerRanks } from '../shared/schemas'
 import { rankName, rankIndex } from './ui/rank'
+import { cs } from './state'
 
 const HEIGHT = 2.65 // metres above the player's feet (above the name tag)
 const SHOW_DISTANCE = 28
@@ -47,7 +48,6 @@ export function rankTagSystem() {
   const me = Transform.getOrNull(engine.PlayerEntity)?.position
   const seen = new Set<string>()
   for (const [entity, identity] of engine.getEntitiesWith(PlayerIdentityData)) {
-    if (entity === engine.PlayerEntity) continue // you do not need a label over your own head
     const address = identity.address.toLowerCase()
     const t = Transform.getOrNull(entity)
     if (!t) continue
@@ -66,7 +66,7 @@ export function rankTagSystem() {
       Billboard.create(tag, { billboardMode: BillboardMode.BM_Y })
       tags.set(address, tag)
     }
-    const rating = ratingOf(address)
+    const rating = entity === engine.PlayerEntity ? cs.rating : ratingOf(address) // your own is known right away from your profile
     const text = rankName(rating)
     const ts = TextShape.getMutable(tag)
     if (ts.text !== text) {
