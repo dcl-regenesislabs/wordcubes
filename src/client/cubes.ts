@@ -228,7 +228,10 @@ export function cubesSystem(dt: number) {
     const hitOn = c.mode === 'free' && !predicted
     if (hitOn !== c.hitOn) {
       c.hitOn = hitOn
-      MeshCollider.setBox(c.hit, hitOn ? ColliderLayer.CL_POINTER : ColliderLayer.CL_NONE)
+      // Remove the collider rather than setBox(CL_NONE): setBox drops a 0 mask, and a MeshCollider without a mask
+      // defaults to POINTER | PHYSICS, i.e. a solid box the server drags into you while you push the cube.
+      if (hitOn) MeshCollider.setBox(c.hit, ColliderLayer.CL_POINTER)
+      else MeshCollider.deleteFrom(c.hit)
     }
     if (c.mode === 'free' && C.SMOOTH_FREE_CUBES && !predicted) smoothFree(entity, c, dt)
     if (c.mode === 'flying' && c.proxy) {
