@@ -1084,5 +1084,8 @@
     "origin": "creator-hub",
     "projectId": "74a60d5d-c803-4ebf-a7f5-ec7d2cdf2409"
   },
-  "authoritativeMultiplayer": true
+  "authoritativeMultiplayer": true,
+  "worldConfiguration": {
+    "name": "thecodingcave.dcl.eth"
+  }
 }

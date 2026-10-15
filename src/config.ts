@@ -11,6 +11,9 @@ export const STAGE_UPPER_RADIUS = 0 // no second tier any more
 export const STAGE_UPPER_TOP = STAGE_TOP
 export const SLOT_Y = 3.1 // letter frames float about head height over the platform
 export const SLOT_SPACING = 1.15
+// PathArrow marker standing left of the first frame, level with its centre, tip pointing at it.
+export const START_ARROW_SCALE = 1
+export const START_ARROW_GAP = 0.15 // metres between the arrow's tip and the first frame
 
 // Cubes (GLB collider is a 0.5m box, visual ~0.51m)
 export const CUBE_SCALE = 1.6 // GLB is ~0.51m, so cubes are ~0.82m in the world
@@ -83,6 +86,16 @@ export const PREDICT_HANDOFF = 0.35 // s after your last touch before a cube sta
 export const PREDICT_BLEND_RATE = 6 // 1/s: how fast a predicted cube glides to the server's position
 export const PREDICT_SNAP = 3 // m: further than this from the server's position and the prediction is dropped
 export const PREDICT_MAX_TIME = 6 // s: a prediction never lasts longer than this
+// Cubes you push yourself stay where your prediction left them: the client reports the resting spot and the server
+// adopts it (if it is plausible) instead of gliding the cube back to the server's own result.
+export const SETTLE_REPORTS = true
+export const SETTLE_WAIT = 1 // s: a reported cube holds still this long waiting for the server to confirm it
+export const SETTLE_REACH = PREDICT_RADIUS + 2 // m: the server ignores reports of cubes further than this from the player
+// A report is only taken from a player whose own path (as the server saw it) came within touching distance of the cube
+// recently. Measured against the path, not the server sim's pushes: those are what miss in the first place.
+export const SETTLE_TOUCH_WINDOW = 3 // s of each player's path the server keeps for this check
+export const SETTLE_TOUCH_SLACK = 0.6 // m added to the touching distance (player positions are late and sparse)
+export const SETTLE_COOLDOWN = 0.5 // s: a cube takes at most one report per this interval
 
 // Grass (client-only decoration). Children of the composite entity named "Grass" sway in the wind and bend away from players.
 export const GRASS_ENTITY_NAME = 'Grass'

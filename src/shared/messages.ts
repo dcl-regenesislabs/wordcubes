@@ -9,6 +9,8 @@ export const room = registerMessages({
   toss: Schemas.Map({ n: Schemas.Int }),
   breakCube: Schemas.Map({ n: Schemas.Int }),
   hint: Schemas.Map({ n: Schemas.Int }),
+  // where a cube you pushed came to rest in your local prediction (predict.ts); the server checks it and adopts it
+  settle: Schemas.Map({ cubeId: Schemas.Int, x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, yaw: Schemas.Number }),
   // server -> client
   toast: Schemas.Map({ text: Schemas.String }),
   fx: Schemas.Map({ kind: Schemas.String, slot: Schemas.Int }), // 'lock' | 'fail' | 'win'
