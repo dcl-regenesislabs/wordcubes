@@ -147,12 +147,12 @@ Items are bought with coins, kept in the player's saved inventory between rounds
 | --- | --- | --- |
 | Wildcard | 250 | You get a wildcard box in your hands. Place it in any empty frame: it counts as the right letter and stays put when the word collapses. One wildcard per round in the whole room. |
 | Time Freeze | 90 | Stops the round timer for 20 seconds. |
-| Reroll | 60 | Throws out the loose pile and drops a fresh set of cubes. |
+| Reroll | 60 | Throws out the loose pile and drops a fresh set of cubes. Breaking the new cubes gives no coins. |
 | Bomb | 70 | Removes the loose letters around you that the word does not use, and shoves the useful ones away. |
 
 Each player has a 30-second cooldown between power-ups. Wildcards are limited by the one-per-round rule instead. A wildcard cannot be broken for coins. The "raise difficulty" power-up from the GDD is replaced by the vote.
 
-Prices are a first guess. Coins come from 25 per finished word, 5 per broken cube, and 3 per vote, so a wildcard takes roughly ten finished words.
+Prices are a first guess. Coins come from 25 per finished word, 5 per broken non-answer cube from the original round pile, and 3 per vote, so a wildcard takes roughly ten finished words. Reroll and replacement cubes do not replenish break rewards; a new round restores the original pile's rewards. Original cubes held during a reroll retain their reward eligibility until broken.
 
 ## Technical dependencies
 

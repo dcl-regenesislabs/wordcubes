@@ -19,8 +19,16 @@ const cache = new Map<string, Profile>()
 const unsafe = new Set<string>() // the read failed: keep playing with an empty profile, but never overwrite the stored one
 const loading = new Map<string, Promise<Profile>>()
 const dirty = new Set<string>()
+const active = new Set<string>()
+const saving = new Set<string>()
 
 export const profileOf = (address: string): Profile | undefined => cache.get(address)
+
+/** Pin a present player's profile before starting or joining an asynchronous load. */
+export function retain(address: string): Promise<Profile> {
+  active.add(address)
+  return loadProfile(address)
+}
 
 export function loadProfile(address: string): Promise<Profile> {
   const have = cache.get(address)
@@ -48,34 +56,51 @@ export function touch(address: string) {
   if (cache.has(address) && !unsafe.has(address)) dirty.add(address)
 }
 
-// Writes a few changed profiles. A failed write stays dirty and is tried again at the next checkpoint.
+function evictIfIdle(address: string) {
+  if (active.has(address) || saving.has(address) || dirty.has(address) || loading.has(address)) return
+  cache.delete(address)
+  unsafe.delete(address)
+}
+
+function save(address: string) {
+  const profile = cache.get(address)
+  if (!profile || saving.has(address) || unsafe.has(address)) return
+  // Snapshot nested data too: changes during this write must stay queued for the next checkpoint.
+  const snapshot = { ...profile, items: { ...profile.items }, settings: { ...profile.settings } }
+  saving.add(address)
+  dirty.delete(address)
+  void Storage.player.set(address, KEY, snapshot)
+    .then((ok) => {
+      if (!ok) dirty.add(address)
+    })
+    .catch(() => dirty.add(address))
+    .finally(() => {
+      saving.delete(address)
+      evictIfIdle(address)
+    })
+}
+
+// Serialize writes per wallet. Failed writes and changes made during a write remain queued for retry.
 export function saveSome(max = 8) {
   let n = 0
   for (const address of Array.from(dirty)) {
+    if (saving.has(address)) continue
     if (n++ >= max) break
-    const profile = cache.get(address)
-    dirty.delete(address)
-    if (!profile) continue
-    Storage.player
-      .set(address, KEY, profile)
-      .then((ok) => {
-        if (!ok) dirty.add(address)
-      })
-      .catch(() => dirty.add(address))
+    save(address)
   }
 }
 
-// A player left: save once more, then forget them so the cache does not grow forever.
+// A rejoining player pins the same profile while its departure save is still in flight.
 export function release(address: string) {
-  const profile = cache.get(address)
-  if (!profile) return
-  if (dirty.has(address)) {
-    dirty.delete(address)
-    Storage.player
-      .set(address, KEY, profile)
-      .then(() => cache.delete(address))
-      .catch(() => cache.delete(address))
-  } else cache.delete(address)
+  active.delete(address)
+  if (loading.has(address)) {
+    void loading.get(address)!.then(() => {
+      if (!active.has(address)) release(address)
+    })
+    return
+  }
+  if (dirty.has(address)) save(address)
+  evictIfIdle(address)
 }
 
 export function allCached(): [string, Profile][] {

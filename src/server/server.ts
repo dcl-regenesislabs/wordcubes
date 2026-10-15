@@ -4,7 +4,7 @@ import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import { syncEntity } from '@dcl/sdk/network'
 import * as C from '../config'
 import { pickWord } from './words'
-import { loadProfile, profileOf, touch, saveSome, release as releaseProfile, allCached, ratingDelta } from './profiles'
+import { retain, profileOf, touch, saveSome, release as releaseProfile, allCached, ratingDelta } from './profiles'
 import { room } from '../shared/messages'
 import { envOrigin } from '../shared/env'
 import { CubeData, GameState, PlayerRanks, protectServerEntity, modelFor } from '../shared/schemas'
@@ -26,6 +26,7 @@ interface SCube {
   holder: string
   placer: string // who threw it at a frame; stays set while it is locked in, cleared when it drops back into the pile
   sentAsleep: boolean
+  breakReward: boolean // rerolls and replacement supply cannot mint more break coins
 }
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -59,7 +60,7 @@ let round = 0
 let completed = 0
 let lastWord = ''
 let nextRoundIn = 0
-let spawnQueue: string[] = []
+let spawnQueue: { letter: string; breakReward: boolean }[] = []
 const holders = new Map<string, SCube>()
 const lockedUntil = new Map<string, number>() // address -> clock time when placing is allowed again
 // Who took part in this round: locked in at least one correct cube (even one a later collapse knocked out).
@@ -255,7 +256,7 @@ function updateGameState() {
 
 // ---------- cubes ----------
 
-function spawnCube(letter: string, x: number, y: number, z: number): SCube {
+function spawnCube(letter: string, x: number, y: number, z: number, breakReward = false): SCube {
   const entity = engine.addEntity()
   const body = addBody(world, x, y, z)
   const id = nextCubeId++
@@ -270,7 +271,7 @@ function spawnCube(letter: string, x: number, y: number, z: number): SCube {
   CubeData.create(entity, { id, letter, mode: 'free', slot: -1, holder: '' })
   protectServerEntity(entity, [Transform, GltfContainer])
   syncEntity(entity, [Transform.componentId, GltfContainer.componentId, CubeData.componentId])
-  const cube: SCube = { id, letter, entity, body, mode: 'free', slot: -1, holder: '', placer: '', sentAsleep: false }
+  const cube: SCube = { id, letter, entity, body, mode: 'free', slot: -1, holder: '', placer: '', sentAsleep: false, breakReward }
   cubes.set(id, cube)
   return cube
 }
@@ -337,19 +338,22 @@ function startRound(message = 'New round! Find the letters.') {
     const j = Math.floor(Math.random() * (i + 1))
     ;[letters[i], letters[j]] = [letters[j], letters[i]]
   }
-  spawnQueue = letters
+  spawnQueue = letters.map((letter) => ({ letter, breakReward: true }))
   toast(message)
 }
 
-function spawnInHeap(letter: string) {
+function spawnInHeap(letter: string, breakReward = false) {
   const a = Math.random() * Math.PI * 2
   const r = Math.sqrt(rand(C.SPAWN_MIN_RADIUS ** 2, C.SPAWN_MAX_RADIUS ** 2))
   const o = envOrigin()
-  spawnCube(letter, o.x + Math.cos(a) * r, o.y + rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), o.z + Math.sin(a) * r)
+  spawnCube(letter, o.x + Math.cos(a) * r, o.y + rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), o.z + Math.sin(a) * r, breakReward)
 }
 
 function spawnSome() {
-  for (let n = 0; n < SPAWN_PER_TICK && spawnQueue.length > 0; n++) spawnInHeap(spawnQueue.pop()!)
+  for (let n = 0; n < SPAWN_PER_TICK && spawnQueue.length > 0; n++) {
+    const cube = spawnQueue.pop()!
+    spawnInHeap(cube.letter, cube.breakReward)
+  }
 }
 
 // The pile can never become unsolvable: for every letter the word still needs there must be at least that many cubes
@@ -359,7 +363,7 @@ function ensureSupply() {
   const have = new Map<string, number>()
   const need = new Map<string, number>()
   for (const cube of cubes.values()) if (cube.mode !== 'placed') have.set(cube.letter, (have.get(cube.letter) ?? 0) + 1)
-  for (const letter of spawnQueue) have.set(letter, (have.get(letter) ?? 0) + 1)
+  for (const { letter } of spawnQueue) have.set(letter, (have.get(letter) ?? 0) + 1)
   for (let i = 0; i < answer.length; i++) {
     if (slots[i] && slots[i]!.mode === 'placed') continue
     need.set(answer[i], (need.get(answer[i]) ?? 0) + 1)
@@ -489,7 +493,7 @@ function rerollPile() {
     const j = Math.floor(Math.random() * (i + 1))
     ;[letters[i], letters[j]] = [letters[j], letters[i]]
   }
-  spawnQueue = letters
+  spawnQueue = letters.map((letter) => ({ letter, breakReward: false }))
 }
 
 // Removes the loose letters around the player that the word does not use, and shoves the useful ones away.
@@ -588,7 +592,7 @@ function init() {
   room.onMessage('join', (_data, ctx) => {
     if (!ctx) return
     const addr = ctx.from.toLowerCase()
-    void loadProfile(addr).then(() => sendProfile(addr))
+    void retain(addr).then(() => sendProfile(addr))
   })
 
   room.onMessage('grab', (data, ctx) => {
@@ -643,16 +647,17 @@ function init() {
     if (cube.letter === '*') return toast('A wildcard cannot be broken. Place it in a frame or throw it away.', addr)
     holders.delete(addr)
     const needed = answer.includes(cube.letter)
+    const reward = !needed && cube.breakReward ? C.COINS_PER_BREAK : 0
     const letter = cube.letter
     const at = playerOf(addr)
     const spot = at ? handPos(at) : Vector3.create(cube.body.x, cube.body.y, cube.body.z)
-    room.send('burst', { x: spot.x, y: spot.y, z: spot.z, gold: needed ? 0 : 1 })
+    room.send('burst', { x: spot.x, y: spot.y, z: spot.z, gold: reward > 0 ? 1 : 0 })
     removeCube(cube)
     if (needed) toast(`Broke ${letter}, which is in the word. No coins.`, addr)
-    else {
-      giveCoins(addr, C.COINS_PER_BREAK)
-      toast(`Broke ${letter}! +${C.COINS_PER_BREAK} coins`, addr)
-    }
+    else if (reward > 0) {
+      giveCoins(addr, reward)
+      toast(`Broke ${letter}! +${reward} coins`, addr)
+    } else toast(`Broke ${letter}. Rerolled cubes give no coins.`, addr)
     ensureSupply()
   })
 
@@ -896,6 +901,13 @@ function gameSystem(dt: number) {
     }
     pusherTracker.prune(present)
     ensureSupply()
+    // Presence also recovers profiles if the client's one-shot join message was missed.
+    for (const addr of present) {
+      const loaded = profileOf(addr) !== undefined
+      void retain(addr).then(() => {
+        if (!loaded) sendProfile(addr)
+      })
+    }
     for (const [addr] of allCached()) {
       if (present.has(addr)) absent.delete(addr)
       else if ((absent.get(addr) ?? 0) >= 2) {

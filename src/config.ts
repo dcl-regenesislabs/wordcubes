@@ -88,7 +88,7 @@ export type ItemId = 'wildcard' | 'reroll' | 'freeze' | 'bomb'
 export const ITEMS: { id: ItemId; name: string; price: number; desc: string }[] = [
   { id: 'wildcard', name: 'Wildcard', price: 250, desc: 'A box that fits any frame and stays put when the word collapses. One per round.' },
   { id: 'freeze', name: 'Time Freeze', price: 90, desc: 'Stops the round timer for 20 seconds.' },
-  { id: 'reroll', name: 'Reroll', price: 60, desc: 'Throws out the pile and drops a fresh set of cubes.' },
+  { id: 'reroll', name: 'Reroll', price: 60, desc: 'Drops a fresh pile. Breaking its cubes gives no coins.' },
   { id: 'bomb', name: 'Bomb', price: 70, desc: 'Blasts away the extra letters around you.' }
 ]
 export const ITEM_COOLDOWN = 30 // seconds between power-ups for one player (wildcards are limited to one per round instead)

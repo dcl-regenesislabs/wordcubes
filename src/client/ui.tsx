@@ -8,8 +8,8 @@ import { GameHud, LobbyHud, LobbyCountdown, HowToPlay, NpcDialog, ShopPanel, Set
 // again as soon as the platform lookup answers.
 export function setupUi() {
   setupHudMessages()
-  ReactEcsRenderer.setUiRenderer(uiMenu, canvas())
-  resolvePlatform(() => ReactEcsRenderer.setUiRenderer(uiMenu, canvas()))
+  ReactEcsRenderer.setUiRenderer(uiMenu, { ...canvas(), screenInset: 'interactable' })
+  resolvePlatform(() => ReactEcsRenderer.setUiRenderer(uiMenu, { ...canvas(), screenInset: 'interactable' }))
 }
 
 // Coded (not UI-Designer-editable) HUD: everything comes from the server's synced state each frame.

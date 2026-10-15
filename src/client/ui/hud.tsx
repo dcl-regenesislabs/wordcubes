@@ -103,12 +103,14 @@ const swell = (since: number, ms: number, amount: number) => {
 function WordPanel(props: { g: Game }) {
   const { g } = props
   const n = Math.max(g.length, 1)
-  const maxW = canvas().virtualWidth * 0.92 - 2 * EDGE()
+  // Reserve room for the side panel and, on phones, the native right-hand controls.
+  const panelW = canvas().virtualWidth - sz(300, 520)
+  const maxW = panelW * 0.92 - 2 * EDGE()
   const tile = clamp(Math.floor(maxW / n) - TILE_GAP, 36, sz(84, 58))
   const rowW = n * (tile + TILE_GAP)
   const qFont = fs(sz(32, 22))
-  const qLines = Math.ceil((g.question.length * qFont * 0.55) / (canvas().virtualWidth * 0.6)) || 1
-  const qW = clamp(Math.round(g.question.length * qFont * 0.56) + 90, sz(380, 300), canvas().virtualWidth * 0.7)
+  const qLines = Math.ceil((g.question.length * qFont * 0.55) / (panelW * 0.6)) || 1
+  const qW = clamp(Math.round(g.question.length * qFont * 0.56) + 90, sz(380, 300), panelW * 0.9)
   const qH = Math.round(qFont * 1.5 * Math.min(qLines, 2)) + 28
 
   const failT = (Date.now() - failAt) / FAIL_MS
@@ -144,7 +146,7 @@ function WordPanel(props: { g: Game }) {
   // Only the question sits in a panel (a cream block face). The letter tiles float on their own under it.
   return (
     <UiEntity
-      uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16) }, width: '100%', alignItems: 'center', flexDirection: 'column', pointerFilter: 'none' }}
+      uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16) }, width: panelW, alignItems: 'center', flexDirection: 'column', pointerFilter: 'none' }}
     >
       <Frame width={qW} height={qH} edge={PAL.violet} fill={PAL.cream} radius={22} border={5} align="center" justify="center">
         <Label
@@ -168,7 +170,7 @@ const clock = (sec: number) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Ma
 function SidePanel(props: { g: Game | null }) {
   const { g } = props
   const w = sz(250, 210)
-  const edge = EDGE()
+  const edge = mobile() ? EDGE() + 240 : EDGE()
   return (
     <UiEntity
       uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16), right: edge }, width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}
@@ -394,10 +396,10 @@ const ITEM_TINT: Record<string, typeof PAL.cyan> = { wildcard: PAL.yellow, freez
 function ItemBar(props: { g: Game | null }) {
   const owned = ITEMS.filter((i) => (cs.items[i.id] ?? 0) > 0)
   if (owned.length === 0 || !props.g || props.g.phase !== 'playing') return null
-  const w = sz(250, 210)
+  const w = sz(250, 180)
   return (
     <UiEntity
-      uiTransform={{ positionType: 'absolute', position: { top: sz(500, 384), right: EDGE() }, width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}
+      uiTransform={{ positionType: 'absolute', position: { top: sz(500, 384), right: mobile() ? EDGE() + 240 : EDGE() }, width: mobile() ? owned.length * (w + 8) : w, flexDirection: mobile() ? 'row' : 'column', alignItems: 'flex-end', pointerFilter: 'none' }}
     >
       {owned.map((i) => (
         <PillButton
@@ -408,7 +410,7 @@ function ItemBar(props: { g: Game | null }) {
           height={sz(52, 42)}
           font={fs(sz(22, 18))}
           tint={ITEM_TINT[i.id]}
-          margin={{ top: 6 }}
+          margin={{ top: 6, left: mobile() ? 8 : 0 }}
           onClick={() => room.send('useItem', { item: i.id })}
         />
       ))}
