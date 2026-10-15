@@ -1,165 +1,21 @@
-import ReactEcs, { ReactEcsRenderer, UiEntity, Label, Button } from '@dcl/sdk/react-ecs'
-import { engine } from '@dcl/sdk/ecs'
-import { Color4 } from '@dcl/sdk/math'
-import { GameState } from '../shared/schemas'
+import ReactEcs, { ReactEcsRenderer, UiEntity } from '@dcl/sdk/react-ecs'
 import { cs } from './state'
-import { heldLetter } from './cubes'
-import { room } from '../shared/messages'
-import { returnToLobby } from './lobby'
+import { UI_PREVIEW } from '../config'
+import { resolvePlatform, canvas } from './ui/platform'
+import { GameHud, LobbyCountdown } from './ui/hud'
 
+// The UI canvas depends on the device (1920x1080 desktop, 1600x720 phone), so the renderer is set up once and
+// again as soon as the platform lookup answers.
 export function setupUi() {
-  ReactEcsRenderer.setUiRenderer(uiMenu, { virtualWidth: 1920, virtualHeight: 1080 })
+  ReactEcsRenderer.setUiRenderer(uiMenu, canvas())
+  resolvePlatform(() => ReactEcsRenderer.setUiRenderer(uiMenu, canvas()))
 }
-
-function game() {
-  for (const [, g] of engine.getEntitiesWith(GameState)) return g
-  return null
-}
-
-const spaced = (s: string) => s.split('').join(' ')
 
 // Coded (not UI-Designer-editable) HUD: everything comes from the server's synced state each frame.
-export const uiMenu = () => {
-  const g = game()
-  const held = heldLetter()
-  return (
-    <UiEntity uiTransform={{ width: '100%', height: '100%' }}>
-      {cs.lobbyCountdown > 0 && (
-        <UiEntity
-          uiTransform={{
-            positionType: 'absolute',
-            position: { top: 260, left: 560 },
-            width: 800,
-            height: 300,
-            flexDirection: 'column',
-            alignItems: 'center'
-          }}
-        >
-          <Label
-            value="Game starts in"
-            fontSize={44}
-            color={Color4.White()}
-            uiTransform={{ width: '100%', height: 60 }}
-          />
-          <Label
-            value={`${cs.lobbyCountdown}`}
-            fontSize={cs.lobbyCountdown <= 3 ? 160 : 120}
-            color={cs.lobbyCountdown <= 3 ? Color4.create(1, 0.85, 0.3, 1) : Color4.White()}
-            uiTransform={{ width: '100%', height: 200 }}
-          />
-          <Label
-            value="Step off the pad to cancel"
-            fontSize={24}
-            color={Color4.create(1, 1, 1, 0.8)}
-            uiTransform={{ width: '100%', height: 36 }}
-          />
-        </UiEntity>
-      )}
-
-      {cs.inGame && (
-        <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%' }}>
-          <UiEntity
-            uiTransform={{
-              positionType: 'absolute',
-              position: { top: 30, left: 560 },
-              width: 800,
-              height: 200,
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-            uiBackground={{ color: Color4.create(0, 0, 0, 0.55) }}
-          >
-            <Label
-              value={g ? g.question : 'Connecting...'}
-              fontSize={30}
-              color={Color4.White()}
-              uiTransform={{ width: '100%', height: 50 }}
-            />
-            <Label
-              value={g ? spaced(g.masked) : ''}
-              fontSize={64}
-              color={Color4.create(1, 0.85, 0.3, 1)}
-              uiTransform={{ width: '100%', height: 90 }}
-            />
-            <Label
-              value={g && g.hint ? `Hint: ${spaced(g.hint)}` : ''}
-              fontSize={26}
-              color={Color4.create(0.6, 0.9, 1, 1)}
-              uiTransform={{ width: '100%', height: 30 }}
-            />
-          </UiEntity>
-
-          <UiEntity
-            uiTransform={{
-              positionType: 'absolute',
-              position: { top: 30, right: 30 },
-              width: 260,
-              height: 110,
-              flexDirection: 'column'
-            }}
-            uiBackground={{ color: Color4.create(0, 0, 0, 0.55) }}
-          >
-            <Label
-              value={`Coins: ${cs.coins}`}
-              fontSize={28}
-              color={Color4.White()}
-              uiTransform={{ width: '100%', height: 36 }}
-            />
-            <Label
-              value={g ? `Round ${g.round}  Done ${g.completed}` : ''}
-              fontSize={22}
-              color={Color4.White()}
-              uiTransform={{ width: '100%', height: 30 }}
-            />
-            <Label
-              value={held ? `Holding ${held}` : 'Hands empty'}
-              fontSize={22}
-              color={Color4.White()}
-              uiTransform={{ width: '100%', height: 30 }}
-            />
-          </UiEntity>
-
-          <Button
-            value="Hint (1)"
-            variant="primary"
-            fontSize={30}
-            uiTransform={{ positionType: 'absolute', position: { top: 160, right: 30 }, width: 260, height: 70 }}
-            onMouseDown={() => room.send('hint', { n: 0 })}
-          />
-
-          <UiEntity
-            uiTransform={{
-              positionType: 'absolute',
-              position: { bottom: 40, left: 460 },
-              width: 1000,
-              height: 120,
-              flexDirection: 'column',
-              alignItems: 'center'
-            }}
-          >
-            <Label
-              value={cs.message}
-              fontSize={36}
-              color={Color4.White()}
-              uiTransform={{ width: '100%', height: 60 }}
-            />
-            <Label
-              value="Click cube: grab   Click frame: throw it there   E: break for coins   F: throw away   1: hint"
-              fontSize={22}
-              color={Color4.create(1, 1, 1, 0.8)}
-              uiTransform={{ width: '100%', height: 40 }}
-            />
-          </UiEntity>
-          <Button
-            value="Back to lobby"
-            variant="secondary"
-            fontSize={26}
-            uiTransform={{ positionType: 'absolute', position: { top: 240, right: 30 }, width: 260, height: 60 }}
-            onMouseDown={returnToLobby}
-          />
-        </UiEntity>
-      )}
-    </UiEntity>
-  )
-}
+// Pieces and look live in ./ui (theme = palette and shared widgets, hud = the screens).
+export const uiMenu = () => (
+  <UiEntity uiTransform={{ width: '100%', height: '100%', pointerFilter: 'none' }}>
+    {cs.lobbyCountdown > 0 && <LobbyCountdown />}
+    {(cs.inGame || UI_PREVIEW) && <GameHud />}
+  </UiEntity>
+)
