@@ -7,7 +7,7 @@ import { buildSlots, disableArenaPassports, setSlotClickHandler } from './arena'
 import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './frames'
 import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { predictSystem } from './predict'
-import { playThrowEmote, stopHoldEmote } from './emotes'
+import { playThrowEmote } from './emotes'
 import { cs, showMessage, lockoutLeft } from './state'
 import { grassSystem } from './grass'
 import { setupUi } from './ui'
@@ -65,8 +65,8 @@ function clientSystem(dt: number) {
   if (!cs.inGame) return
   if (inputSystem.isTriggered(InputAction.IA_PRIMARY, PointerEventType.PET_DOWN)) {
     if (isHolding()) {
-      stopHoldEmote()
-      room.send('breakCube', { n: 0 })
+      if (lockoutLeft() > 0) showMessage(`Locked out: ${lockoutLeft()}s left.`, 2)
+      else room.send('breakCube', { n: 0 })
     } else showMessage('Nothing to break. Click a cube to grab it first.', 2)
   }
   if (inputSystem.isTriggered(InputAction.IA_SECONDARY, PointerEventType.PET_DOWN) && isHolding()) {

@@ -23,5 +23,5 @@ export const room = registerMessages({
   burst: Schemas.Map({ x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, gold: Schemas.Int }), // effect here: 0 grey puff (needed letter broken), 1 gold sparks (coin break), 2 bomb blast
   result: Schemas.Map({ coins: Schemas.Int, delta: Schemas.Int }), // end of round, for players who took part: coins earned and rating change
   profile: Schemas.Map({ rating: Schemas.Int, wildcard: Schemas.Int, reroll: Schemas.Int, freeze: Schemas.Int, bomb: Schemas.Int, settings: Schemas.String }), // your saved data; settings is JSON like {"showRanks":true}
-  lockout: Schemas.Map({ seconds: Schemas.Int }) // you caused a collapse: no placing for this many seconds
+  lockout: Schemas.Map({ seconds: Schemas.Int }) // collapse penalty: no grabbing, breaking, placing, hints or power-ups
 })

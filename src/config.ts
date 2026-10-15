@@ -69,7 +69,7 @@ export const MAX_DIFFICULTY = LEVELS.length
 export const RATING_PER_RANK = 200
 export const RATING_K = 40 // points a fully surprising win or loss is worth
 export const PROVISIONAL_ROUNDS = 5 // new players: bigger gains and very small losses for their first rounds
-export const VOTE_BONUS_COINS = 3 // for everyone in the arena who voted
+export const VOTE_BONUS_COINS = 3 // only voters who placed a correct cube in this round
 export const PROFILE_SAVE_SECONDS = 15 // changed profiles are written to storage at most this often
 
 // Player settings (saved with the profile, on/off). Add a line here and it shows up in the Settings panel and is saved.

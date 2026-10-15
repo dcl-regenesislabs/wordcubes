@@ -67,7 +67,7 @@ let levelFrom = 0
 let levelTo = 0
 let levelAt = 0
 
-// Called once per frame from the HUD: compares the new masked word with the last one and starts the matching effect.
+// Called by the HUD system. Rendering only reads animation timestamps.
 function track(g: Game) {
   if (g.round !== seenRound || prev.length !== g.masked.length) {
     seenRound = g.round
@@ -253,10 +253,6 @@ let votedRound = -1
 
 function VoteScreen(props: { g: Game }) {
   const { g } = props
-  if (votedRound !== g.round) {
-    votedRound = g.round
-    myVote = null
-  }
   const pick = (choice: number) => {
     myVote = choice
     if (!C.UI_PREVIEW) room.send('vote', { choice })
@@ -503,7 +499,7 @@ export function HowToPlay() {
   const rows: { color: typeof PAL.red; text: string }[] = [
     { color: PAL.orange, text: phone ? 'Tap a cube in the pile to grab it. Dig around: the letters you need are in there.' : 'Click a cube in the pile to grab it. Dig around: the letters you need are in there.' },
     { color: PAL.green, text: phone ? 'Tap a frame to throw the cube in. The right letter in the right spot stays.' : 'Click a frame to throw the cube in. The right letter in the right spot stays.' },
-    { color: PAL.red, text: 'A wrong letter or a wrong spot makes the whole word collapse, and you cannot place for a while.' },
+    { color: PAL.red, text: 'A wrong letter collapses the word and briefly locks your cube actions. Needed letters cannot be broken.' },
     { color: PAL.cyan, text: phone ? 'Not sure? Break extra cubes for coins. Coins buy hints.' : 'Not sure? Break extra cubes for coins (E) or throw them away (F). Coins buy hints.' }
   ]
   return (
@@ -527,9 +523,17 @@ export function HowToPlay() {
   )
 }
 
-export function GameHud() {
+export function updateHud() {
   const g = game()
   if (g) track(g)
+  if (!g || g.phase !== 'vote' || votedRound !== g.round) {
+    votedRound = g?.round ?? -1
+    myVote = null
+  }
+}
+
+export function GameHud() {
+  const g = game()
   return (
     <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', pointerFilter: 'none' }}>
       {g && <WordPanel g={g} />}

@@ -69,6 +69,7 @@ const BOARD_KEY = 'wc:board'
 let board: { a: string; r: number }[] = []
 let boardDirty = false
 let ranksEntity: Entity
+const rankPages: Entity[] = [] // small synced batches; include every present player without a profile-count cutoff
 let lastRanks = ''
 let wildcardUsed = false // one wildcard per round, in the whole room
 let freezeLeft = 0 // seconds of Time Freeze left
@@ -146,13 +147,34 @@ function updateBoard(address: string, rating: number) {
 }
 
 function publishRanks() {
-  const data = allCached()
-    .slice(0, 60)
-    .map(([addr, p]) => `${addr}:${Math.round(p.rating)}`)
-    .join(',')
+  const entries = players()
+    .map(({ address }) => `${address}:${Math.round(profileOf(address)?.rating ?? 0)}`)
+    .sort()
+  const data = entries.join(',')
   if (data === lastRanks) return
   lastRanks = data
-  PlayerRanks.getMutable(ranksEntity).data = data
+  const pages = Math.max(1, Math.ceil(entries.length / 60))
+  for (let page = 0; page < pages; page++) {
+    const text = entries.slice(page * 60, (page + 1) * 60).join(',')
+    if (page >= rankPages.length) {
+      const entity = engine.addEntity()
+      PlayerRanks.create(entity, { data: text })
+      syncEntity(entity, [PlayerRanks.componentId])
+      rankPages.push(entity)
+    } else if (PlayerRanks.get(rankPages[page]).data !== text) {
+      PlayerRanks.getMutable(rankPages[page]).data = text
+    }
+  }
+  while (rankPages.length > pages) engine.removeEntity(rankPages.pop()!)
+}
+
+// Server-side gate shared by actions that could disrupt the ongoing word. Tossing one's held cube stays available.
+function canPlay(address: string): boolean {
+  if (phase !== 'playing' || !arenaPlayers().some((p) => p.address === address)) return false
+  const wait = (lockedUntil.get(address) ?? 0) - clock
+  if (wait <= 0) return true
+  toast(`Locked out: ${Math.ceil(wait)}s left. You can still throw your held cube away.`, address)
+  return false
 }
 
 function giveCoins(address: string, amount: number) {
@@ -394,7 +416,12 @@ function collapse(causedBy: string) {
   if (causedBy) {
     lockedUntil.set(causedBy, clock + C.COLLAPSE_LOCKOUT_SECONDS)
     room.send('lockout', { seconds: C.COLLAPSE_LOCKOUT_SECONDS }, { to: [causedBy] })
-    toast(`You collapsed the word. No placing for ${C.COLLAPSE_LOCKOUT_SECONDS}s.`, causedBy)
+    const held = holders.get(causedBy)
+    if (held) {
+      holders.delete(causedBy)
+      release(held, playerOf(causedBy)?.pos ?? fallbackDrop(), 0, 0, 0)
+    }
+    toast(`You collapsed the word. Cube actions and power-ups are locked for ${C.COLLAPSE_LOCKOUT_SECONDS}s.`, causedBy)
   }
 }
 
@@ -577,7 +604,7 @@ function endVote() {
   if (up > down && up > same) step = 1
   else if (down > up && down > same) step = -1
   for (const p of present) {
-    if (!votes.has(p.address)) continue
+    if (!votes.has(p.address) || !participants.has(p.address)) continue
     giveCoins(p.address, C.VOTE_BONUS_COINS)
   }
   const next = Math.min(C.MAX_DIFFICULTY, Math.max(1, difficulty + step))
@@ -598,6 +625,7 @@ function init() {
   room.onMessage('grab', (data, ctx) => {
     if (!ctx || phase !== 'playing') return
     const addr = ctx.from.toLowerCase()
+    if (!canPlay(addr)) return
     const cube = cubes.get(data.cubeId)
     if (!cube || cube.mode !== 'free') return
     if (holders.has(addr)) return toast('Hands full. Click a frame to throw it, E to break it or F to throw it away.', addr)
@@ -616,8 +644,7 @@ function init() {
   room.onMessage('place', (data, ctx) => {
     if (!ctx || phase !== 'playing') return
     const addr = ctx.from.toLowerCase()
-    const wait = (lockedUntil.get(addr) ?? 0) - clock
-    if (wait > 0) return toast(`Locked out: ${Math.ceil(wait)}s left before you can place again.`, addr)
+    if (!canPlay(addr)) return
     const cube = holders.get(addr)
     if (!cube) return toast('Grab a cube first (click it), then click a frame.', addr)
     if (data.slot < 0 || data.slot >= slots.length || slots[data.slot]) return
@@ -642,19 +669,19 @@ function init() {
   room.onMessage('breakCube', (_data, ctx) => {
     if (!ctx) return
     const addr = ctx.from.toLowerCase()
+    if (!canPlay(addr)) return
     const cube = holders.get(addr)
     if (!cube) return toast('Nothing to break. Click a cube to grab it first.', addr)
     if (cube.letter === '*') return toast('A wildcard cannot be broken. Place it in a frame or throw it away.', addr)
+    if (answer.includes(cube.letter)) return toast('That letter is needed. Place it or throw it back with F.', addr)
     holders.delete(addr)
-    const needed = answer.includes(cube.letter)
-    const reward = !needed && cube.breakReward ? C.COINS_PER_BREAK : 0
+    const reward = cube.breakReward ? C.COINS_PER_BREAK : 0
     const letter = cube.letter
     const at = playerOf(addr)
     const spot = at ? handPos(at) : Vector3.create(cube.body.x, cube.body.y, cube.body.z)
     room.send('burst', { x: spot.x, y: spot.y, z: spot.z, gold: reward > 0 ? 1 : 0 })
     removeCube(cube)
-    if (needed) toast(`Broke ${letter}, which is in the word. No coins.`, addr)
-    else if (reward > 0) {
+    if (reward > 0) {
       giveCoins(addr, reward)
       toast(`Broke ${letter}! +${reward} coins`, addr)
     } else toast(`Broke ${letter}. Rerolled cubes give no coins.`, addr)
@@ -736,6 +763,7 @@ function init() {
   room.onMessage('useItem', (data, ctx) => {
     if (!ctx) return
     const addr = ctx.from.toLowerCase()
+    if (!canPlay(addr)) return
     const item = itemOf(data.item)
     const p = profileOf(addr)
     if (!item || !p) return
@@ -771,6 +799,7 @@ function init() {
   room.onMessage('hint', (_data, ctx) => {
     if (!ctx || phase !== 'playing') return
     const addr = ctx.from.toLowerCase()
+    if (!canPlay(addr)) return
     if (hintsUsed >= answer.length - 1) return toast('No more hints for this word!', addr)
     const cost = hintCost()
     const have = coinsOf(addr)
@@ -982,6 +1011,7 @@ export function initServer() {
   syncEntity(stateEntity, [GameState.componentId], 1)
   ranksEntity = engine.addEntity()
   PlayerRanks.create(ranksEntity, { data: '' })
+  rankPages.push(ranksEntity)
   syncEntity(ranksEntity, [PlayerRanks.componentId], 2)
   void Storage.get<{ a: string; r: number }[]>(BOARD_KEY)
     .then((stored) => {

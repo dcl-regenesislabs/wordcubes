@@ -59,7 +59,7 @@ Getting people to vote is the main risk. *Proposed* ways to help:
 
 - A large, central vote screen with a visible countdown and three big buttons.
 - End the vote early once everyone present has voted.
-- A small coin bonus just for voting (3 coins, built).
+- A small coin bonus for voting after contributing at least one correct placed cube during the round (3 coins). Merely standing in the arena and voting earns nothing.
 - Show the room's average rank on the vote screen, so people know who they are voting with.
 
 ## Contributors, points and rating
@@ -86,7 +86,9 @@ Example: A places a correct P. B places a wrong cube and the whole word drops. C
 
 ## Anti-troll lockout and hints
 
-**Collapse lockout.** A collapse is not a rating failure. Instead, the player who caused it cannot place cubes for 25 seconds. Playtests already showed some players trolling by placing wrong cubes. A countdown shows on their screen, and they can still grab, break and throw cubes during the lockout.
+**Collapse lockout.** A collapse is not a rating failure. Instead, the player who caused it cannot grab, break, place, buy hints or use power-ups for 25 seconds. Any second cube they grabbed while their wrong throw was in flight is released immediately. A countdown shows on their screen. Throwing a held cube away remains allowed so the penalty cannot trap one in their hands.
+
+**Shared cube protection.** Loose cubes are shared; players do not take turns. A held cube can only be placed, broken or tossed by its holder. Flying and placed cubes cannot be picked up or broken by another player. Letters that occur in the answer cannot be destroyed: a rejected break leaves the cube in the holder's hands for placing or tossing. The server enforces these rules, arena membership and the collapse penalty; changing client UI does not bypass them. Supply replacement remains a fallback for missing letters.
 
 **Hints cost coins.** Hints are free and unlimited today, so anyone can spam them. They now cost coins: 10 for the first hint in a round, then 20, 30 and so on. The requester pays and the whole room sees the letter.
 
@@ -110,6 +112,8 @@ Where ranks show:
 - On the in-game badge, next to the level.
 - Over every player's head (yours too), as a small floating label (the SDK has no way to edit the built-in name tag).
 - On a Top players panel that appears when you stand near the Leaderboard sign in the lobby.
+
+Rank labels include every player currently present, regardless of older profiles retained in memory. The server publishes batches of up to 60 players per synced entity; clients merge all batches and clear departed players.
 
 There is no matchmaking. Players choose a room from the pad and leave to find another if it is not for them.
 
@@ -152,7 +156,7 @@ Items are bought with coins, kept in the player's saved inventory between rounds
 
 Each player has a 30-second cooldown between power-ups. Wildcards are limited by the one-per-round rule instead. A wildcard cannot be broken for coins. The "raise difficulty" power-up from the GDD is replaced by the vote.
 
-Prices are a first guess. Coins come from 25 per finished word, 5 per broken non-answer cube from the original round pile, and 3 per vote, so a wildcard takes roughly ten finished words. Reroll and replacement cubes do not replenish break rewards; a new round restores the original pile's rewards. Original cubes held during a reroll retain their reward eligibility until broken.
+Prices are a first guess. Coins come from 25 per finished word, 5 per broken non-answer cube from the original round pile, and 3 per vote by a contributor, so a wildcard takes roughly ten finished words. Reroll and replacement cubes do not replenish break rewards; a new round restores the original pile's rewards. Original cubes held during a reroll retain their reward eligibility until broken.
 
 ## Technical dependencies
 
@@ -160,7 +164,7 @@ Prices are a first guess. Coins come from 25 per finished word, 5 per broken non
 - **Tiered word bank.** Built with 7 levels and 315 words, English only. A 24/7 room still needs a much larger bank and other languages, which is content work (a generated bank, reviewed).
 - **Persistence by wallet address.** Built with the server Storage. Profiles are saved at most every 15 seconds and when a player leaves, never on every change. Reading the data back for the D7-return metric is not built.
 - **Per-round contributor tracking** on the server: who placed each cube in the final word, and who placed any correct cube during the round. Built.
-- **New messages and UI:** a vote message and vote screen, a lockout countdown and hint pricing are built. The rank display at the pad and over nameplates is not.
+- **New messages and UI:** voting, lockout countdown, hint pricing and rank displays are built. Animation transitions and vote resets run in an ECS system; render functions only read them.
 - **Replacement spawn** for needed cubes that get broken. Built.
 - **Shop and inventory** for the vendor. Built.
 
@@ -184,3 +188,9 @@ Prices are a first guess. Coins come from 25 per finished word, 5 per broken non
 5. Done: vendor, inventory, wildcard, Time Freeze, Reroll and Bomb.
 6. Left: playtest and tune (timers, prices, rating numbers).
 7. Left: a much bigger word bank, sounds, the real wearable reward, and vendor outfits.
+
+## Regression checks
+
+Run `node --test tests/*.test.cjs` and `npm run build`. The pull-request CI runs these commands on Node 22 after `npm ci`; no package.json change is required. Automated tests replace SDK/network boundaries and cover profile races, rank pagination, UI transitions, economy, a winning round with voting, and shared-cube protection. They do not substitute for a playtest in the Explorer or on a physical phone.
+
+The test cheat remains enabled intentionally during this review. NPC anchors and GLB positions are unchanged by request.

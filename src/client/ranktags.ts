@@ -36,12 +36,14 @@ export function parseBoard(text: string): [string, number][] {
 }
 
 function readRatings() {
+  const pages: string[] = []
   for (const [, r] of engine.getEntitiesWith(PlayerRanks)) {
-    if (r.data === lastData) return
-    lastData = r.data
-    ratings = new Map(parseBoard(r.data))
-    return
+    if (r.data) pages.push(r.data)
   }
+  const data = pages.sort().join(',')
+  if (data === lastData) return
+  lastData = data
+  ratings = new Map(parseBoard(data))
 }
 
 export function rankTagSystem() {

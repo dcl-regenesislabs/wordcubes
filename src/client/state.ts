@@ -26,7 +26,7 @@ export function showMessage(text: string, seconds = 3) {
   cs.messageTime = seconds
 }
 
-/** Seconds left of your placing lockout, 0 when free. */
+/** Seconds left of the collapse penalty on cube actions, hints and power-ups, 0 when free. */
 export const lockoutLeft = () => Math.max(0, Math.ceil((cs.lockoutUntil - Date.now()) / 1000))
 
 /** Current value of a Settings switch (its default until the server has sent yours). */

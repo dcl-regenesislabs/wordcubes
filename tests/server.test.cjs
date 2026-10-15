@@ -48,17 +48,17 @@ function harness() {
     '../shared/world': world,
     '../shared/pushers': { PusherTracker: class { update() { return { x: 0, y: 0, z: 0, vx: 0, vz: 0 } } prune() {} } },
     '../sim/physics': loadTs('src/sim/physics.ts')
-  }, 'exports.testing = { cubes, spawnSome, startRound, advance: seconds => { clock += seconds } }')
+  }, 'exports.testing = { cubes, spawnSome, startRound, startVote, endVote, collapse, publishRanks, land, timeUp, advance: seconds => { clock += seconds } }')
   server.initServer()
   Transform.create(1, { position: Vector3.create(8, 0, 0), rotation: {} })
   PlayerIdentityData.create(1, { address: 'alice' })
-  const send = (name, data = {}) => handlers.get(name)(data, { from: 'alice' })
+  const send = (name, data = {}, from = 'alice') => handlers.get(name)(data, { from })
   const fill = () => { for (let i = 0; i < 8; i++) server.testing.spawnSome() }
   const grab = cube => {
     Transform.get(1).position = Vector3.create(cube.body.x, cube.body.y, cube.body.z)
     send('grab', { cubeId: cube.id })
   }
-  return { config, profiles, server, Transform, Vector3, send, fill, grab, sent, systems }
+  return { config, profiles, server, Transform, Vector3, send, fill, grab, sent, systems, PlayerIdentityData, PlayerRanks, GameState }
 }
 
 test('repeated paid rerolls cannot replenish break rewards, while a new round can', async () => {
@@ -126,4 +126,149 @@ test('a present player is loaded without a join message and stays live across sa
   await new Promise(setImmediate)
   assert.equal(h.profiles.profileOf('alice'), profile)
   assert.ok(h.sent.some(m => m.name === 'profile'))
+})
+
+test('rank publication includes 131 present players despite older cached profiles and removes departed pages', async () => {
+  const h = harness()
+  for (let i = 0; i < 70; i++) await h.profiles.retain(`departed-${i}`)
+  await h.profiles.retain('alice')
+  for (let i = 0; i < 130; i++) {
+    const address = `present-${i}`
+    const profile = await h.profiles.retain(address)
+    profile.rating = 200 + i
+    h.PlayerIdentityData.create(1000 + i, { address })
+    h.Transform.create(1000 + i, { position: h.Vector3.create(8, 0, 0), rotation: {} })
+  }
+  h.server.testing.publishRanks()
+  const entries = [...h.PlayerRanks.values.values()].flatMap(page => page.data.split(',').filter(Boolean))
+  assert.equal(entries.length, 131)
+  assert.equal(new Set(entries.map(entry => entry.split(':')[0])).size, 131)
+  assert.ok(entries.includes('present-129:329'))
+  assert.ok(entries.every(entry => !entry.startsWith('departed-')))
+  assert.equal(h.PlayerRanks.values.size, 3, 'rank updates stay in small batches instead of dropping players')
+  h.PlayerIdentityData.values.clear()
+  h.server.testing.publishRanks()
+  assert.equal(h.PlayerRanks.values.size, 1)
+  assert.equal([...h.PlayerRanks.values.values()][0].data, '')
+})
+
+test('a complete winning round awards the vote bonus only to actual contributors', async () => {
+  const h = harness()
+  const alice = await h.profiles.retain('alice')
+  const bob = await h.profiles.retain('bob')
+  h.PlayerIdentityData.create(2, { address: 'bob' })
+  h.Transform.create(2, { position: h.Vector3.create(8, 0, 0), rotation: {} })
+  h.fill()
+  for (const [slot, letter] of [...'DOG'].entries()) {
+    const cube = [...h.server.testing.cubes.values()].find(c => c.mode === 'free' && c.letter === letter)
+    h.grab(cube)
+    h.send('place', { slot })
+    h.systems.get('word-cubes-server')(1)
+  }
+  const game = () => [...h.GameState.values.values()][0]
+  assert.equal(game().phase, 'won')
+  assert.equal(alice.coins, h.config.COINS_PER_WORD)
+  assert.ok(alice.rating > 0)
+  assert.equal(bob.coins, 0)
+  h.systems.get('word-cubes-server')(h.config.NEXT_ROUND_DELAY)
+  assert.equal(game().phase, 'vote')
+  h.send('vote', { choice: 1 })
+  h.send('vote', { choice: 1 }, 'bob')
+  h.systems.get('word-cubes-server')(0.1)
+  assert.equal(game().phase, 'playing')
+  assert.equal(game().round, 2)
+  assert.equal(game().difficulty, 2)
+  assert.equal(alice.coins, h.config.COINS_PER_WORD + h.config.VOTE_BONUS_COINS)
+  assert.equal(bob.coins, 0, 'voting without building the word does not earn passive coins')
+})
+
+test('needed letters cannot be destroyed and another player cannot steal a held or placed cube', async () => {
+  const h = harness()
+  await h.profiles.retain('alice')
+  await h.profiles.retain('bob')
+  h.PlayerIdentityData.create(2, { address: 'bob' })
+  h.Transform.create(2, { position: h.Vector3.create(8, 0, 0), rotation: {} })
+  h.fill()
+  const needed = [...h.server.testing.cubes.values()].find(c => c.letter === 'D')
+  h.grab(needed)
+  h.send('breakCube')
+  assert.equal(needed.mode, 'held')
+  assert.ok(h.server.testing.cubes.has(needed.id))
+  h.send('grab', { cubeId: needed.id }, 'bob')
+  h.send('breakCube', {}, 'bob')
+  assert.equal(needed.holder, 'alice')
+  h.send('place', { slot: 0 })
+  h.systems.get('word-cubes-server')(1)
+  assert.equal(needed.mode, 'placed')
+  h.send('grab', { cubeId: needed.id }, 'bob')
+  h.send('breakCube', {}, 'bob')
+  assert.equal(needed.mode, 'placed')
+})
+
+test('collapse blocks grabbing, breaking and power-ups and releases a cube held during the throw', async () => {
+  const h = harness()
+  const profile = await h.profiles.retain('alice')
+  profile.coins = 100
+  profile.items.bomb = 1
+  h.fill()
+  const wrong = [...h.server.testing.cubes.values()].find(c => !'DOG'.includes(c.letter))
+  h.grab(wrong)
+  h.send('place', { slot: 0 })
+  const another = [...h.server.testing.cubes.values()].find(c => c.mode === 'free' && !'DOG'.includes(c.letter))
+  h.grab(another)
+  h.systems.get('word-cubes-server')(1)
+  assert.equal(another.mode, 'free', 'the offender cannot hoard a second cube during the penalty')
+  h.grab(another)
+  h.send('breakCube')
+  h.send('useItem', { item: 'bomb' })
+  const coins = profile.coins
+  h.send('hint')
+  assert.equal(profile.coins, coins)
+  assert.equal(another.mode, 'free')
+  assert.equal(profile.items.bomb, 1)
+  h.server.testing.advance(h.config.COLLAPSE_LOCKOUT_SECONDS)
+  h.grab(another)
+  h.send('breakCube')
+  assert.equal(profile.coins, 105, 'normal interaction resumes after the penalty')
+})
+
+test('leaving releases a protected held letter and pauses the empty arena timer', async () => {
+  const h = harness()
+  await h.profiles.retain('alice')
+  h.fill()
+  const needed = [...h.server.testing.cubes.values()].find(c => c.letter === 'D')
+  h.grab(needed)
+  h.send('breakCube')
+  assert.equal(needed.mode, 'held')
+  const game = () => [...h.GameState.values.values()][0]
+  const time = game().timeLeft
+  h.PlayerIdentityData.values.delete(1)
+  h.systems.get('word-cubes-server')(1)
+  assert.equal(needed.mode, 'free')
+  assert.equal(game().timeLeft, time)
+  assert.equal(game().players, 0)
+})
+
+test('a timeout settles contributors and returns to play through voting', async () => {
+  const h = harness()
+  const profile = await h.profiles.retain('alice')
+  profile.rating = 400
+  h.fill()
+  const cube = [...h.server.testing.cubes.values()].find(c => c.letter === 'D')
+  h.grab(cube)
+  h.send('place', { slot: 0 })
+  h.systems.get('word-cubes-server')(1)
+  h.systems.get('word-cubes-server')(h.config.LEVELS[0].seconds - 2)
+  h.systems.get('word-cubes-server')(1)
+  const game = () => [...h.GameState.values.values()][0]
+  assert.equal(game().phase, 'timeout')
+  assert.equal(game().hint, 'DOG')
+  assert.ok(profile.rating < 400)
+  h.systems.get('word-cubes-server')(h.config.NEXT_ROUND_DELAY)
+  assert.equal(game().phase, 'vote')
+  h.send('vote', { choice: 0 })
+  h.systems.get('word-cubes-server')(0.1)
+  assert.equal(game().phase, 'playing')
+  assert.equal(game().round, 2)
+  assert.equal(profile.coins, h.config.VOTE_BONUS_COINS)
 })
