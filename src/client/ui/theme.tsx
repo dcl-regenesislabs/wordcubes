@@ -190,6 +190,7 @@ export const PillButton = (props: {
   height: number
   font?: number
   tint?: Color4
+  active?: boolean // e.g. the option you picked: gold rim and bright text
   onClick: () => void
   at?: Edges
   margin?: Edges
@@ -212,7 +213,7 @@ export const PillButton = (props: {
         borderRadius: h / 2,
         pointerFilter: 'block'
       }}
-      uiBackground={{ color: hov ? lighten(rim, 0.12) : rim }}
+      uiBackground={{ color: props.active ? PAL.yellow : hov ? lighten(rim, 0.12) : rim }}
       onMouseDown={() => {
         popPress(props.id)
         props.onClick()
@@ -223,7 +224,7 @@ export const PillButton = (props: {
         uiTransform={{ width: '100%', height: '100%', borderRadius: h / 2 - 4, justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}
         uiBackground={{ color: hov ? PAL.violet : PAL.violetDark }}
       >
-        <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: w - 12, height: Math.max(24, h - 12) }} />
+        <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: w - 12, height: Math.max(24, h - 12) }} />
       </UiEntity>
     </UiEntity>
   )

@@ -6,10 +6,11 @@ import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
 import { room } from '../../shared/messages'
 import { returnToLobby } from '../lobby'
+import { MAX_DIFFICULTY } from '../../config'
 import { canvas, mobile, EDGE, fs, sz } from './platform'
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, TileState, clamp, c } from './theme'
 
-type Game = { phase: string; round: number; difficulty: number; timeLeft: number; completed: number; question: string; length: number; masked: string; hint: string }
+type Game = { phase: string; round: number; difficulty: number; timeLeft: number; voteLeft: number; voteDown: number; voteSame: number; voteUp: number; completed: number; question: string; length: number; masked: string; hint: string }
 
 function game(): Game | null {
   if (C.UI_PREVIEW) return mockGame()
@@ -31,7 +32,7 @@ function mockGame(): Game {
   if (t >= 8) placed = Math.min(5, Math.floor(t - 7))
   const masked = MOCK_WORD.split('').map((ch, i) => (i < placed ? ch : '_')).join('')
   const hint = t >= 6 && t < 12 ? 'PA___' : ''
-  return { phase: t >= 12 ? 'won' : 'playing', round: mockRound(), difficulty: 1, timeLeft: Math.max(0, 240 - Math.floor(t)), completed: mockRound() - 1, question: 'What is the capital of France?', length: MOCK_WORD.length, masked, hint }
+  return { phase: t >= 13 ? 'vote' : t >= 12 ? 'won' : 'playing', voteLeft: Math.max(0, Math.ceil(MOCK_LOOP - t)), voteDown: 0, voteSame: 1, voteUp: t >= 14 ? 2 : 0, round: mockRound(), difficulty: 1, timeLeft: Math.max(0, 240 - Math.floor(t)), completed: mockRound() - 1, question: 'What is the capital of France?', length: MOCK_WORD.length, masked, hint }
 }
 
 const heldLetter = (): string => {
@@ -202,12 +203,64 @@ function BottomArea() {
   )
 }
 
+// ---- vote screen: shown between rounds ----
+let myVote: number | null = null // -1 easier, 0 same, 1 harder; reset whenever a vote is not open
+let votedRound = -1
+
+function VoteScreen(props: { g: Game }) {
+  const { g } = props
+  if (votedRound !== g.round) {
+    votedRound = g.round
+    myVote = null
+  }
+  const pick = (choice: number) => {
+    myVote = choice
+    if (!C.UI_PREVIEW) room.send('vote', { choice })
+  }
+  const bw = sz(250, 190)
+  const bh = sz(120, 92)
+  const panelW = 3 * bw + 2 * 18 + 70
+  const can = { down: g.difficulty > 1, up: g.difficulty < MAX_DIFFICULTY }
+  const option = (id: string, label: string, choice: number, count: number, tint: typeof PAL.cyan, enabled: boolean) => (
+    <UiEntity uiTransform={{ width: bw, height: bh + 26, margin: { left: 9, right: 9 }, flexDirection: 'column', alignItems: 'center', pointerFilter: 'none' }}>
+      {enabled ? (
+        <PillButton id={id} label={label} width={bw} height={bh} font={fs(sz(34, 24))} tint={tint} active={myVote === choice} onClick={() => pick(choice)} />
+      ) : (
+        <Frame width={bw} height={bh} edge={c(0.6, 0.55, 0.7, 0.6)} fill={c(0.2, 0.1, 0.4, 0.5)} radius={bh / 2} border={4} align="center" justify="center">
+          <Label value={label} fontSize={fs(sz(34, 24))} font="sans-serif" color={c(1, 1, 1, 0.4)} uiTransform={{ width: '100%', height: '100%' }} />
+        </Frame>
+      )}
+      <OutlineLabel value={`${count}`} fontSize={fs(sz(26, 20))} color={PAL.text} width="100%" height={26} />
+    </UiEntity>
+  )
+  return (
+    <UiEntity uiTransform={{ positionType: 'absolute', position: { top: sz(330, 220) }, width: '100%', alignItems: 'center', pointerFilter: 'none' }}>
+      <Frame width={panelW} height={sz(330, 270)} edge={PAL.violet} fill={PAL.cream} radius={30} border={6} pad={sz(18, 12)} align="center" justify="center" block>
+        <Label value="Next round: how hard?" fontSize={fs(sz(40, 28))} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: sz(56, 44) }} />
+        <Label
+          value={`Level ${g.difficulty} now  -  ${g.voteLeft}s  -  no vote counts as Same`}
+          fontSize={fs(sz(22, 18))}
+          font="sans-serif"
+          color={c(0.45, 0.35, 0.6, 1)}
+          uiTransform={{ width: '100%', height: sz(34, 28) }}
+        />
+        <UiEntity uiTransform={{ width: '100%', height: bh + 26, margin: { top: 8 }, flexDirection: 'row', justifyContent: 'center', pointerFilter: 'none' }}>
+          {option('vote-down', 'Easier', -1, g.voteDown, PAL.cyan, can.down)}
+          {option('vote-same', 'Same', 0, g.voteSame, PAL.violetLight, true)}
+          {option('vote-up', 'Harder', 1, g.voteUp, PAL.pink, can.up)}
+        </UiEntity>
+      </Frame>
+    </UiEntity>
+  )
+}
+
 export function GameHud() {
   const g = game()
   if (g) track(g)
   return (
     <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', pointerFilter: 'none' }}>
       {g && <WordPanel g={g} />}
+      {g && g.phase === 'vote' && <VoteScreen g={g} />}
       <SidePanel g={g} />
       <BottomArea />
     </UiEntity>

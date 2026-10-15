@@ -44,7 +44,10 @@ let stateEntity: Entity
 let answer = ''
 let slots: (SCube | null)[] = []
 let hintsUsed = 0
-let phase: 'playing' | 'won' | 'timeout' = 'playing'
+let phase: 'playing' | 'won' | 'timeout' | 'vote' = 'playing'
+let voteLeft = 0
+let lastVoteShown = -1
+const votes = new Map<string, number>() // address -> -1 easier, 0 same, 1 harder
 let difficulty = C.START_DIFFICULTY
 let timeLeft = 0
 let lastTimeShown = -1
@@ -81,16 +84,14 @@ function players(): PlayerInfo[] {
   return out
 }
 
-// Players standing in the arena (not in the lobby). The round timer only runs while someone is playing.
-function playersInGame(): number {
+// Players standing in the arena (not in the lobby). The round timer and the vote only run while someone is playing.
+function arenaPlayers(): PlayerInfo[] {
   const o = envOrigin()
-  let n = 0
-  for (const p of players()) {
+  return players().filter((p) => {
     const dx = p.pos.x - o.x
     const dz = p.pos.z - o.z
-    if (dx * dx + dz * dz < (C.ARENA_RADIUS + 4) ** 2 && p.pos.y > o.y - 2) n++
-  }
-  return n
+    return dx * dx + dz * dz < (C.ARENA_RADIUS + 4) ** 2 && p.pos.y > o.y - 2
+  })
 }
 
 function playerOf(address: string): PlayerInfo | null {
@@ -244,7 +245,7 @@ function release(cube: SCube, pos: Vector3, vx: number, vy: number, vz: number) 
 
 // ---------- rounds ----------
 
-function startRound() {
+function startRound(message = 'New round! Find the letters.') {
   for (const cube of Array.from(cubes.values())) removeCube(cube)
   clearBodies(world)
   holders.clear()
@@ -275,7 +276,7 @@ function startRound() {
     ;[letters[i], letters[j]] = [letters[j], letters[i]]
   }
   spawnQueue = letters
-  toast('New round! Find the letters.')
+  toast(message)
 }
 
 function spawnInHeap(letter: string) {
@@ -360,6 +361,55 @@ function land(cube: SCube) {
   }
   updateGameState()
   void holder
+}
+
+// ---------- vote ----------
+
+function updateVoteState() {
+  const present = new Set(arenaPlayers().map((p) => p.address))
+  let down = 0
+  let same = 0
+  let up = 0
+  for (const [addr, choice] of votes) {
+    if (!present.has(addr)) continue
+    if (choice < 0) down++
+    else if (choice > 0) up++
+    else same++
+  }
+  const g = GameState.getMutable(stateEntity)
+  g.voteDown = down
+  g.voteSame = same
+  g.voteUp = up
+  g.voteLeft = Math.max(0, Math.ceil(voteLeft))
+}
+
+function startVote() {
+  phase = 'vote'
+  votes.clear()
+  voteLeft = C.VOTE_SECONDS
+  lastVoteShown = -1
+  updateGameState()
+  updateVoteState()
+}
+
+// Players who did not vote count as "same". The option with the most votes wins, a tie keeps the level.
+function endVote() {
+  const present = arenaPlayers()
+  let down = 0
+  let up = 0
+  for (const p of present) {
+    const choice = votes.get(p.address) ?? 0
+    if (choice < 0) down++
+    else if (choice > 0) up++
+  }
+  const same = present.length - down - up
+  let step = 0
+  if (up > down && up > same) step = 1
+  else if (down > up && down > same) step = -1
+  const next = Math.min(C.MAX_DIFFICULTY, Math.max(1, difficulty + step))
+  const changed = next !== difficulty
+  difficulty = next
+  startRound(changed ? `Level ${difficulty} (${step > 0 ? 'harder' : 'easier'})! Find the letters.` : `Level ${difficulty}. Find the letters.`)
 }
 
 // ---------- messages ----------
@@ -462,6 +512,14 @@ function init() {
     lastSettle.set(cube.id, clock)
   })
 
+  room.onMessage('vote', (data, ctx) => {
+    if (!ctx || phase !== 'vote') return
+    const addr = ctx.from.toLowerCase()
+    if (!arenaPlayers().some((p) => p.address === addr)) return
+    votes.set(addr, Math.max(-1, Math.min(1, Math.round(data.choice))))
+    updateVoteState()
+  })
+
   room.onMessage('hint', (_data, ctx) => {
     if (!ctx || phase !== 'playing') return
     if (hintsUsed >= answer.length - 1) return toast('No more hints for this word!', ctx.from.toLowerCase())
@@ -552,7 +610,7 @@ function gameSystem(dt: number) {
     if (phase === 'playing' && slots[f.cube.slot] === f.cube) land(f.cube)
   }
 
-  if (phase === 'playing' && playersInGame() > 0) {
+  if (phase === 'playing' && arenaPlayers().length > 0) {
     timeLeft -= dt
     if (timeLeft <= 0) timeUp()
     else if (Math.ceil(timeLeft) !== lastTimeShown) {
@@ -561,9 +619,18 @@ function gameSystem(dt: number) {
     }
   }
 
-  if (phase !== 'playing') {
+  if (phase === 'won' || phase === 'timeout') {
     nextRoundIn -= dt
-    if (nextRoundIn <= 0) startRound()
+    if (nextRoundIn <= 0) startVote()
+  } else if (phase === 'vote') {
+    const present = arenaPlayers()
+    if (present.length > 0) voteLeft -= dt // an empty room holds the vote open
+    const everyoneVoted = present.length > 0 && present.every((p) => votes.has(p.address))
+    if (voteLeft <= 0 || everyoneVoted) endVote()
+    else if (Math.ceil(voteLeft) !== lastVoteShown) {
+      lastVoteShown = Math.ceil(voteLeft)
+      updateVoteState()
+    }
   }
 
   housekeepAcc += dt
@@ -607,6 +674,10 @@ export function initServer() {
     round: 0,
     difficulty: C.START_DIFFICULTY,
     timeLeft: 0,
+    voteLeft: 0,
+    voteDown: 0,
+    voteSame: 0,
+    voteUp: 0,
     completed: 0,
     question: '',
     length: 0,

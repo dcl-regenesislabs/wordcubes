@@ -14,10 +14,14 @@ export const CubeData = engine.defineComponent('wc:Cube', {
 
 // Singleton room state. The answer itself is never in here, only the letters already placed or hinted.
 export const GameState = engine.defineComponent('wc:GameState', {
-  phase: Schemas.String, // 'playing' | 'won' | 'timeout'
+  phase: Schemas.String, // 'playing' | 'won' | 'timeout' | 'vote'
   round: Schemas.Int,
   difficulty: Schemas.Int, // room level, 1..7
   timeLeft: Schemas.Int, // whole seconds left in the round (stops while nobody is in the arena)
+  voteLeft: Schemas.Int, // whole seconds left in the vote (phase 'vote')
+  voteDown: Schemas.Int, // votes cast so far: easier / same / harder
+  voteSame: Schemas.Int,
+  voteUp: Schemas.Int,
   completed: Schemas.Int,
   question: Schemas.String,
   length: Schemas.Int,
