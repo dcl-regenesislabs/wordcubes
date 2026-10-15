@@ -18,6 +18,7 @@ export const GameState = engine.defineComponent('wc:GameState', {
   round: Schemas.Int,
   difficulty: Schemas.Int, // room level, 1..7
   timeLeft: Schemas.Int, // whole seconds left in the round (stops while nobody is in the arena)
+  board: Schemas.String, // top players: "address:rating,address:rating,..." best first
   frozen: Schemas.Int, // seconds of Time Freeze left (the round timer is stopped)
   players: Schemas.Int, // players standing in the arena
   builders: Schemas.Int, // how many players built the last finished word
@@ -34,7 +35,11 @@ export const GameState = engine.defineComponent('wc:GameState', {
   heartbeat: Schemas.Int64
 })
 
+// Everyone's rating, so every client can put a rank over each player: "address:rating,address:rating,..."
+export const PlayerRanks = engine.defineComponent('wc:Ranks', { data: Schemas.String })
+
 if (isServer()) {
+  PlayerRanks.validateBeforeChange((v) => v.senderAddress === AUTH_SERVER_PEER_ID)
   CubeData.validateBeforeChange((v) => v.senderAddress === AUTH_SERVER_PEER_ID)
   GameState.validateBeforeChange((v) => v.senderAddress === AUTH_SERVER_PEER_ID)
 }

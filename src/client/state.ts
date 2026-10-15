@@ -2,7 +2,10 @@
 export const cs = {
   myAddress: '',
   coins: 0,
-  rating: 0, // placeholder until ratings are stored per player (see docs/round-system-design.md)
+  rating: 0, // your saved rating (the server sends it)
+  items: { wildcard: 0, reroll: 0, freeze: 0, bomb: 0 } as Record<string, number>, // your inventory
+  delta: 0, // rating change after the last round you took part in
+  shop: false, // the vendor's shop is open
   message: '',
   messageTime: 0,
   inGame: false, // false in the lobby, true once teleported into (or standing in) the game

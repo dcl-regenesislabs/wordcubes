@@ -7,7 +7,8 @@ import { pickWord } from './words'
 import { loadProfile, profileOf, touch, saveSome, release as releaseProfile, allCached, ratingDelta } from './profiles'
 import { room } from '../shared/messages'
 import { envOrigin } from '../shared/env'
-import { CubeData, GameState, protectServerEntity, modelFor } from '../shared/schemas'
+import { CubeData, GameState, PlayerRanks, protectServerEntity, modelFor } from '../shared/schemas'
+import { Storage } from '@dcl/sdk/server'
 import { worldParams, syncEnvParams } from '../shared/world'
 import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, clearBodies, step, applyImpulse, wake, wakeNear, setPushers } from '../sim/physics'
@@ -63,6 +64,11 @@ const holders = new Map<string, SCube>()
 const lockedUntil = new Map<string, number>() // address -> clock time when placing is allowed again
 // Who took part in this round: locked in at least one correct cube (even one a later collapse knocked out).
 const participants = new Set<string>()
+const BOARD_KEY = 'wc:board'
+let board: { a: string; r: number }[] = []
+let boardDirty = false
+let ranksEntity: Entity
+let lastRanks = ''
 let wildcardUsed = false // one wildcard per round, in the whole room
 let freezeLeft = 0 // seconds of Time Freeze left
 const itemReady = new Map<string, number>() // address -> clock time their next power-up is ready
@@ -124,6 +130,28 @@ function sendProfile(address: string) {
     { rating: Math.round(p.rating), wildcard: p.items.wildcard ?? 0, reroll: p.items.reroll ?? 0, freeze: p.items.freeze ?? 0, bomb: p.items.bomb ?? 0 },
     { to: [address] }
   )
+}
+
+// Top 5 by rating. Updated when someone's rating changes, saved with the profiles, shown on the lobby sign.
+function updateBoard(address: string, rating: number) {
+  const r = Math.round(rating)
+  const at = board.findIndex((b) => b.a === address)
+  if (at >= 0) board[at].r = r
+  else board.push({ a: address, r })
+  board.sort((x, y) => y.r - x.r)
+  board = board.slice(0, 5)
+  boardDirty = true
+  GameState.getMutable(stateEntity).board = board.map((b) => `${b.a}:${b.r}`).join(',')
+}
+
+function publishRanks() {
+  const data = allCached()
+    .slice(0, 60)
+    .map(([addr, p]) => `${addr}:${Math.round(p.rating)}`)
+    .join(',')
+  if (data === lastRanks) return
+  lastRanks = data
+  PlayerRanks.getMutable(ranksEntity).data = data
 }
 
 function giveCoins(address: string, amount: number) {
@@ -402,6 +430,7 @@ function settleRound(won: boolean, who: string[]): Map<string, number> {
     if (won) p.wins++
     touch(addr)
     sendProfile(addr)
+    updateBoard(addr, p.rating)
     out.set(addr, delta)
   }
   return out
@@ -858,10 +887,17 @@ function gameSystem(dt: number) {
         releaseProfile(addr)
       } else absent.set(addr, (absent.get(addr) ?? 0) + 1)
     }
+    publishRanks()
     saveAcc += 1
     if (saveAcc >= C.PROFILE_SAVE_SECONDS) {
       saveAcc = 0
       saveSome()
+      if (boardDirty) {
+        boardDirty = false
+        void Storage.set(BOARD_KEY, board).then((ok) => {
+          if (!ok) boardDirty = true
+        })
+      }
     }
     const inArena = arenaPlayers().length
     if (GameState.get(stateEntity).players !== inArena) GameState.getMutable(stateEntity).players = inArena
@@ -885,6 +921,10 @@ function clearStaleEntities() {
     if (((entity as number) & 0xffff) < 512) continue
     engine.removeEntity(entity)
   }
+  for (const [entity] of engine.getEntitiesWith(PlayerRanks)) {
+    if (((entity as number) & 0xffff) < 512) continue
+    engine.removeEntity(entity)
+  }
 }
 
 export function initServer() {
@@ -895,6 +935,7 @@ export function initServer() {
     round: 0,
     difficulty: C.START_DIFFICULTY,
     timeLeft: 0,
+    board: '',
     frozen: 0,
     players: 0,
     builders: 0,
@@ -911,6 +952,17 @@ export function initServer() {
     heartbeat: Date.now()
   })
   syncEntity(stateEntity, [GameState.componentId], 1)
+  ranksEntity = engine.addEntity()
+  PlayerRanks.create(ranksEntity, { data: '' })
+  syncEntity(ranksEntity, [PlayerRanks.componentId], 2)
+  void Storage.get<{ a: string; r: number }[]>(BOARD_KEY)
+    .then((stored) => {
+      if (stored && Array.isArray(stored)) {
+        board = stored.slice(0, 5)
+        GameState.getMutable(stateEntity).board = board.map((b) => `${b.a}:${b.r}`).join(',')
+      }
+    })
+    .catch((e) => console.log('[SERVER] board read failed', e))
   init()
   engine.addSystem(gameSystem, 1, 'word-cubes-server')
   startRound()

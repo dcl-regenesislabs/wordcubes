@@ -8,29 +8,25 @@ Each room votes on its own difficulty after every round, and each player earns o
 
 ## Where we are today
 
-The core loop, timer, difficulty levels, voting, contributor tracking, lockout and priced hints are built. What is missing is everything that needs per-player storage (rating, rank, coins that survive a restart), the tiered word bank, and the vendor.
+Everything in this doc is built on the `roundsystem` branch and type-checked. None of it has been playtested by the team yet. What is left is content (a bigger word bank, sounds), tuning, and delivering the real wearable.
 
-| Feature | In the GDD | Status |
-| --- | --- | --- |
-| Question with blanks, cube pile, free-for-all placing | Yes | Built |
-| Wrong placement collapses the whole word | Yes | Built |
-| All cubes reshuffled each round | Yes | Built |
-| Physics-driven cubes, players shove them | Yes | Built |
-| Coins from breaking cubes and finishing a word | Yes | Built; coins are held in memory only |
-| Round timer | Implied by time freeze | Built |
-| Difficulty levels 1 to 7 per room | Ideas section | Built; the level only changes the word length and the timer |
-| Vote between rounds | Ideas section | Built |
-| Pile can never become unsolvable | Not specified | Built |
-| Coins only for the players who built the word | Not specified | Built |
-| Collapse lockout | Not specified | Built |
-| Hints cost coins | Not specified | Built |
-| Break effect (3D particles) | Not specified | Built |
-| Wearable after 2 completed cycles | Yes | Stub (a toast message only) |
-| Power-ups (freeze, raise difficulty, reroll, wildcard) | Yes | Missing |
-| Rating, ranks and the rank display | Not specified | Display placeholder only; rating is not built |
-| Tiered word bank | Flagged as a risk | Missing; about 20 words, longest is 6 letters |
-| Per-player persistence | Needed for the success metrics | Missing |
-| Lobby NPCs (rank guide, vendor) | Not specified | Rank guide built (draft text); vendor not built |
+| Feature | Status |
+| --- | --- |
+| Core loop: question, cube pile, free-for-all placing, collapse on a wrong cube | Built |
+| Round timer, difficulty levels 1 to 7, vote between rounds | Built |
+| Word bank with a list per level | Built; 105 words, a starter set |
+| Pile can never become unsolvable | Built |
+| Coins only for the players who built the word; vote bonus | Built |
+| Collapse lockout, hints that cost coins | Built |
+| Saved profiles: coins, rating, inventory (by wallet) | Built, in server Storage |
+| Rating and ranks (Elo against the room level) | Built |
+| Rank shown in the lobby, on the in-game badge, over other players, and on a leaderboard | Built |
+| Vendor with Wildcard, Time Freeze, Reroll and Bomb, in the lobby and in the arena | Built |
+| Rank guide NPC | Built (draft text) |
+| Break and bomb effects (3D particles) | Built |
+| Wearable reward after 2 won rounds | Announced per player; the real wearable is not delivered |
+| Sounds | Missing: the project has no audio files |
+| Question bank big enough for 24/7 play | Missing: needs bulk content |
 
 ## Difficulty levels
 
@@ -40,12 +36,12 @@ Difficulty does not change the number of cubes. The pile already has plenty of d
 
 | Lever | What changes | When |
 | --- | --- | --- |
-| Word length and obscurity | Short common words at level 1, long or obscure words at level 7 | First build |
+| Word length and obscurity | Short common words at level 1, long or obscure words at level 7 | Built |
 | Question style | Direct clue versus vague or riddle-style clue | Later |
-| Round timer | Shorter at higher levels | Later |
+| Round timer | Shorter at higher levels (240 s at level 1, 150 s at level 7) | Built |
 | Hints | Cheaper or automatic at low levels, off at high levels | Later |
 
-The first build only needs a tiered word bank. A per-level settings table holds every lever, so the others can be switched on later without changing the round logic.
+Each level has its own word list and its own round timer (`LEVELS` in `config.ts`). The other levers can be switched on later without changing the round logic.
 
 **Rule: the pile can never become unsolvable.** Each round already spawns every letter of the answer, duplicates included. But a player can break a needed cube and remove it for good. When that happens, or any needed cube is otherwise lost, the server spawns a replacement so the pile always holds at least the letters the word still needs.
 
@@ -63,7 +59,7 @@ Getting people to vote is the main risk. *Proposed* ways to help:
 
 - A large, central vote screen with a visible countdown and three big buttons.
 - End the vote early once everyone present has voted.
-- A small coin bonus just for voting.
+- A small coin bonus just for voting (3 coins, built).
 - Show the room's average rank on the vote screen, so people know who they are voting with.
 
 ## Contributors, points and rating
@@ -74,23 +70,25 @@ Only players who took part in building the word earn or lose anything. Standing 
 
 Example: A places a correct P. B places a wrong cube and the whole word drops. C places the correct P again, and nobody else places anything. C gets the points, not A, because A's cube was not part of the word that was completed.
 
-**On a timeout**, the round is a failure even if the word was one letter short. Contributors lose rating. In the example above, C loses rating because C took part.
+**On a timeout**, the round is a failure even if the word was one letter short. Everyone who locked in at least one correct cube during the round, and is still in the arena, loses rating. In the example above, both A and C lose rating, because both locked in a correct cube. A player who only placed wrong cubes does not.
 
 **Rating**
 
-- Each player has a rating. Each of the 7 levels has a fixed rating, evenly spaced to start and adjusted after playtests.
+- Each player has a rating. Each of the 7 levels has a fixed rating in the middle of its rank band: 100, 300, 500 and so on up to 1300. They are evenly spaced to start and can be adjusted after playtests.
 - The gain or loss depends on the gap between the player's rating and the level's rating, the way Elo works.
 - A new player gains a lot for winning at any level and loses little for failing. As their rating grows, wins at level 1 give almost nothing and a failure at level 1 costs a lot. That pushes players to vote for harder levels.
 - Rating is separate from coins. Coins are spendable and only go up. Rating can go down.
 - Higher levels give no coin multiplier. With 7 levels a multiplier would reach 7x, which is too much. Coins stay flat, and progress at higher levels shows up as rating.
-- *Proposed:* rating changes only apply to contributors who are still in the room when the round ends, so a player cannot place one cube and leave to avoid a loss.
-- *Proposed:* new players are protected for their first few rounds with a very small loss. The length of that period is a tuning number.
+- Rating changes only apply to contributors who are still in the arena when the round ends, so a player cannot place one cube and leave to avoid a loss.
+- New players are protected for their first 5 rounds: wins are worth 1.5 times as much and losses a quarter as much. A rating never goes below 0.
+- The formula is Elo with K = 40. A brand new player gains about 38 points for winning at level 1 and loses about 4 for a timeout. A player rated 600 gains about 2 points at level 1 and loses about 38.
+- Each rank covers 200 rating points, and there are 7 ranks.
 
 ## Anti-troll lockout and hints
 
-**Collapse lockout.** A collapse is not a rating failure. Instead, the player who caused it cannot place cubes for a set time. Playtests already showed some players trolling by placing wrong cubes. *Proposed:* start at 20 to 30 seconds, show a countdown on their screen, and let them keep grabbing and breaking cubes during the lockout.
+**Collapse lockout.** A collapse is not a rating failure. Instead, the player who caused it cannot place cubes for 25 seconds. Playtests already showed some players trolling by placing wrong cubes. A countdown shows on their screen, and they can still grab, break and throw cubes during the lockout.
 
-**Hints cost coins.** Hints are free and unlimited today, so anyone can spam them. They will cost coins, which also gives coins their first use. *Proposed:* the requester pays, the hint is revealed to the whole room as now, and each extra hint in the same round costs more than the one before.
+**Hints cost coins.** Hints are free and unlimited today, so anyone can spam them. They now cost coins: 10 for the first hint in a round, then 20, 30 and so on. The requester pays and the whole room sees the letter.
 
 ## Ranks and display
 
@@ -108,10 +106,12 @@ Players see a rank name, not the rating number, which hides the formula and is f
 
 Where ranks show:
 
-- At the start pad, next to the room's current difficulty level.
-- Inside the game, over each player's nameplate.
+- In the lobby, next to your coins.
+- On the in-game badge, next to the level.
+- Over every other player's head, as a small floating label (the SDK has no way to edit the built-in name tag).
+- On a Top players panel that appears when you stand near the Leaderboard sign in the lobby.
 
-There is no matchmaking. Players choose a room from the pad and leave to find another if it is not for them. Whether the nameplate display is feasible in the SDK still needs checking.
+There is no matchmaking. Players choose a room from the pad and leave to find another if it is not for them.
 
 ## UI and feedback
 
@@ -125,50 +125,61 @@ Built, and kept in one UI kit (`src/client/ui/`) so desktop and phone share the 
 - **Pad sign:** the room's level and how many players are in the arena.
 - **Break effect:** gold sparks when a cube pays coins, a grey puff when it was a letter the word needs.
 
-Not built yet: sounds (needs audio assets), a highlight on the frames when you first hold a cube, a leaderboard on the lobby sign (needs persistence), and the rank over player nameplates.
+- **Frame glow:** while you hold a cube, the empty frames pulse gold, and so do the empty letter tiles.
+- **Item bar:** the power-ups you own appear as buttons on the right while a round runs.
+- **Rank up message** when your rating crosses into a new rank, and the rating change in the round result.
+
+Not built yet: sounds. The project has no audio files, and the sounds in the team's other scenes have no recorded licence, so none were copied.
 
 ## Lobby NPCs and shop
 
-Two NPCs made from Decentraland avatars stand in the lobby. Players click one to talk, and the conversation uses the UI kit panel.
+Two kinds of NPC made from Decentraland avatars. Players click one to talk, and the conversation or shop uses the UI kit panel.
 
-- **Lexi, Keeper of Ranks:** built. Explains the ranks, the vote and who earns the reward. The text is a draft and describes the planned system; ranks do not change yet.
-- **Vendor:** not built. It needs a server-side shop (items, prices, a purchase message and an inventory per player). Questions for the team are in the list below.
+- **Lexi, Keeper of Ranks:** explains the ranks, the vote and who earns the reward. The text is a draft.
+- **Cubby, the Vendor:** there are two, one in the lobby and one inside the arena, so players can restock without leaving. A spinning wildcard box and a SHOP sign float over each, so they are easy to spot. Their outfits use base wearables only; a more distinctive look needs wearable URNs from the team.
+
+Move an NPC by adding an empty entity with its name in the Creator Hub: `RankNpc`, `VendorNpc` (lobby) or `VendorNpcGame` (arena). Without one, the code places them.
+
+Items are bought with coins, kept in the player's saved inventory between rounds and sessions, and used in the arena. A player can carry up to 9 of each.
+
+| Item | Price (coins) | What it does |
+| --- | --- | --- |
+| Wildcard | 250 | You get a wildcard box in your hands. Place it in any empty frame: it counts as the right letter and stays put when the word collapses. One wildcard per round in the whole room. |
+| Time Freeze | 90 | Stops the round timer for 20 seconds. |
+| Reroll | 60 | Throws out the loose pile and drops a fresh set of cubes. |
+| Bomb | 70 | Removes the loose letters around you that the word does not use, and shoves the useful ones away. |
+
+Each player has a 30-second cooldown between power-ups. Wildcards are limited by the one-per-round rule instead. A wildcard cannot be broken for coins. The "raise difficulty" power-up from the GDD is replaced by the vote.
+
+Prices are a first guess. Coins come from 25 per finished word, 5 per broken cube, and 3 per vote, so a wildcard takes roughly ten finished words.
 
 ## Technical dependencies
 
 - **Round timer** on the server, paused when the room is empty. Built.
-- **Tiered word bank.** Every question needs a level from 1 to 7. Word length can stand in as a first proxy, then a large generated bank replaces it. Content work, and it can run in parallel with the code.
-- **Persistence by wallet address.** Coins and rating currently live in memory and reset when the server restarts. Rating, and the D7-return metric in the GDD, both need storage. This should be designed before the rating is built.
+- **Tiered word bank.** Built with 7 levels and 105 words. A 24/7 room needs a much larger bank, which is content work (a generated bank, reviewed).
+- **Persistence by wallet address.** Built with the server Storage. Profiles are saved at most every 15 seconds and when a player leaves, never on every change. Reading the data back for the D7-return metric is not built.
 - **Per-round contributor tracking** on the server: who placed each cube in the final word, and who placed any correct cube during the round. Built.
 - **New messages and UI:** a vote message and vote screen, a lockout countdown and hint pricing are built. The rank display at the pad and over nameplates is not.
 - **Replacement spawn** for needed cubes that get broken. Built.
-- **Shop and inventory** for the vendor: items, prices, purchase message, and what each item does in a round.
+- **Shop and inventory** for the vendor. Built.
 
 ## Open questions
 
-- [ ] On a timeout, does rating drop for every player who ever placed a correct cube, or only for players whose cubes were in the word at the end? In the example, is A penalised too?
-- [ ] Does a player who only placed wrong cubes lose rating on a timeout?
-- [ ] How long is the collapse lockout, and can the player still grab and break cubes during it?
-- [ ] How long is a round at each level, and how long is the vote window?
-- [ ] How many rounds does the new-player protection last?
+- [ ] Should the real wearable reward still go out after 2 won rounds, and how is it delivered?
+- [ ] Are the item prices and the 30-second cooldown right? Tune after playtests.
+- [ ] Should the one-wildcard-per-round limit apply to the room (as built) or to each player?
 - [ ] What are the final rank names?
-- [ ] Where does the storage for coins and rating live, and who owns it?
-- [ ] What does the "raise difficulty" power-up from the GDD become now that the room votes?
-- [ ] Is the wearable reward still given after 2 completed cycles, and is that counted per player?
-- [ ] What exactly does a wildcard do? For example, it fills any empty slot with the correct letter, or it matches any letter but still collapses if used in the wrong place.
-- [ ] What does the vendor sell besides wildcards (reroll, time freeze, bomb), and what does each cost?
-- [ ] Are bought items used in a round only, or kept in an inventory between rounds and sessions?
-- [ ] Can the vendor be used inside the game, or only in the lobby?
-- [ ] Should a player's rank be shown over their nameplate in the arena, or only in the lobby?
+- [ ] How long should a round last at each level?
+- [ ] Which wearables should the vendor wear?
+- [ ] Who writes and reviews the larger word bank, and in which languages?
+- [ ] Which sounds do we want, and where do they come from?
 
-## Suggested build order
+## Build order and what is left
 
-1. Done: round timer, a difficulty field on the room, a per-level settings table, and the rule that the pile can never become unsolvable.
-2. Done: word selection by level, using word length as a stand-in until the real bank exists.
-3. Done: vote phase on the server, plus the vote screen.
-4. Done: contributor tracking, and coins only for contributors.
-5. Done: collapse lockout, and hints that cost coins.
-6. Next: persistence by wallet address, then the rating and rank system, then the rank display at the pad and over nameplates.
-7. After the decisions above: the vendor, the shop and the wildcard.
-
-The tiered word bank is content work and can run alongside all of these.
+1. Done: round timer, difficulty levels, per-level word lists, and the rule that the pile can never become unsolvable.
+2. Done: vote phase, vote screen and vote bonus.
+3. Done: contributor tracking, coins only for builders, collapse lockout, priced hints.
+4. Done: saved profiles, rating, ranks, leaderboard and rank labels.
+5. Done: vendor, inventory, wildcard, Time Freeze, Reroll and Bomb.
+6. Left: playtest and tune (timers, prices, rating numbers).
+7. Left: a much bigger word bank, sounds, the real wearable reward, and vendor outfits.

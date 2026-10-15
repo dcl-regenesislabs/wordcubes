@@ -14,6 +14,7 @@ import { setupUi } from './ui'
 import { setupLobby } from './lobby'
 import { setupFx } from './fx'
 import { setupNpcs } from './npcs'
+import { rankTagSystem } from './ranktags'
 
 let joined = false
 let lastRound = -1
@@ -99,4 +100,5 @@ export function initClient() {
 
   engine.addSystem(clientSystem, 1, 'word-cubes-client')
   engine.addSystem(grassSystem, 1, 'word-cubes-grass')
+  engine.addSystem(rankTagSystem, 1, 'word-cubes-rank-tags')
 }

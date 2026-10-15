@@ -22,7 +22,7 @@ const SPIN_EASE = 2
 const TELEPORT_LOCKOUT = 4 // s after teleporting before the pad can start another countdown
 
 /** World position of an entity, following its parent chain (the pad is a child of "Lobby"). */
-function worldPosition(entity: Entity): Vector3 {
+export function worldPosition(entity: Entity): Vector3 {
   const t = Transform.get(entity)
   let pos = Vector3.create(t.position.x, t.position.y, t.position.z)
   let parent = t.parent
