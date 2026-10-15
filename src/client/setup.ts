@@ -8,7 +8,7 @@ import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './f
 import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { predictSystem } from './predict'
 import { playThrowEmote, stopHoldEmote } from './emotes'
-import { cs, showMessage } from './state'
+import { cs, showMessage, lockoutLeft } from './state'
 import { grassSystem } from './grass'
 import { setupUi } from './ui'
 import { setupLobby } from './lobby'
@@ -78,6 +78,7 @@ export function initClient() {
 
   setSlotClickHandler((slot) => {
     if (!isHolding()) return showMessage('Grab a cube first (click it), then click a frame.', 2)
+    if (lockoutLeft() > 0) return showMessage(`Locked out: ${lockoutLeft()}s left before you can place again.`, 2)
     playThrowEmote()
     room.send('place', { slot })
   })

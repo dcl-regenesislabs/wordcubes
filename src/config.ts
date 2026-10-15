@@ -61,6 +61,12 @@ export const LEVELS: { minLen: number; maxLen: number; seconds: number }[] = [
 ]
 export const MAX_DIFFICULTY = LEVELS.length
 
+// Anti-troll: whoever's cube makes the word collapse cannot place cubes for this long (they can still grab, break and throw away).
+export const COLLAPSE_LOCKOUT_SECONDS = 25
+// Hints cost coins; every extra hint in the same round costs one step more (10, 20, 30...). The requester pays, the room sees the letter.
+export const HINT_BASE_COST = 10
+export const HINT_COST_STEP = 10
+
 export const COINS_PER_BREAK = 5
 export const COINS_PER_WORD = 25
 export const NEXT_ROUND_DELAY = 4 // seconds the result (won / time's up) stays on screen before the vote

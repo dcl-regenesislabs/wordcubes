@@ -15,5 +15,6 @@ export const room = registerMessages({
   // server -> client
   toast: Schemas.Map({ text: Schemas.String }),
   fx: Schemas.Map({ kind: Schemas.String, slot: Schemas.Int }), // 'lock' | 'fail' | 'win'
-  coins: Schemas.Map({ value: Schemas.Int })
+  coins: Schemas.Map({ value: Schemas.Int }),
+  lockout: Schemas.Map({ seconds: Schemas.Int }) // you caused a collapse: no placing for this many seconds
 })

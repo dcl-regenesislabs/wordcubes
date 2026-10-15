@@ -45,6 +45,7 @@ let stateEntity: Entity
 let answer = ''
 let slots: (SCube | null)[] = []
 let hintsUsed = 0
+const hintCost = () => C.HINT_BASE_COST + C.HINT_COST_STEP * hintsUsed
 let phase: 'playing' | 'won' | 'timeout' | 'vote' = 'playing'
 let voteLeft = 0
 let lastVoteShown = -1
@@ -58,6 +59,7 @@ let lastWord = ''
 let nextRoundIn = 0
 let spawnQueue: string[] = []
 const holders = new Map<string, SCube>()
+const lockedUntil = new Map<string, number>() // address -> clock time when placing is allowed again
 // Who took part in this round: locked in at least one correct cube (even one a later collapse knocked out).
 const participants = new Set<string>()
 const coins = new Map<string, number>()
@@ -199,6 +201,7 @@ function updateGameState() {
     .map((_, i) => (slots[i] && slots[i]!.mode === 'placed' ? answer[i] : '_'))
     .join('')
   // a timed-out round shows the answer in the empty frames; otherwise only the letters the hints gave away
+  g.hintCost = hintsUsed < answer.length - 1 ? hintCost() : 0
   g.hint = phase === 'timeout' ? answer : hintsUsed > 0 ? answer.split('').map((c, i) => (i < hintsUsed ? c : '_')).join('') : ''
 }
 
@@ -323,11 +326,16 @@ function clearPlaced() {
   }
 }
 
-function collapse() {
+function collapse(causedBy: string) {
   clearPlaced()
   updateGameState()
   room.send('fx', { kind: 'fail', slot: -1 })
   toast('Wrong cube! The whole word collapsed.')
+  if (causedBy) {
+    lockedUntil.set(causedBy, clock + C.COLLAPSE_LOCKOUT_SECONDS)
+    room.send('lockout', { seconds: C.COLLAPSE_LOCKOUT_SECONDS }, { to: [causedBy] })
+    toast(`You collapsed the word. No placing for ${C.COLLAPSE_LOCKOUT_SECONDS}s.`, causedBy)
+  }
 }
 
 // The timer ran out: the word falls, the answer is shown and the next round follows after the usual pause.
@@ -354,7 +362,7 @@ function finishWord(): string[] {
 function land(cube: SCube) {
   const slot = cube.slot
   if (cube.letter !== answer[slot]) {
-    collapse()
+    collapse(cube.placer)
     return
   }
   cube.mode = 'placed'
@@ -462,6 +470,8 @@ function init() {
   room.onMessage('place', (data, ctx) => {
     if (!ctx || phase !== 'playing') return
     const addr = ctx.from.toLowerCase()
+    const wait = (lockedUntil.get(addr) ?? 0) - clock
+    if (wait > 0) return toast(`Locked out: ${Math.ceil(wait)}s left before you can place again.`, addr)
     const cube = holders.get(addr)
     if (!cube) return toast('Grab a cube first (click it), then click a frame.', addr)
     if (data.slot < 0 || data.slot >= slots.length || slots[data.slot]) return
@@ -543,10 +553,15 @@ function init() {
 
   room.onMessage('hint', (_data, ctx) => {
     if (!ctx || phase !== 'playing') return
-    if (hintsUsed >= answer.length - 1) return toast('No more hints for this word!', ctx.from.toLowerCase())
+    const addr = ctx.from.toLowerCase()
+    if (hintsUsed >= answer.length - 1) return toast('No more hints for this word!', addr)
+    const cost = hintCost()
+    const have = coins.get(addr) ?? 0
+    if (have < cost) return toast(`A hint costs ${cost} coins. You have ${have}.`, addr)
+    giveCoins(addr, -cost)
     hintsUsed++
     updateGameState()
-    toast('Hint revealed!')
+    toast(`Hint revealed! (-${cost} coins)`)
   })
 }
 
@@ -704,6 +719,7 @@ export function initServer() {
     length: 0,
     masked: '',
     hint: '',
+    hintCost: C.HINT_BASE_COST,
     heartbeat: Date.now()
   })
   syncEntity(stateEntity, [GameState.componentId], 1)

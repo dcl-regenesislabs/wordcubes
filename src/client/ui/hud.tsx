@@ -1,7 +1,7 @@
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
 import { GameState } from '../../shared/schemas'
-import { cs } from '../state'
+import { cs, lockoutLeft } from '../state'
 import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
 import { room } from '../../shared/messages'
@@ -10,7 +10,7 @@ import { MAX_DIFFICULTY } from '../../config'
 import { canvas, mobile, EDGE, fs, sz } from './platform'
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, TileState, clamp, c } from './theme'
 
-type Game = { phase: string; round: number; difficulty: number; timeLeft: number; voteLeft: number; voteDown: number; voteSame: number; voteUp: number; completed: number; question: string; length: number; masked: string; hint: string }
+type Game = { hintCost: number; phase: string; round: number; difficulty: number; timeLeft: number; voteLeft: number; voteDown: number; voteSame: number; voteUp: number; completed: number; question: string; length: number; masked: string; hint: string }
 
 function game(): Game | null {
   if (C.UI_PREVIEW) return mockGame()
@@ -32,7 +32,7 @@ function mockGame(): Game {
   if (t >= 8) placed = Math.min(5, Math.floor(t - 7))
   const masked = MOCK_WORD.split('').map((ch, i) => (i < placed ? ch : '_')).join('')
   const hint = t >= 6 && t < 12 ? 'PA___' : ''
-  return { phase: t >= 13 ? 'vote' : t >= 12 ? 'won' : 'playing', voteLeft: Math.max(0, Math.ceil(MOCK_LOOP - t)), voteDown: 0, voteSame: 1, voteUp: t >= 14 ? 2 : 0, round: mockRound(), difficulty: 1, timeLeft: Math.max(0, 240 - Math.floor(t)), completed: mockRound() - 1, question: 'What is the capital of France?', length: MOCK_WORD.length, masked, hint }
+  return { hintCost: 10, phase: t >= 13 ? 'vote' : t >= 12 ? 'won' : 'playing', voteLeft: Math.max(0, Math.ceil(MOCK_LOOP - t)), voteDown: 0, voteSame: 1, voteUp: t >= 14 ? 2 : 0, round: mockRound(), difficulty: 1, timeLeft: Math.max(0, 240 - Math.floor(t)), completed: mockRound() - 1, question: 'What is the capital of France?', length: MOCK_WORD.length, masked, hint }
 }
 
 const heldLetter = (): string => {
@@ -155,7 +155,7 @@ function SidePanel(props: { g: Game | null }) {
         <OutlineLabel value={g ? `Level ${g.difficulty}   Words ${g.completed}` : ''} fontSize={fs(sz(22, 18))} color={PAL.dim} width="100%" height={sz(30, 24)} />
         <OutlineLabel value={g ? clock(g.timeLeft) : ''} fontSize={fs(sz(36, 28))} color={g && g.timeLeft <= 30 && g.phase === 'playing' ? PAL.pink : PAL.text} width="100%" height={sz(46, 36)} />
       </Frame>
-      <PillButton id="hint" label="Hint" width={w} height={sz(66, 54)} font={fs(sz(28, 22))} tint={PAL.pink} margin={{ top: 10 }} onClick={() => room.send('hint', { n: 0 })} />
+      <PillButton id="hint" label={g && g.hintCost > 0 ? `Hint  ${g.hintCost}c` : 'No hints'} width={w} height={sz(66, 54)} font={fs(sz(28, 22))} tint={PAL.pink} margin={{ top: 10 }} onClick={() => room.send('hint', { n: 0 })} />
       <PillButton id="lobby" label="Back to lobby" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} tint={PAL.cyan} margin={{ top: 8 }} onClick={returnToLobby} />
     </UiEntity>
   )
@@ -185,6 +185,11 @@ function BottomArea() {
     <UiEntity
       uiTransform={{ positionType: 'absolute', position: { bottom: sz(36, 24) }, width: '100%', alignItems: 'center', flexDirection: 'column', pointerFilter: 'none' }}
     >
+      {lockoutLeft() > 0 && (
+        <Frame width={sz(420, 320)} height={sz(52, 42)} edge={PAL.pink} fill={PAL.violetDark} radius={26} border={4} align="center" justify="center" margin={{ bottom: 8 }}>
+          <Label value={`Locked out  ${lockoutLeft()}s`} fontSize={fs(sz(28, 22))} font="sans-serif" color={PAL.pink} uiTransform={{ width: '100%', height: '100%' }} />
+        </Frame>
+      )}
       {held !== '' && (
         <UiEntity uiTransform={{ width: heldSize + 190, height: heldSize, margin: { bottom: 10 }, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
           <OutlineLabel value="Holding" fontSize={fs(sz(26, 20))} color={PAL.text} width={130} height={heldSize} />
@@ -284,4 +289,11 @@ export function LobbyCountdown() {
       </UiEntity>
     </UiEntity>
   )
+}
+
+// Server messages that only the HUD cares about.
+export function setupHudMessages() {
+  room.onMessage('lockout', (d) => {
+    cs.lockoutUntil = Date.now() + d.seconds * 1000
+  })
 }

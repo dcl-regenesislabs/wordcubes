@@ -5,6 +5,7 @@ export const cs = {
   message: '',
   messageTime: 0,
   inGame: false, // false in the lobby, true once teleported into (or standing in) the game
+  lockoutUntil: 0, // Date.now() time when you may place again (after you collapsed the word)
   lobbyCountdown: 0 // seconds left on the lobby start pad, 0 when not counting
 }
 
@@ -12,3 +13,6 @@ export function showMessage(text: string, seconds = 3) {
   cs.message = text
   cs.messageTime = seconds
 }
+
+/** Seconds left of your placing lockout, 0 when free. */
+export const lockoutLeft = () => Math.max(0, Math.ceil((cs.lockoutUntil - Date.now()) / 1000))

@@ -27,6 +27,7 @@ export const GameState = engine.defineComponent('wc:GameState', {
   length: Schemas.Int,
   masked: Schemas.String, // placed letters, '_' for empty frames, e.g. "BR_D__"
   hint: Schemas.String, // revealed hint letters, '' if none yet
+  hintCost: Schemas.Int, // coins the next hint costs, 0 when no hints are left
   heartbeat: Schemas.Int64
 })
 
