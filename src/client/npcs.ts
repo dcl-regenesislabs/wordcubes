@@ -1,5 +1,5 @@
 // Lobby NPCs made from Decentraland avatars (AvatarShape). Click one to talk; the conversation shows in the UI kit's dialog panel.
-// Position: an empty entity named "RankNpc" / "VendorNpc" in the composite wins (so the Creator Hub can move them);
+// Position: an empty entity named "RankNpc" / "VendorNpc" / "VendorNpc_2" (arena) in the composite wins (so the Creator Hub can move them);
 // otherwise they stand beside the path between the lobby centre and the start pad.
 import { engine, Transform, AvatarShape, MeshCollider, ColliderLayer, GltfContainer, TextShape, TextAlignMode, Billboard, BillboardMode, pointerEventsSystem, InputAction } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
@@ -7,7 +7,7 @@ import { Color3, Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { envOrigin } from '../shared/env'
 import { cs } from './state'
-import { lobbyAnchors } from './lobby'
+import { lobbyAnchors, worldPosition } from './lobby'
 import { RANK_NAMES } from './ui/rank'
 
 const BASE = 'urn:decentraland:off-chain:base-avatars:'
@@ -60,7 +60,7 @@ const NPCS: NpcDef[] = [
   {
     id: 'wc-npc-vendor-arena',
     name: 'Cubby, the Vendor',
-    entityName: 'VendorNpcGame',
+    entityName: 'VendorNpc_2', // the name the Creator Hub gave the second copy
     where: 'arena',
     side: 0,
     shop: true,
@@ -75,8 +75,8 @@ const spawned = new Map<string, Entity>()
 
 function standPosition(def: NpcDef): Vector3 | undefined {
   const named = engine.getEntityOrNullByName(def.entityName)
-  const t = named ? Transform.getOrNull(named) : null
-  if (t) return Vector3.create(t.position.x, t.position.y, t.position.z)
+  // entities placed in the Creator Hub are usually children of Lobby or GameEnv, so use their world position
+  if (named && Transform.getOrNull(named)) return worldPosition(named)
   if (def.where === 'arena') {
     // fallback: inside the arena wall, on the side opposite the player spawn ring's first point
     const o = envOrigin()
