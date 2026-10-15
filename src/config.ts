@@ -126,3 +126,7 @@ export const LOBBY_RADIUS = 60 // m from the Lobby centre that counts as "in the
 export const FALL_RESPAWN_DEPTH = 15 // m below the floor
 export const LOBBY_RESPAWN_HEIGHT = 2.8 // m above the Lobby origin (top of the island floor)
 export const PAD_LABEL_HEIGHT = 5 // m above the pad centre to the "Join game" text
+
+// DEV ONLY: shows the game HUD with a fake looping round, no server or game needed (stand anywhere in the scene).
+// Set to false before merging.
+export const UI_PREVIEW = false
