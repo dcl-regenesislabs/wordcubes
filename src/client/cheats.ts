@@ -13,7 +13,7 @@ export function setupCheats() {
     if (cube === null || !gltf) return // the composite has not loaded yet
     done = true
     // the decoration has no collider, so make its mesh clickable (no hover text: it is meant to stay hidden)
-    GltfContainer.getMutable(cube).visibleMeshesCollisionMask = gltf.visibleMeshesCollisionMask | ColliderLayer.CL_POINTER
+    GltfContainer.getMutable(cube).visibleMeshesCollisionMask = (gltf.visibleMeshesCollisionMask ?? 0) | ColliderLayer.CL_POINTER
     pointerEventsSystem.onPointerDown({ entity: cube, opts: { button: InputAction.IA_POINTER, maxDistance: 14 } }, () => room.send('cheat', { n: 0 }))
   }, 1, 'word-cubes-cheats')
 }
