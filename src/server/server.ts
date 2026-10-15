@@ -22,6 +22,7 @@ interface SCube {
   mode: Mode
   slot: number
   holder: string
+  placer: string // who threw it at a frame; stays set while it is locked in, cleared when it drops back into the pile
   sentAsleep: boolean
 }
 
@@ -57,6 +58,8 @@ let lastWord = ''
 let nextRoundIn = 0
 let spawnQueue: string[] = []
 const holders = new Map<string, SCube>()
+// Who took part in this round: locked in at least one correct cube (even one a later collapse knocked out).
+const participants = new Set<string>()
 const coins = new Map<string, number>()
 const lastPos = new Map<string, Vector3>()
 const pendingToss: { cube: SCube; t: number; addr: string }[] = []
@@ -216,7 +219,7 @@ function spawnCube(letter: string, x: number, y: number, z: number) {
   CubeData.create(entity, { id, letter, mode: 'free', slot: -1, holder: '' })
   protectServerEntity(entity, [Transform, GltfContainer])
   syncEntity(entity, [Transform.componentId, GltfContainer.componentId, CubeData.componentId])
-  cubes.set(id, { id, letter, entity, body, mode: 'free', slot: -1, holder: '', sentAsleep: false })
+  cubes.set(id, { id, letter, entity, body, mode: 'free', slot: -1, holder: '', placer: '', sentAsleep: false })
 }
 
 function removeCube(cube: SCube) {
@@ -237,6 +240,7 @@ function release(cube: SCube, pos: Vector3, vx: number, vy: number, vz: number) 
   cube.mode = 'free'
   cube.slot = -1
   cube.holder = ''
+  cube.placer = ''
   cube.sentAsleep = false
   applyImpulse(cube.body, vx, vy, vz)
   writeTransform(cube)
@@ -260,6 +264,7 @@ function startRound(message = 'New round! Find the letters.') {
   answer = entry.answer
   slots = new Array(answer.length).fill(null)
   hintsUsed = 0
+  participants.clear()
   phase = 'playing'
   round++
 
@@ -334,6 +339,16 @@ function timeUp() {
   updateGameState()
   room.send('fx', { kind: 'fail', slot: -1 })
   toast(`Time's up! The word was ${answer}`)
+  console.log('[ROUND]', 'timeout', answer, 'level', difficulty, 'participants', Array.from(participants).join(','))
+}
+
+// Who gets the points for a finished word: the players whose cubes are in the final standing word, each once.
+// Earlier cubes that a collapse knocked out do not count. participants (everyone who locked in a correct cube) is
+// kept for the rating step.
+function finishWord(): string[] {
+  const builders = new Set<string>()
+  for (const cube of slots) if (cube && cube.placer) builders.add(cube.placer)
+  return Array.from(builders)
 }
 
 function land(cube: SCube) {
@@ -342,10 +357,10 @@ function land(cube: SCube) {
     collapse()
     return
   }
-  const holder = cube.holder
   cube.mode = 'placed'
   cube.holder = ''
   cube.body.active = false
+  if (cube.placer) participants.add(cube.placer)
   park(cube)
   sync(cube)
   room.send('fx', { kind: 'lock', slot })
@@ -353,14 +368,19 @@ function land(cube: SCube) {
     phase = 'won'
     completed++
     nextRoundIn = C.NEXT_ROUND_DELAY
-    for (const p of players()) giveCoins(p.address, C.COINS_PER_WORD)
+    const builders = finishWord()
     room.send('fx', { kind: 'win', slot: -1 })
-    let msg = `${answer}! +${C.COINS_PER_WORD} coins for everyone`
+    let msg = `${answer}! Built by ${builders.length} player${builders.length === 1 ? '' : 's'}`
     if (completed >= C.ROUNDS_FOR_REWARD) msg += ' - Wearable reward (stub)'
     toast(msg)
+    // sent after the group message so each builder's own message is the one they see
+    for (const addr of builders) {
+      giveCoins(addr, C.COINS_PER_WORD)
+      toast(`You built ${answer}! +${C.COINS_PER_WORD} coins`, addr)
+    }
+    console.log('[ROUND]', 'won', answer, 'level', difficulty, 'builders', builders.join(','), 'participants', Array.from(participants).join(','))
   }
   updateGameState()
-  void holder
 }
 
 // ---------- vote ----------
@@ -447,6 +467,7 @@ function init() {
     if (data.slot < 0 || data.slot >= slots.length || slots[data.slot]) return
     holders.delete(addr)
     slots[data.slot] = cube
+    cube.placer = addr
     cube.slot = data.slot
     cube.mode = 'flying'
     sync(cube)
