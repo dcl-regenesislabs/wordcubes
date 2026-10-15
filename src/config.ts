@@ -46,6 +46,21 @@ export const INTERACT_DISTANCE = 10
 export const CUBES_BLOCK_PLAYER = false
 
 // Economy / rules
+// Difficulty: one level per room (1..7), set by the players' vote (not built yet; see docs/round-system-design.md).
+// Level 1 is easy. The first build tunes the word (length) and the round timer; the table can grow more levers later.
+// Word length stands in for "tier" until the question bank is tagged by level.
+export const START_DIFFICULTY = 1
+export const LEVELS: { minLen: number; maxLen: number; seconds: number }[] = [
+  { minLen: 3, maxLen: 5, seconds: 240 }, // 1
+  { minLen: 4, maxLen: 6, seconds: 240 }, // 2
+  { minLen: 5, maxLen: 6, seconds: 210 }, // 3
+  { minLen: 6, maxLen: 7, seconds: 210 }, // 4
+  { minLen: 7, maxLen: 8, seconds: 180 }, // 5
+  { minLen: 8, maxLen: 9, seconds: 180 }, // 6
+  { minLen: 9, maxLen: 14, seconds: 150 } // 7
+]
+export const MAX_DIFFICULTY = LEVELS.length
+
 export const COINS_PER_BREAK = 5
 export const COINS_PER_WORD = 25
 export const NEXT_ROUND_DELAY = 4 // seconds

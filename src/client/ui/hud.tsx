@@ -9,7 +9,7 @@ import { returnToLobby } from '../lobby'
 import { canvas, mobile, EDGE, fs, sz } from './platform'
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, TileState, clamp, c } from './theme'
 
-type Game = { phase: string; round: number; completed: number; question: string; length: number; masked: string; hint: string }
+type Game = { phase: string; round: number; difficulty: number; timeLeft: number; completed: number; question: string; length: number; masked: string; hint: string }
 
 function game(): Game | null {
   if (C.UI_PREVIEW) return mockGame()
@@ -31,7 +31,7 @@ function mockGame(): Game {
   if (t >= 8) placed = Math.min(5, Math.floor(t - 7))
   const masked = MOCK_WORD.split('').map((ch, i) => (i < placed ? ch : '_')).join('')
   const hint = t >= 6 && t < 12 ? 'PA___' : ''
-  return { phase: t >= 12 ? 'won' : 'playing', round: mockRound(), completed: mockRound() - 1, question: 'What is the capital of France?', length: MOCK_WORD.length, masked, hint }
+  return { phase: t >= 12 ? 'won' : 'playing', round: mockRound(), difficulty: 1, timeLeft: Math.max(0, 240 - Math.floor(t)), completed: mockRound() - 1, question: 'What is the capital of France?', length: MOCK_WORD.length, masked, hint }
 }
 
 const heldLetter = (): string => {
@@ -69,7 +69,7 @@ function track(g: Game) {
     if (g.masked[i] !== '_') now++
     if (prev[i] === '_' && g.masked[i] !== '_') lockAt[i] = Date.now()
   }
-  if (was > 0 && now === 0 && g.phase === 'playing') failAt = Date.now()
+  if ((was > 0 && now === 0 && g.phase === 'playing') || (g.phase === 'timeout' && prevPhase !== 'timeout')) failAt = Date.now()
   if (g.phase === 'won' && prevPhase !== 'won') winAt = Date.now()
   prev = g.masked
   prevPhase = g.phase
@@ -138,7 +138,9 @@ function WordPanel(props: { g: Game }) {
   )
 }
 
-// Coins, round and the two buttons, stacked at the top right.
+const clock = (sec: number) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Math.max(0, sec) % 60).padStart(2, '0')}`
+
+// Coins, level, time and the two buttons, stacked at the top right.
 function SidePanel(props: { g: Game | null }) {
   const { g } = props
   const w = sz(250, 210)
@@ -147,9 +149,10 @@ function SidePanel(props: { g: Game | null }) {
     <UiEntity
       uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16), right: edge }, width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}
     >
-      <Frame width={w} height={sz(104, 84)} edge={PAL.violetLight} fill={PAL.violetDark} radius={20} border={4} pad={sz(10, 6)} align="center" justify="center">
+      <Frame width={w} height={sz(150, 118)} edge={PAL.violetLight} fill={PAL.violetDark} radius={20} border={4} pad={sz(10, 6)} align="center" justify="center">
         <OutlineLabel value={`${coins()} coins`} fontSize={fs(sz(34, 26))} color={PAL.yellow} width="100%" height={sz(44, 34)} />
-        <OutlineLabel value={g ? `Round ${g.round}  -  Words ${g.completed}` : ''} fontSize={fs(sz(20, 18))} color={PAL.dim} width="100%" height={sz(28, 24)} />
+        <OutlineLabel value={g ? `Level ${g.difficulty}   Words ${g.completed}` : ''} fontSize={fs(sz(22, 18))} color={PAL.dim} width="100%" height={sz(30, 24)} />
+        <OutlineLabel value={g ? clock(g.timeLeft) : ''} fontSize={fs(sz(36, 28))} color={g && g.timeLeft <= 30 && g.phase === 'playing' ? PAL.pink : PAL.text} width="100%" height={sz(46, 36)} />
       </Frame>
       <PillButton id="hint" label="Hint" width={w} height={sz(66, 54)} font={fs(sz(28, 22))} tint={PAL.pink} margin={{ top: 10 }} onClick={() => room.send('hint', { n: 0 })} />
       <PillButton id="lobby" label="Back to lobby" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} tint={PAL.cyan} margin={{ top: 8 }} onClick={returnToLobby} />

@@ -3,7 +3,7 @@ import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import { syncEntity } from '@dcl/sdk/network'
 import * as C from '../config'
-import { WORDS } from './words'
+import { pickWord } from './words'
 import { room } from '../shared/messages'
 import { envOrigin } from '../shared/env'
 import { CubeData, GameState, protectServerEntity, modelFor } from '../shared/schemas'
@@ -44,7 +44,10 @@ let stateEntity: Entity
 let answer = ''
 let slots: (SCube | null)[] = []
 let hintsUsed = 0
-let phase: 'playing' | 'won' = 'playing'
+let phase: 'playing' | 'won' | 'timeout' = 'playing'
+let difficulty = C.START_DIFFICULTY
+let timeLeft = 0
+let lastTimeShown = -1
 let round = 0
 let completed = 0
 let lastWord = ''
@@ -76,6 +79,18 @@ function players(): PlayerInfo[] {
     out.push({ address: identity.address.toLowerCase(), pos: t.position, rot: t.rotation })
   }
   return out
+}
+
+// Players standing in the arena (not in the lobby). The round timer only runs while someone is playing.
+function playersInGame(): number {
+  const o = envOrigin()
+  let n = 0
+  for (const p of players()) {
+    const dx = p.pos.x - o.x
+    const dz = p.pos.z - o.z
+    if (dx * dx + dz * dz < (C.ARENA_RADIUS + 4) ** 2 && p.pos.y > o.y - 2) n++
+  }
+  return n
 }
 
 function playerOf(address: string): PlayerInfo | null {
@@ -172,13 +187,15 @@ function updateGameState() {
   const g = GameState.getMutable(stateEntity)
   g.phase = phase
   g.round = round
+  g.difficulty = difficulty
   g.completed = completed
   g.length = answer.length
   g.masked = answer
     .split('')
     .map((_, i) => (slots[i] && slots[i]!.mode === 'placed' ? answer[i] : '_'))
     .join('')
-  g.hint = hintsUsed > 0 ? answer.split('').map((c, i) => (i < hintsUsed ? c : '_')).join('') : ''
+  // a timed-out round shows the answer in the empty frames; otherwise only the letters the hints gave away
+  g.hint = phase === 'timeout' ? answer : hintsUsed > 0 ? answer.split('').map((c, i) => (i < hintsUsed ? c : '_')).join('') : ''
 }
 
 // ---------- cubes ----------
@@ -234,9 +251,11 @@ function startRound() {
   pendingToss.length = 0
   flights.length = 0
 
-  let entry = WORDS[Math.floor(Math.random() * WORDS.length)]
-  while (WORDS.length > 1 && entry.answer === lastWord) entry = WORDS[Math.floor(Math.random() * WORDS.length)]
+  const level = C.LEVELS[difficulty - 1]
+  const entry = pickWord(level.minLen, level.maxLen, lastWord)
   lastWord = entry.answer
+  timeLeft = level.seconds
+  lastTimeShown = -1
   answer = entry.answer
   slots = new Array(answer.length).fill(null)
   hintsUsed = 0
@@ -245,6 +264,7 @@ function startRound() {
 
   const g = GameState.getMutable(stateEntity)
   g.question = entry.question
+  g.timeLeft = timeLeft
   updateGameState()
 
   const letters = answer.split('')
@@ -258,17 +278,35 @@ function startRound() {
   toast('New round! Find the letters.')
 }
 
+function spawnInHeap(letter: string) {
+  const a = Math.random() * Math.PI * 2
+  const r = Math.sqrt(rand(C.SPAWN_MIN_RADIUS ** 2, C.SPAWN_MAX_RADIUS ** 2))
+  const o = envOrigin()
+  spawnCube(letter, o.x + Math.cos(a) * r, o.y + rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), o.z + Math.sin(a) * r)
+}
+
 function spawnSome() {
-  for (let n = 0; n < SPAWN_PER_TICK && spawnQueue.length > 0; n++) {
-    const letter = spawnQueue.pop()!
-    const a = Math.random() * Math.PI * 2
-    const r = Math.sqrt(rand(C.SPAWN_MIN_RADIUS ** 2, C.SPAWN_MAX_RADIUS ** 2))
-    const o = envOrigin()
-    spawnCube(letter, o.x + Math.cos(a) * r, o.y + rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), o.z + Math.sin(a) * r)
+  for (let n = 0; n < SPAWN_PER_TICK && spawnQueue.length > 0; n++) spawnInHeap(spawnQueue.pop()!)
+}
+
+// The pile can never become unsolvable: for every letter the word still needs there must be at least that many cubes
+// that are not locked in yet (in the pile, in a hand, in flight, or still queued to spawn). A broken needed cube is replaced.
+function ensureSupply() {
+  if (phase !== 'playing') return
+  const have = new Map<string, number>()
+  const need = new Map<string, number>()
+  for (const cube of cubes.values()) if (cube.mode !== 'placed') have.set(cube.letter, (have.get(cube.letter) ?? 0) + 1)
+  for (const letter of spawnQueue) have.set(letter, (have.get(letter) ?? 0) + 1)
+  for (let i = 0; i < answer.length; i++) {
+    if (slots[i] && slots[i]!.mode === 'placed') continue
+    need.set(answer[i], (need.get(answer[i]) ?? 0) + 1)
+  }
+  for (const [letter, count] of need) {
+    for (let k = have.get(letter) ?? 0; k < count; k++) spawnInHeap(letter)
   }
 }
 
-function collapse() {
+function clearPlaced() {
   for (let i = 0; i < slots.length; i++) {
     const cube = slots[i]
     if (!cube) continue
@@ -277,9 +315,24 @@ function collapse() {
     release(cube, slotPos(i), rand(-3, 3), rand(0, 3), rand(-3, 3))
     slots[i] = null
   }
+}
+
+function collapse() {
+  clearPlaced()
   updateGameState()
   room.send('fx', { kind: 'fail', slot: -1 })
   toast('Wrong cube! The whole word collapsed.')
+}
+
+// The timer ran out: the word falls, the answer is shown and the next round follows after the usual pause.
+function timeUp() {
+  phase = 'timeout'
+  nextRoundIn = C.NEXT_ROUND_DELAY
+  flights.length = 0
+  clearPlaced()
+  updateGameState()
+  room.send('fx', { kind: 'fail', slot: -1 })
+  toast(`Time's up! The word was ${answer}`)
 }
 
 function land(cube: SCube) {
@@ -373,6 +426,7 @@ function init() {
       giveCoins(addr, C.COINS_PER_BREAK)
       toast(`Broke ${letter}! +${C.COINS_PER_BREAK} coins`, addr)
     }
+    ensureSupply()
   })
 
   // A client's local prediction says where a cube it pushed came to rest. Adopt it when it is plausible, so cubes
@@ -495,10 +549,19 @@ function gameSystem(dt: number) {
     f.t += dt
     if (f.t < FLIGHT_TOTAL) continue
     flights.splice(i, 1)
-    if (slots[f.cube.slot] === f.cube) land(f.cube)
+    if (phase === 'playing' && slots[f.cube.slot] === f.cube) land(f.cube)
   }
 
-  if (phase === 'won') {
+  if (phase === 'playing' && playersInGame() > 0) {
+    timeLeft -= dt
+    if (timeLeft <= 0) timeUp()
+    else if (Math.ceil(timeLeft) !== lastTimeShown) {
+      lastTimeShown = Math.ceil(timeLeft)
+      GameState.getMutable(stateEntity).timeLeft = lastTimeShown
+    }
+  }
+
+  if (phase !== 'playing') {
     nextRoundIn -= dt
     if (nextRoundIn <= 0) startRound()
   }
@@ -513,6 +576,7 @@ function gameSystem(dt: number) {
       release(cube, lastPos.get(addr) ?? fallbackDrop(), 0, 0, 0)
     }
     pusherTracker.prune(present)
+    ensureSupply()
     for (const addr of Array.from(trails.keys())) if (!present.has(addr)) trails.delete(addr)
   }
 
@@ -541,6 +605,8 @@ export function initServer() {
   GameState.create(stateEntity, {
     phase: 'playing',
     round: 0,
+    difficulty: C.START_DIFFICULTY,
+    timeLeft: 0,
     completed: 0,
     question: '',
     length: 0,

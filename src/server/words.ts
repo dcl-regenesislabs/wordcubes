@@ -24,3 +24,13 @@ export const WORDS: WordEntry[] = [
   { question: 'Underground passage', answer: 'TUNNEL' },
   { question: 'Spanish word for "year"', answer: 'AÑO' }
 ]
+
+// A random word for a difficulty level. Level = word length for now; if no word fits, the closest lengths are used.
+export function pickWord(minLen: number, maxLen: number, exclude: string): WordEntry {
+  const pool = WORDS.filter((w) => w.answer !== exclude)
+  const candidates = pool.length > 0 ? pool : WORDS
+  const gap = (w: WordEntry) => (w.answer.length < minLen ? minLen - w.answer.length : w.answer.length > maxLen ? w.answer.length - maxLen : 0)
+  const best = Math.min(...candidates.map(gap))
+  const fitting = candidates.filter((w) => gap(w) === best)
+  return fitting[Math.floor(Math.random() * fitting.length)]
+}
