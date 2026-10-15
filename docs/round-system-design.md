@@ -1,6 +1,6 @@
 # Word Cubes: Difficulty, Voting & Rating Design
 
-Draft, 2026-10-15. Nothing here is implemented yet. Items marked *proposed* have not been confirmed.
+Draft, updated 2026-10-15. Items marked *proposed* have not been confirmed. "Built" means committed on the `roundsystem` branch and type-checked, but not yet playtested by the team.
 
 ## Summary
 
@@ -8,22 +8,29 @@ Each room votes on its own difficulty after every round, and each player earns o
 
 ## Where we are today
 
-The core loop works end to end; the economy, timer and difficulty layers are the gap. Compared with the Notion GDD and the current server code:
+The core loop, timer, difficulty levels, voting, contributor tracking, lockout and priced hints are built. What is missing is everything that needs per-player storage (rating, rank, coins that survive a restart), the tiered word bank, and the vendor.
 
-| Feature | In the GDD | In the code today |
+| Feature | In the GDD | Status |
 | --- | --- | --- |
 | Question with blanks, cube pile, free-for-all placing | Yes | Built |
 | Wrong placement collapses the whole word | Yes | Built |
 | All cubes reshuffled each round | Yes | Built |
 | Physics-driven cubes, players shove them | Yes | Built |
 | Coins from breaking cubes and finishing a word | Yes | Built; coins are held in memory only |
+| Round timer | Implied by time freeze | Built |
+| Difficulty levels 1 to 7 per room | Ideas section | Built; the level only changes the word length and the timer |
+| Vote between rounds | Ideas section | Built |
+| Pile can never become unsolvable | Not specified | Built |
+| Coins only for the players who built the word | Not specified | Built |
+| Collapse lockout | Not specified | Built |
+| Hints cost coins | Not specified | Built |
+| Break effect (3D particles) | Not specified | Built |
 | Wearable after 2 completed cycles | Yes | Stub (a toast message only) |
-| Hints | Not specified | Built, free for anyone, shown to the whole room |
-| Round timer | Implied by time freeze | Missing |
-| Difficulty levels and voting | Ideas section | Missing |
 | Power-ups (freeze, raise difficulty, reroll, wildcard) | Yes | Missing |
-| Word bank for 24/7 play | Flagged as a risk | About 26 lines, far too small |
+| Rating, ranks and the rank display | Not specified | Display placeholder only; rating is not built |
+| Tiered word bank | Flagged as a risk | Missing; about 20 words, longest is 6 letters |
 | Per-player persistence | Needed for the success metrics | Missing |
+| Lobby NPCs (rank guide, vendor) | Not specified | Rank guide built (draft text); vendor not built |
 
 ## Difficulty levels
 
@@ -106,14 +113,36 @@ Where ranks show:
 
 There is no matchmaking. Players choose a room from the pad and leave to find another if it is not for them. Whether the nameplate display is feasible in the SDK still needs checking.
 
+## UI and feedback
+
+Built, and kept in one UI kit (`src/client/ui/`) so desktop and phone share the same look:
+
+- **Lobby HUD:** your coins (with a coin icon) and your rank, plus a How to play button.
+- **How to play card:** opens only from its buttons, in the lobby and in the game. It does not open by itself.
+- **Letter tiles:** the word shows as a row of tiles that match the cube colours. While you hold a cube, tapping an empty tile throws the cube into that frame. This is the main way to place on a phone, because aiming at the 3D frame is hard on a touch screen. Grabbing stays in the 3D pile.
+- **Round result banner:** word complete or time's up, how many players built it, and your own coin reward.
+- **Level banner:** "Level 2 to 3" for a moment when the vote changes the difficulty.
+- **Pad sign:** the room's level and how many players are in the arena.
+- **Break effect:** gold sparks when a cube pays coins, a grey puff when it was a letter the word needs.
+
+Not built yet: sounds (needs audio assets), a highlight on the frames when you first hold a cube, a leaderboard on the lobby sign (needs persistence), and the rank over player nameplates.
+
+## Lobby NPCs and shop
+
+Two NPCs made from Decentraland avatars stand in the lobby. Players click one to talk, and the conversation uses the UI kit panel.
+
+- **Lexi, Keeper of Ranks:** built. Explains the ranks, the vote and who earns the reward. The text is a draft and describes the planned system; ranks do not change yet.
+- **Vendor:** not built. It needs a server-side shop (items, prices, a purchase message and an inventory per player). Questions for the team are in the list below.
+
 ## Technical dependencies
 
-- **Round timer** on the server, paused when the room is empty. Voting and the timeout failure both depend on it.
+- **Round timer** on the server, paused when the room is empty. Built.
 - **Tiered word bank.** Every question needs a level from 1 to 7. Word length can stand in as a first proxy, then a large generated bank replaces it. Content work, and it can run in parallel with the code.
 - **Persistence by wallet address.** Coins and rating currently live in memory and reset when the server restarts. Rating, and the D7-return metric in the GDD, both need storage. This should be designed before the rating is built.
-- **Per-round contributor tracking** on the server: who placed each cube in the final word, and who placed any correct cube during the round.
-- **New messages and UI:** a vote message and vote screen, a lockout countdown, hint pricing, and the rank display at the pad and over nameplates.
-- **Replacement spawn** for needed cubes that get broken.
+- **Per-round contributor tracking** on the server: who placed each cube in the final word, and who placed any correct cube during the round. Built.
+- **New messages and UI:** a vote message and vote screen, a lockout countdown and hint pricing are built. The rank display at the pad and over nameplates is not.
+- **Replacement spawn** for needed cubes that get broken. Built.
+- **Shop and inventory** for the vendor: items, prices, purchase message, and what each item does in a round.
 
 ## Open questions
 
@@ -126,14 +155,20 @@ There is no matchmaking. Players choose a room from the pad and leave to find an
 - [ ] Where does the storage for coins and rating live, and who owns it?
 - [ ] What does the "raise difficulty" power-up from the GDD become now that the room votes?
 - [ ] Is the wearable reward still given after 2 completed cycles, and is that counted per player?
+- [ ] What exactly does a wildcard do? For example, it fills any empty slot with the correct letter, or it matches any letter but still collapses if used in the wrong place.
+- [ ] What does the vendor sell besides wildcards (reroll, time freeze, bomb), and what does each cost?
+- [ ] Are bought items used in a round only, or kept in an inventory between rounds and sessions?
+- [ ] Can the vendor be used inside the game, or only in the lobby?
+- [ ] Should a player's rank be shown over their nameplate in the arena, or only in the lobby?
 
 ## Suggested build order
 
-1. Round timer, a difficulty field on the room, and a per-level settings table. Add the rule that the pile can never become unsolvable.
-2. Tiered word selection, using word length as a stand-in until the real bank exists.
-3. Vote phase on the server, plus the vote screen.
-4. Contributor tracking, and coins only for contributors.
-5. Collapse lockout, and hints that cost coins.
-6. Persistence by wallet address, then the rating and rank system, then the rank display at the pad and over nameplates.
+1. Done: round timer, a difficulty field on the room, a per-level settings table, and the rule that the pile can never become unsolvable.
+2. Done: word selection by level, using word length as a stand-in until the real bank exists.
+3. Done: vote phase on the server, plus the vote screen.
+4. Done: contributor tracking, and coins only for contributors.
+5. Done: collapse lockout, and hints that cost coins.
+6. Next: persistence by wallet address, then the rating and rank system, then the rank display at the pad and over nameplates.
+7. After the decisions above: the vendor, the shop and the wildcard.
 
 The tiered word bank is content work and can run alongside all of these.

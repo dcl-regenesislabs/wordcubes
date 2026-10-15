@@ -12,6 +12,8 @@ import { cs, showMessage, lockoutLeft } from './state'
 import { grassSystem } from './grass'
 import { setupUi } from './ui'
 import { setupLobby } from './lobby'
+import { setupFx } from './fx'
+import { setupNpcs } from './npcs'
 
 let joined = false
 let lastRound = -1
@@ -75,6 +77,8 @@ function clientSystem(dt: number) {
 export function initClient() {
   setupUi()
   setupLobby()
+  setupFx()
+  setupNpcs()
 
   setSlotClickHandler((slot) => {
     if (!isHolding()) return showMessage('Grab a cube first (click it), then click a frame.', 2)

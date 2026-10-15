@@ -6,6 +6,7 @@ import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
 import { room } from '../../shared/messages'
 import { returnToLobby } from '../lobby'
+import { clickSlot } from '../arena'
 import { MAX_DIFFICULTY } from '../../config'
 import { canvas, mobile, EDGE, fs, sz } from './platform'
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c } from './theme'
@@ -110,6 +111,8 @@ function WordPanel(props: { g: Game }) {
   const shake = failing ? Math.sin(failT * 38) * (1 - failT) * 10 : 0
   const winning = winAt > 0 && Date.now() - winAt < WIN_MS && g.phase === 'won'
 
+  // while you hold a cube the empty tiles are buttons: tap one to throw the cube into that frame (easier than aiming at the 3D frame)
+  const placeable = heldLetter() !== '' && g.phase === 'playing' && lockoutLeft() <= 0
   const tiles = []
   for (let i = 0; i < g.length; i++) {
     const letter = g.masked[i] ?? '_'
@@ -126,6 +129,8 @@ function WordPanel(props: { g: Game }) {
         pop={locked ? swell(lockAt[i] ?? 0, 300, 0.3) : winning ? swell(winAt + i * 90, 400, 0.25) : 1}
         shake={shake}
         flash={failing && failT < 0.7 ? PAL.red : winning ? PAL.yellow : null}
+        glow={placeable && !locked}
+        onClick={placeable && !locked ? () => clickSlot(i) : undefined}
         margin={TILE_GAP / 2}
       />
     )
@@ -165,7 +170,7 @@ function SidePanel(props: { g: Game | null }) {
     >
       <Frame width={w} height={sz(150, 118)} edge={PAL.violetLight} fill={PAL.violetDark} radius={20} border={4} pad={sz(10, 6)} align="center" justify="center">
         <CoinsRow size={sz(34, 26)} />
-        <OutlineLabel value={g ? `Level ${g.difficulty}   Words ${g.completed}` : ''} fontSize={fs(sz(22, 18))} color={PAL.dim} width="100%" height={sz(30, 24)} />
+        <OutlineLabel value={g ? `Level ${g.difficulty}   ${rankName(cs.rating)}` : ''} fontSize={fs(sz(22, 18))} color={PAL.dim} width="100%" height={sz(30, 24)} />
         <OutlineLabel value={g ? clock(g.timeLeft) : ''} fontSize={fs(sz(36, 28))} color={g && g.timeLeft <= 30 && g.phase === 'playing' ? PAL.pink : PAL.text} width="100%" height={sz(46, 36)} />
       </Frame>
       <PillButton id="hint" label={g && g.hintCost > 0 ? 'Hint' : 'No hints'} cost={g && g.hintCost > 0 ? g.hintCost : undefined} width={w} height={sz(66, 54)} font={fs(sz(28, 22))} tint={PAL.pink} margin={{ top: 10 }} onClick={() => room.send('hint', { n: 0 })} />
@@ -338,6 +343,37 @@ function LevelBanner() {
   )
 }
 
+// ---- NPC conversation: a panel at the bottom of the screen, Next / Close ----
+export function NpcDialog() {
+  const d = cs.dialog
+  if (!d) return null
+  const last = d.page >= d.pages.length - 1
+  const w = sz(1100, 900)
+  const h = sz(250, 220)
+  return (
+    <UiEntity
+      uiTransform={{ positionType: 'absolute', position: { bottom: sz(60, 40), left: centerLeft(w) }, width: w, pointerFilter: 'none' }}
+    >
+      <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={28} border={6} pad={sz(22, 14)} align="flex-start" justify="center" block>
+        <Label value={d.name} fontSize={fs(sz(30, 22))} font="sans-serif" color={PAL.violet} textAlign="middle-left" uiTransform={{ width: '100%', height: sz(40, 30) }} />
+        <Label value={d.pages[d.page]} fontSize={fs(sz(28, 20))} font="sans-serif" color={PAL.ink} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: sz(110, 90) }} />
+        <UiEntity uiTransform={{ width: '100%', height: sz(60, 48), flexDirection: 'row', justifyContent: 'flex-end', pointerFilter: 'none' }}>
+          <PillButton id="npc-close" label="Close" width={sz(150, 120)} height={sz(52, 42)} font={fs(sz(24, 20))} margin={{ right: 12 }} onClick={() => (cs.dialog = null)} />
+          <PillButton
+            id="npc-next"
+            label={last ? 'Done' : 'Next'}
+            width={sz(170, 130)}
+            height={sz(52, 42)}
+            font={fs(sz(24, 20))}
+            tint={PAL.green}
+            onClick={() => (cs.dialog = last || !cs.dialog ? null : { ...cs.dialog, page: cs.dialog.page + 1 })}
+          />
+        </UiEntity>
+      </Frame>
+    </UiEntity>
+  )
+}
+
 // ---- how to play: opens by itself the first time you enter the game, and from the "How to play" buttons ----
 export function HowToPlay() {
   const phone = mobile()
@@ -375,10 +411,6 @@ export function HowToPlay() {
 export function GameHud() {
   const g = game()
   if (g) track(g)
-  if (!cs.howToShown) {
-    cs.howToShown = true
-    cs.showHowTo = true
-  }
   return (
     <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', pointerFilter: 'none' }}>
       {g && <WordPanel g={g} />}

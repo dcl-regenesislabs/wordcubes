@@ -51,6 +51,12 @@ function teleportToGame() {
   })
 }
 
+/** Where the lobby island centre and the start pad are, once the scene has loaded (used to place the lobby NPCs). */
+export function lobbyAnchors(): { origin: Vector3; pad: Vector3 } | undefined {
+  const origin = lobbyOrigin()
+  return origin && padPos.x !== 0 ? { origin, pad: padPos } : undefined
+}
+
 function lobbyOrigin(): Vector3 | undefined {
   const e = engine.getEntityOrNullByName(C.LOBBY_ENTITY_NAME)
   return e !== null && Transform.getOrNull(e) ? worldPosition(e) : undefined

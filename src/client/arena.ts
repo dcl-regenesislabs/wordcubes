@@ -37,6 +37,11 @@ export function setSlotClickHandler(fn: (index: number) => void) {
   onSlotClick = fn
 }
 
+/** Same as clicking frame `index` in the world: used by the letter tiles in the HUD. */
+export function clickSlot(index: number) {
+  onSlotClick(index)
+}
+
 export function slotPosition(index: number, count: number): Vector3 {
   const offset = (index - (count - 1) / 2) * C.SLOT_SPACING
   const o = envOrigin()

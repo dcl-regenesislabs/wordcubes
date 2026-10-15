@@ -504,6 +504,9 @@ function init() {
     holders.delete(addr)
     const needed = answer.includes(cube.letter)
     const letter = cube.letter
+    const at = playerOf(addr)
+    const spot = at ? handPos(at) : Vector3.create(cube.body.x, cube.body.y, cube.body.z)
+    room.send('burst', { x: spot.x, y: spot.y, z: spot.z, gold: needed ? 0 : 1 })
     removeCube(cube)
     if (needed) toast(`Broke ${letter}, which is in the word. No coins.`, addr)
     else {

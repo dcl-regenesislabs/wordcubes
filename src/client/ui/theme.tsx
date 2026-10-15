@@ -269,6 +269,8 @@ export const LetterTile = (props: {
   pop?: number
   shake?: number
   flash?: Color4 | null
+  onClick?: () => void // makes the tile a button (e.g. place the cube you hold)
+  glow?: boolean // pulses the rim to show it can be pressed
   margin?: number
   key?: string
 }) => {
@@ -276,7 +278,8 @@ export const LetterTile = (props: {
   const inner = Math.round(props.size * k)
   const off = Math.round((props.size - inner) / 2)
   const own = letterColor(props.letter)
-  const rim = props.flash ?? (props.state === 'locked' ? own : props.state === 'hint' ? PAL.slotRim : PAL.slotRim)
+  const pulse = props.glow ? 0.5 + 0.5 * Math.sin(Date.now() / 180) : 0
+  const rim = props.flash ?? (props.glow ? lighten(PAL.yellow, -0.1 + 0.1 * pulse) : props.state === 'locked' ? own : PAL.slotRim)
   const fill = props.state === 'locked' ? PAL.cream : PAL.slot
   const ink = props.state === 'locked' ? darken(own, 0.12) : c(1, 1, 1, 0.5)
   const showLetter = props.state !== 'empty' && props.letter !== '' && props.letter !== '_'
@@ -290,9 +293,10 @@ export const LetterTile = (props: {
           height: inner,
           padding: Math.max(3, Math.round(props.size * 0.07)),
           borderRadius: Math.round(props.size * 0.22),
-          pointerFilter: 'none'
+          pointerFilter: props.onClick ? 'block' : 'none'
         }}
         uiBackground={{ color: rim }}
+        onMouseDown={props.onClick}
       >
         <UiEntity
           uiTransform={{

@@ -16,6 +16,7 @@ export const room = registerMessages({
   toast: Schemas.Map({ text: Schemas.String }),
   fx: Schemas.Map({ kind: Schemas.String, slot: Schemas.Int }), // 'lock' | 'fail' | 'win'
   coins: Schemas.Map({ value: Schemas.Int }),
+  burst: Schemas.Map({ x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, gold: Schemas.Int }), // a cube was broken here (gold = it paid coins)
   result: Schemas.Map({ coins: Schemas.Int }), // you helped build the word: this many coins
   lockout: Schemas.Map({ seconds: Schemas.Int }) // you caused a collapse: no placing for this many seconds
 })
