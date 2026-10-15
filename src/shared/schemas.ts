@@ -55,6 +55,9 @@ export function protectServerEntity(entity: Entity, components: ComponentWithVal
   }
 }
 
+/** What to call a cube in text: the wildcard box is '*' internally. */
+export const letterLabel = (letter: string): string => (letter === '*' ? 'Wildcard' : letter)
+
 export function modelFor(letter: string): string {
   if (letter === '*') return 'assets/models/CubeWildCard.glb' // the wildcard box
   if (letter === 'Ñ') return 'assets/models/CubeNh.glb'

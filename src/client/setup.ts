@@ -15,6 +15,7 @@ import { setupLobby } from './lobby'
 import { setupFx } from './fx'
 import { setupNpcs } from './npcs'
 import { rankTagSystem } from './ranktags'
+import { setupCheats } from './cheats'
 
 let joined = false
 let lastRound = -1
@@ -80,6 +81,7 @@ export function initClient() {
   setupLobby()
   setupFx()
   setupNpcs()
+  setupCheats()
 
   setSlotClickHandler((slot) => {
     if (!isHolding()) return showMessage('Grab a cube first (click it), then click a frame.', 2)

@@ -10,6 +10,7 @@ export const room = registerMessages({
   breakCube: Schemas.Map({ n: Schemas.Int }),
   hint: Schemas.Map({ n: Schemas.Int }),
   vote: Schemas.Map({ choice: Schemas.Int }), // -1 easier, 0 same, 1 harder
+  cheat: Schemas.Map({ n: Schemas.Int }), // testing cheat (see CHEATS_ENABLED in config)
   setSetting: Schemas.Map({ key: Schemas.String, value: Schemas.Int }), // a Settings panel switch: 1 on, 0 off
   buy: Schemas.Map({ item: Schemas.String }), // vendor: buy one of ITEMS with coins
   useItem: Schemas.Map({ item: Schemas.String }), // arena: use one from your inventory

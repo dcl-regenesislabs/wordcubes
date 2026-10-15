@@ -17,7 +17,7 @@ import {
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
-import { CubeData, modelFor } from '../shared/schemas'
+import { CubeData, modelFor, letterLabel } from '../shared/schemas'
 import { room } from '../shared/messages'
 import { slotPosition } from './arena'
 import { envOrigin } from '../shared/env'
@@ -217,7 +217,7 @@ export function cubesSystem(dt: number) {
       const id = data.id
       const letter = data.letter
       pointerEventsSystem.onPointerDown(
-        { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letter}`, maxDistance: C.INTERACT_DISTANCE } },
+        { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
         () => room.send('grab', { cubeId: id })
       )
     }

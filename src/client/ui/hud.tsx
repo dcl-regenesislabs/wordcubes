@@ -229,8 +229,8 @@ function BottomArea() {
       )}
       {held !== '' && (
         <UiEntity uiTransform={{ width: heldSize + 190, height: heldSize, margin: { bottom: 10 }, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
-          <OutlineLabel value="Holding" fontSize={fs(sz(26, 20))} color={PAL.text} width={130} height={heldSize} />
-          <LetterTile size={heldSize} index={held.charCodeAt(0)} letter={held} state="locked" />
+          <OutlineLabel value={held === '*' ? 'Wildcard' : 'Holding'} fontSize={fs(sz(26, 20))} color={held === '*' ? PAL.yellow : PAL.text} width={130} height={heldSize} />
+          <LetterTile size={heldSize} index={held.charCodeAt(0)} letter={held === '*' ? '?' : held} state="locked" />
         </UiEntity>
       )}
       {message() !== '' && (

@@ -77,6 +77,12 @@ export const SETTINGS: { id: string; label: string; desc: string; default: boole
   { id: 'showRanks', label: 'Rank over heads', desc: 'Show the rank label floating over each player', default: true }
 ]
 
+// TESTING ONLY: a hidden cheat. In the lobby, clicking the S cube of the "WORD CUBES" blocks gives CHEAT_COINS coins every time.
+// The server checks this flag too. Set CHEATS_ENABLED to false before a release.
+export const CHEATS_ENABLED = true
+export const CHEAT_COINS = 500
+export const CHEAT_ENTITY = 'CubeS.glb'
+
 // Vendor items. Bought with coins, kept in each player's inventory (saved), used in the arena.
 export type ItemId = 'wildcard' | 'reroll' | 'freeze' | 'bomb'
 export const ITEMS: { id: ItemId; name: string; price: number; desc: string }[] = [

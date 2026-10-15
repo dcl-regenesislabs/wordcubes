@@ -697,6 +697,13 @@ function init() {
     updateVoteState()
   })
 
+  room.onMessage('cheat', (_data, ctx) => {
+    if (!ctx || !C.CHEATS_ENABLED) return
+    const addr = ctx.from.toLowerCase()
+    giveCoins(addr, C.CHEAT_COINS)
+    toast(`+${C.CHEAT_COINS} coins (test cheat)`, addr)
+  })
+
   room.onMessage('setSetting', (data, ctx) => {
     if (!ctx) return
     const addr = ctx.from.toLowerCase()
