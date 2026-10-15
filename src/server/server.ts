@@ -337,6 +337,33 @@ function init() {
     }
   })
 
+  // A client's local prediction says where a cube it pushed came to rest. Adopt it when it is plausible, so cubes
+  // stay where the player pushed them even if the server's sim (fed late, sparse player positions) disagrees.
+  room.onMessage('settle', (data, ctx) => {
+    if (!ctx || !C.SETTLE_REPORTS) return
+    const cube = cubes.get(data.cubeId)
+    if (!cube || cube.mode !== 'free') return
+    const p = playerOf(ctx.from.toLowerCase())
+    if (!p) return
+    const b = cube.body
+    const pr = world.params
+    const moved = Vector3.distance(Vector3.create(b.x, b.y, b.z), Vector3.create(data.x, data.y, data.z))
+    const fromPlayer = Math.hypot(data.x - p.pos.x, data.z - p.pos.z)
+    const fromCenter = Math.hypot(data.x - pr.centerX, data.z - pr.centerZ)
+    if (moved > C.PREDICT_SNAP || fromPlayer > C.SETTLE_REACH) return
+    if (fromCenter > pr.arenaRadius - pr.cubeRadius || data.y < pr.floorY + pr.cubeHalf - 0.1) return
+    if (fromCenter < pr.stageRadius + pr.cubeRadius && data.y < pr.stageTop + pr.cubeHalf - 0.1) return // inside the platform
+    b.x = data.x
+    b.y = data.y
+    b.z = data.z
+    b.yaw = data.yaw
+    b.vx = b.vy = b.vz = 0
+    b.yawRate = 0
+    b.asleep = true
+    b.sleepTime = 0
+    cube.sentAsleep = false // goes out on the next tick
+  })
+
   room.onMessage('hint', (_data, ctx) => {
     if (!ctx || phase !== 'playing') return
     if (hintsUsed >= answer.length - 1) return toast('No more hints for this word!', ctx.from.toLowerCase())

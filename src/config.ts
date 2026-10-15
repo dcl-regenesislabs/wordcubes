@@ -86,3 +86,8 @@ export const PREDICT_HANDOFF = 0.35 // s after your last touch before a cube sta
 export const PREDICT_BLEND_RATE = 6 // 1/s: how fast a predicted cube glides to the server's position
 export const PREDICT_SNAP = 3 // m: further than this from the server's position and the prediction is dropped
 export const PREDICT_MAX_TIME = 6 // s: a prediction never lasts longer than this
+// Cubes you push yourself stay where your prediction left them: the client reports the resting spot and the server
+// adopts it (if it is plausible) instead of gliding the cube back to the server's own result.
+export const SETTLE_REPORTS = true
+export const SETTLE_WAIT = 1 // s: a reported cube holds still this long waiting for the server to confirm it
+export const SETTLE_REACH = PREDICT_RADIUS + 2 // m: the server ignores reports of cubes further than this from the player

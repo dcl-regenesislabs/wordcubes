@@ -19,6 +19,7 @@ import {
   GltfContainer,
   GltfContainerLoadingState,
   VisibilityComponent,
+  MeshCollider,
   ColliderLayer,
   pointerEventsSystem,
   InputAction,
@@ -46,6 +47,7 @@ const MAX_STEPS = 3 // sim sub-steps per frame, like the server (a long frame dr
 
 interface Copy {
   entity: Entity
+  hit: Entity // click target, see newCopy
   letter: string
   cubeId: number // cube currently drawn by this copy, -1 while pooled
 }
@@ -58,6 +60,9 @@ interface Local {
   copy: Copy | null // set while predicted
   sinceTouch: number
   age: number // seconds predicted
+  mine: boolean // you touched it yourself during this prediction, so you report where it settles
+  sent: Vector3 | null // the resting spot reported to the server
+  sentAge: number // seconds since that report
 }
 
 const world = createWorld(worldParams())
@@ -107,14 +112,18 @@ function newCopy(letter: string): Copy {
   })
   GltfContainer.create(entity, {
     src: modelFor(letter),
-    invisibleMeshesCollisionMask: ColliderLayer.CL_POINTER,
+    invisibleMeshesCollisionMask: 0,
     visibleMeshesCollisionMask: 0
   })
   VisibilityComponent.create(entity, { visible: false }) // shown only while it draws a predicted cube
-  const copy: Copy = { entity, letter, cubeId: -1 }
-  // The copy is what you see, so it is also what you click to grab the cube.
+  // The copy is what you see, so it is also what you click to grab the cube. Same explicit box as the real cube's
+  // click target (cubes.ts) rather than the GLB's collider node, which is not clickable on every client.
+  const hit = engine.addEntity()
+  Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
+  MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
+  const copy: Copy = { entity, hit, letter, cubeId: -1 }
   pointerEventsSystem.onPointerDown(
-    { entity, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letter}`, maxDistance: C.INTERACT_DISTANCE } },
+    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letter}`, maxDistance: C.INTERACT_DISTANCE } },
     () => {
       if (copy.cubeId >= 0) room.send('grab', { cubeId: copy.cubeId })
     }
@@ -151,7 +160,8 @@ function returnCopy(copy: Copy) {
   const list = pool.get(copy.letter)!
   if (list.length >= SPARES) {
     // enough spares of this letter already: free it instead of keeping it loaded forever
-    pointerEventsSystem.removeOnPointerDown(copy.entity)
+    pointerEventsSystem.removeOnPointerDown(copy.hit)
+    engine.removeEntity(copy.hit)
     engine.removeEntity(copy.entity)
     return
   }
@@ -165,6 +175,8 @@ function returnCopy(copy: Copy) {
 function startPredicting(l: Local): boolean {
   const copy = takeCopy(l.letter)
   if (!copy) return false
+  l.mine = false
+  l.sent = null
   copy.cubeId = l.id
   VisibilityComponent.getMutable(copy.entity).visible = true
   l.copy = copy
@@ -258,7 +270,7 @@ export function predictSystem(dt: number) {
     if (!l) {
       if (!inRange) continue
       const body = addBody(world, pos.x, pos.y, pos.z)
-      const nl: Local = { entity, id: data.id, letter: data.letter, body, copy: null, sinceTouch: 99, age: 0 }
+      const nl: Local = { entity, id: data.id, letter: data.letter, body, copy: null, sinceTouch: 99, age: 0, mine: false, sent: null, sentAge: 0 }
       mirror(nl, pos, tr.rotation)
       locals.set(entity, nl)
       warm(data.letter)
@@ -300,8 +312,14 @@ export function predictSystem(dt: number) {
   const blend = 1 - Math.exp(-dt * C.PREDICT_BLEND_RATE)
   for (const l of locals.values()) {
     const b = l.body
-    if (touching(b, pushers)) l.sinceTouch = 0
-    else l.sinceTouch += dt
+    if (touching(b, pushers)) {
+      l.sinceTouch = 0
+      if (touching(b, pushers.slice(0, 1))) {
+        // you are pushing it (again): a new resting spot will be reported
+        l.mine = true
+        l.sent = null
+      }
+    } else l.sinceTouch += dt
 
     if (!l.copy) {
       if (b.asleep) continue // untouched: stays mirrored from the server
@@ -323,6 +341,27 @@ export function predictSystem(dt: number) {
     const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
     const settled = b.asleep || speed < SETTLED_SPEED
     if ((l.sinceTouch >= C.PREDICT_HANDOFF && settled) || l.age > C.PREDICT_MAX_TIME) {
+      if (C.SETTLE_REPORTS && l.mine) {
+        if (!l.sent) {
+          // tell the server where it stopped, then hold it there until the server's cube catches up
+          l.sent = Vector3.create(b.x, b.y, b.z)
+          l.sentAge = 0
+          b.vx = b.vy = b.vz = 0
+          b.yawRate = 0
+          b.asleep = true
+          room.send('settle', { cubeId: l.id, x: b.x, y: b.y, z: b.z, yaw: b.yaw })
+        }
+        l.sentAge += dt
+        const cx = s.x - l.sent.x
+        const cy = s.y - l.sent.y
+        const cz = s.z - l.sent.z
+        const confirmed = cx * cx + cy * cy + cz * cz < ARRIVED * ARRIVED * 4
+        if (!confirmed && l.sentAge < C.SETTLE_WAIT) {
+          draw(l)
+          continue
+        }
+        // confirmed (or rejected / timed out): the glide below finishes on the server's position either way
+      }
       // follow the server: freeze the local body (still an obstacle) and glide it to the server's position
       b.vx = b.vy = b.vz = 0
       b.yawRate = 0
