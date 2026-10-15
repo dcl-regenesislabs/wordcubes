@@ -1,0 +1,26 @@
+name: Build and regression checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Install the SDK matching the pinned multiplayer runtime
+        run: |
+          dcl_sdk_version=$(node -p "require('./package.json').devDependencies['@dcl/js-runtime']")
+          npm install --no-save --no-package-lock "@dcl/sdk@$dcl_sdk_version"
+      - run: node --test tests/*.test.cjs
+      - run: npx tsc --noEmit
+      - run: npm run build

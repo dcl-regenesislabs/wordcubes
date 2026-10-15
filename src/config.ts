@@ -11,6 +11,11 @@ export const STAGE_UPPER_RADIUS = 0 // no second tier any more
 export const STAGE_UPPER_TOP = STAGE_TOP
 export const SLOT_Y = 3.1 // letter frames float about head height over the platform
 export const SLOT_SPACING = 1.15
+// Invisible click area of a letter frame (metres, world size). Bigger than the frame itself so it is easy to hit from any angle,
+// but narrower than SLOT_SPACING so neighbouring frames do not overlap. Depth is generous so a ray from the side still hits.
+export const SLOT_HIT_WIDTH = 1.05
+export const SLOT_HIT_HEIGHT = 1.05
+export const SLOT_HIT_DEPTH = 1.4
 // PathArrow marker standing left of the first frame, level with its centre, tip pointing at it.
 export const START_ARROW_SCALE = 1
 export const START_ARROW_GAP = 0.15 // metres between the arrow's tip and the first frame
@@ -46,9 +51,60 @@ export const INTERACT_DISTANCE = 10
 export const CUBES_BLOCK_PLAYER = false
 
 // Economy / rules
+// Difficulty: one level per room (1..7), set by the players' vote (not built yet; see docs/round-system-design.md).
+// Level 1 is easy. Each level has its own word list (server/words.ts) and round timer; the table can grow more levers later.
+export const START_DIFFICULTY = 1
+export const LEVELS: { seconds: number }[] = [
+  { seconds: 240 }, // 1
+  { seconds: 240 }, // 2
+  { seconds: 210 }, // 3
+  { seconds: 210 }, // 4
+  { seconds: 180 }, // 5
+  { seconds: 180 }, // 6
+  { seconds: 150 } // 7
+]
+export const MAX_DIFFICULTY = LEVELS.length
+
+// Rating (Elo style, see docs/round-system-design.md). Level L counts as an opponent rated in the middle of rank L.
+export const RATING_PER_RANK = 200
+export const RATING_K = 40 // points a fully surprising win or loss is worth
+export const PROVISIONAL_ROUNDS = 5 // new players: bigger gains and very small losses for their first rounds
+export const VOTE_BONUS_COINS = 3 // only voters who placed a correct cube in this round
+export const PROFILE_SAVE_SECONDS = 15 // changed profiles are written to storage at most this often
+
+// Player settings (saved with the profile, on/off). Add a line here and it shows up in the Settings panel and is saved.
+export const SETTINGS: { id: string; label: string; desc: string; default: boolean }[] = [
+  { id: 'showRanks', label: 'Rank over heads', desc: 'Show the rank label floating over each player', default: true }
+]
+
+// TESTING ONLY: a hidden cheat. In the lobby, clicking the S cube of the "WORD CUBES" blocks gives CHEAT_COINS coins every time.
+// The server checks this flag too. Set CHEATS_ENABLED to false before a release.
+export const CHEATS_ENABLED = true
+export const CHEAT_COINS = 500
+export const CHEAT_ENTITY = 'CubeS.glb'
+
+// Vendor items. Bought with coins, kept in each player's inventory (saved), used in the arena.
+export type ItemId = 'wildcard' | 'reroll' | 'freeze' | 'bomb'
+export const ITEMS: { id: ItemId; name: string; price: number; desc: string }[] = [
+  { id: 'wildcard', name: 'Wildcard', price: 250, desc: 'A box that fits any frame and stays put when the word collapses. One per round.' },
+  { id: 'freeze', name: 'Time Freeze', price: 90, desc: 'Stops the round timer for 20 seconds.' },
+  { id: 'reroll', name: 'Reroll', price: 60, desc: 'Drops a fresh pile. Breaking its cubes gives no coins.' },
+  { id: 'bomb', name: 'Bomb', price: 70, desc: 'Blasts away the extra letters around you.' }
+]
+export const ITEM_COOLDOWN = 30 // seconds between power-ups for one player (wildcards are limited to one per round instead)
+export const FREEZE_SECONDS = 20
+export const BOMB_RADIUS = 7
+
+// Anti-troll: whoever's cube makes the word collapse cannot place cubes for this long (they can still grab, break and throw away).
+export const COLLAPSE_LOCKOUT_SECONDS = 25
+// Hints cost coins; every extra hint in the same round costs one step more (10, 20, 30...). The requester pays, the room sees the letter.
+export const HINT_BASE_COST = 10
+export const HINT_COST_STEP = 10
+
 export const COINS_PER_BREAK = 5
 export const COINS_PER_WORD = 25
-export const NEXT_ROUND_DELAY = 4 // seconds
+export const NEXT_ROUND_DELAY = 4 // seconds the result (won / time's up) stays on screen before the vote
+export const VOTE_SECONDS = 12 // how long the Easier / Same / Harder vote stays open (ends early once everyone present voted)
 export const ROUNDS_FOR_REWARD = 2
 
 // Physics

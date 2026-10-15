@@ -13,6 +13,7 @@ import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
 import { movePlayerTo } from '~system/RestrictedActions'
 import * as C from '../config'
 import { envOrigin } from '../shared/env'
+import { GameState } from '../shared/schemas'
 import { cs } from './state'
 
 const SCALE_STIFFNESS = 90
@@ -21,7 +22,7 @@ const SPIN_EASE = 2
 const TELEPORT_LOCKOUT = 4 // s after teleporting before the pad can start another countdown
 
 /** World position of an entity, following its parent chain (the pad is a child of "Lobby"). */
-function worldPosition(entity: Entity): Vector3 {
+export function worldPosition(entity: Entity): Vector3 {
   const t = Transform.get(entity)
   let pos = Vector3.create(t.position.x, t.position.y, t.position.z)
   let parent = t.parent
@@ -48,6 +49,12 @@ function teleportToGame() {
     newRelativePosition: Vector3.create(x, o.y + C.FLOOR_Y + 0.5, z),
     cameraTarget: Vector3.create(o.x, o.y + 1.5, o.z)
   })
+}
+
+/** Where the lobby island centre and the start pad are, once the scene has loaded (used to place the lobby NPCs). */
+export function lobbyAnchors(): { origin: Vector3; pad: Vector3 } | undefined {
+  const origin = lobbyOrigin()
+  return origin && padPos.x !== 0 ? { origin, pad: padPos } : undefined
 }
 
 function lobbyOrigin(): Vector3 | undefined {
@@ -94,6 +101,18 @@ export function setupLobby() {
     textAlign: TextAlignMode.TAM_MIDDLE_CENTER
   })
   Billboard.create(label, { billboardMode: BillboardMode.BM_Y })
+  // Smaller line under it: the room's difficulty level and how many are playing
+  const info = engine.addEntity()
+  Transform.create(info, { position: Vector3.Zero(), scale: Vector3.Zero() })
+  TextShape.create(info, {
+    text: '',
+    fontSize: 3,
+    textColor: Color4.create(1, 0.95, 0.6, 1),
+    outlineColor: Color4.create(0.1, 0.1, 0.1, 1),
+    outlineWidth: 0.2,
+    textAlign: TextAlignMode.TAM_MIDDLE_CENTER
+  })
+  Billboard.create(info, { billboardMode: BillboardMode.BM_Y })
   let labelShown = 0
   let time = 0
 
@@ -192,6 +211,17 @@ export function setupLobby() {
     const ls = labelShown < 0.02 ? 0 : labelShown
     lt.position = Vector3.create(padPos.x, padPos.y + C.PAD_LABEL_HEIGHT + Math.sin(time * 2) * 0.2, padPos.z)
     lt.scale = Vector3.create(ls, ls, ls)
+
+    let roomText = ''
+    for (const [, g] of engine.getEntitiesWith(GameState)) {
+      roomText = `Level ${g.difficulty}  -  ${g.players} playing`
+      break
+    }
+    const ts = TextShape.getMutable(info)
+    if (ts.text !== roomText) ts.text = roomText
+    const it = Transform.getMutable(info)
+    it.position = Vector3.create(padPos.x, lt.position.y - 1.6, padPos.z)
+    it.scale = Vector3.create(ls, ls, ls)
 
     // Lights
     const finalSeconds = counting && timer <= 3

@@ -37,6 +37,11 @@ export function setSlotClickHandler(fn: (index: number) => void) {
   onSlotClick = fn
 }
 
+/** Same as clicking frame `index` in the world: used by the letter tiles in the HUD. */
+export function clickSlot(index: number) {
+  onSlotClick(index)
+}
+
 export function slotPosition(index: number, count: number): Vector3 {
   const offset = (index - (count - 1) / 2) * C.SLOT_SPACING
   const o = envOrigin()
@@ -54,10 +59,10 @@ export function buildSlots(count: number) {
       // the frame GLB has no `_collider` node, so make the visible mesh clickable
       visibleMeshesCollisionMask: ColliderLayer.CL_POINTER
     })
-    // Invisible box filling the frame's hole, so clicking the middle works too (not just the thin border).
-    // Child of the frame: it follows the frame's pulse/shake/wave. Same 0.5 m size as the cube collider.
+    // Invisible click box around the frame (SLOT_HIT_*), so the whole area works, not just the thin border.
+    // Child of the frame: it follows the frame's pulse/shake/wave.
     const hit = engine.addEntity()
-    Transform.create(hit, { parent: e, scale: Vector3.create(0.5, 0.5, 0.5) })
+    Transform.create(hit, { parent: e, scale: Vector3.create(C.SLOT_HIT_WIDTH / C.CUBE_SCALE, C.SLOT_HIT_HEIGHT / C.CUBE_SCALE, C.SLOT_HIT_DEPTH / C.CUBE_SCALE) })
     MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
     for (const target of [e, hit]) {
       pointerEventsSystem.onPointerDown(

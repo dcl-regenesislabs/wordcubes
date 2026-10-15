@@ -17,11 +17,11 @@ import {
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
-import { CubeData, modelFor } from '../shared/schemas'
+import { CubeData, modelFor, letterLabel } from '../shared/schemas'
 import { room } from '../shared/messages'
 import { slotPosition } from './arena'
 import { envOrigin } from '../shared/env'
-import { playHoldEmote } from './emotes'
+import { playHoldEmote, stopHoldEmote } from './emotes'
 import { cs } from './state'
 import { isPredicted } from './predict'
 
@@ -121,6 +121,7 @@ function removeSmooth(entity: Entity, c: ClientCube) {
 }
 
 function enterMode(entity: Entity, c: ClientCube, mode: string, holder: string, slot: number) {
+  if (c.mode === 'held' && c.holder === cs.myAddress && mode === 'free') stopHoldEmote()
   removeSmooth(entity, c)
   c.lastPos = null
   dropProxy(c)
@@ -217,7 +218,7 @@ export function cubesSystem(dt: number) {
       const id = data.id
       const letter = data.letter
       pointerEventsSystem.onPointerDown(
-        { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letter}`, maxDistance: C.INTERACT_DISTANCE } },
+        { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
         () => room.send('grab', { cubeId: id })
       )
     }
@@ -256,6 +257,7 @@ export function cubesSystem(dt: number) {
   // cubes the server removed
   for (const [entity, c] of Array.from(known.entries())) {
     if (seen.has(entity)) continue
+    if (c.mode === 'held' && c.holder === cs.myAddress) stopHoldEmote()
     if (c.smooth) engine.removeEntity(c.smooth)
     dropProxy(c)
     pointerEventsSystem.removeOnPointerDown(c.hit)

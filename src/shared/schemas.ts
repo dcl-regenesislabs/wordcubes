@@ -14,17 +14,32 @@ export const CubeData = engine.defineComponent('wc:Cube', {
 
 // Singleton room state. The answer itself is never in here, only the letters already placed or hinted.
 export const GameState = engine.defineComponent('wc:GameState', {
-  phase: Schemas.String, // 'playing' | 'won'
+  phase: Schemas.String, // 'playing' | 'won' | 'timeout' | 'vote'
   round: Schemas.Int,
+  difficulty: Schemas.Int, // room level, 1..7
+  timeLeft: Schemas.Int, // whole seconds left in the round (stops while nobody is in the arena)
+  board: Schemas.String, // top players: "address:rating,address:rating,..." best first
+  frozen: Schemas.Int, // seconds of Time Freeze left (the round timer is stopped)
+  players: Schemas.Int, // players standing in the arena
+  builders: Schemas.Int, // how many players built the last finished word
+  voteLeft: Schemas.Int, // whole seconds left in the vote (phase 'vote')
+  voteDown: Schemas.Int, // votes cast so far: easier / same / harder
+  voteSame: Schemas.Int,
+  voteUp: Schemas.Int,
   completed: Schemas.Int,
   question: Schemas.String,
   length: Schemas.Int,
   masked: Schemas.String, // placed letters, '_' for empty frames, e.g. "BR_D__"
   hint: Schemas.String, // revealed hint letters, '' if none yet
+  hintCost: Schemas.Int, // coins the next hint costs, 0 when no hints are left
   heartbeat: Schemas.Int64
 })
 
+// Everyone's rating, so every client can put a rank over each player: "address:rating,address:rating,..."
+export const PlayerRanks = engine.defineComponent('wc:Ranks', { data: Schemas.String })
+
 if (isServer()) {
+  PlayerRanks.validateBeforeChange((v) => v.senderAddress === AUTH_SERVER_PEER_ID)
   CubeData.validateBeforeChange((v) => v.senderAddress === AUTH_SERVER_PEER_ID)
   GameState.validateBeforeChange((v) => v.senderAddress === AUTH_SERVER_PEER_ID)
 }
@@ -40,7 +55,11 @@ export function protectServerEntity(entity: Entity, components: ComponentWithVal
   }
 }
 
+/** What to call a cube in text: the wildcard box is '*' internally. */
+export const letterLabel = (letter: string): string => (letter === '*' ? 'Wildcard' : letter)
+
 export function modelFor(letter: string): string {
+  if (letter === '*') return 'assets/models/CubeWildCard.glb' // the wildcard box
   if (letter === 'Ñ') return 'assets/models/CubeNh.glb'
   return `assets/models/Cube${letter}.glb`
 }

@@ -10,7 +10,7 @@ import {
 import type { Entity } from '@dcl/sdk/ecs'
 import { Color3, Color4, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
-import { placedProxy } from './cubes'
+import { placedProxy, isHolding } from './cubes'
 import { getSlotEntities, slotPosition } from './arena'
 
 type Status = 'idle' | 'locked' | 'fail' | 'win'
@@ -21,6 +21,7 @@ interface FrameFx {
   status: Status
   t: number // seconds since the status last changed
   lockT: number // seconds since the lock-in pulse started (large = finished)
+  ready: boolean // glowing because you hold a cube and this frame is empty
 }
 
 const IDLE_ALPHA = 0.45 // frames start a bit transparent
@@ -34,6 +35,7 @@ const WAVE_LEN = 0.7
 const BLUE = Color3.create(0.1, 0.5, 1)
 const RED = Color3.create(1, 0.08, 0.08)
 const GREEN = Color3.create(0.1, 1, 0.3)
+const GOLD = Color3.create(1, 0.85, 0.2)
 
 let fx: FrameFx[] = []
 
@@ -75,7 +77,8 @@ export function resetFrames() {
       base: slotPosition(i, frames.length),
       status: 'idle',
       t: 0,
-      lockT: 999
+      lockT: 999,
+      ready: false
     }
     paint(frame, null, IDLE_ALPHA, 0)
     return entry
@@ -106,6 +109,7 @@ function rand() {
 
 export function framesSystem(dt: number) {
   const n = fx.length
+  const holding = isHolding()
   for (let i = 0; i < n; i++) {
     const f = fx[i]
     f.t += dt
@@ -147,6 +151,17 @@ export function framesSystem(dt: number) {
       intensity = 3 + 5 * w
       alpha = 0.7 + 0.3 * w
     }
+
+    // empty frames glow gold while you hold a cube: that is where it goes
+    const wantReady = f.status === 'idle' && holding && !placedProxy.get(i)
+    if (wantReady) {
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220)
+      color = GOLD
+      intensity = 1.5 + 2.5 * pulse
+      alpha = 0.7 + 0.2 * pulse
+      scale = 1 + 0.05 * pulse
+    } else if (f.ready && f.status === 'idle') paint(f.frame, null, IDLE_ALPHA, 0)
+    f.ready = wantReady
 
     const t = Transform.getMutable(f.frame)
     t.position = Vector3.create(f.base.x + off.x, f.base.y + off.y, f.base.z + off.z)

@@ -182,6 +182,26 @@ export const OutlineLabel = (props: {
   )
 }
 
+// A gold coin drawn from rounded boxes (no image needed): dark rim, bright face, a small highlight.
+export const CoinIcon = (props: { size: number; margin?: Edges; key?: string }) => {
+  const s = props.size
+  return (
+    <UiEntity uiTransform={{ width: s, height: s, margin: props.margin, padding: Math.max(2, Math.round(s * 0.09)), borderRadius: s / 2, pointerFilter: 'none' }} uiBackground={{ color: c(0.72, 0.45, 0.08, 1) }}>
+      <UiEntity
+        uiTransform={{ width: '100%', height: '100%', borderRadius: s / 2, padding: Math.round(s * 0.18), pointerFilter: 'none' }}
+        uiBackground={{ color: c(1, 0.84, 0.25, 1) }}
+      >
+        <UiEntity
+          uiTransform={{ width: '100%', height: '100%', borderRadius: s / 2, padding: Math.round(s * 0.12), pointerFilter: 'none' }}
+          uiBackground={{ color: c(0.95, 0.68, 0.12, 1) }}
+        >
+          <UiEntity uiTransform={{ width: Math.round(s * 0.2), height: Math.round(s * 0.2), borderRadius: s, pointerFilter: 'none' }} uiBackground={{ color: c(1, 0.96, 0.7, 1) }} />
+        </UiEntity>
+      </UiEntity>
+    </UiEntity>
+  )
+}
+
 // A pill button with hover and press feedback. Wood by default, candy-coloured when `tint` is set.
 export const PillButton = (props: {
   id: string
@@ -190,6 +210,8 @@ export const PillButton = (props: {
   height: number
   font?: number
   tint?: Color4
+  active?: boolean // e.g. the option you picked: gold rim and bright text
+  cost?: number // shows a coin and this price after the label
   onClick: () => void
   at?: Edges
   margin?: Edges
@@ -212,7 +234,7 @@ export const PillButton = (props: {
         borderRadius: h / 2,
         pointerFilter: 'block'
       }}
-      uiBackground={{ color: hov ? lighten(rim, 0.12) : rim }}
+      uiBackground={{ color: props.active ? PAL.yellow : hov ? lighten(rim, 0.12) : rim }}
       onMouseDown={() => {
         popPress(props.id)
         props.onClick()
@@ -223,7 +245,15 @@ export const PillButton = (props: {
         uiTransform={{ width: '100%', height: '100%', borderRadius: h / 2 - 4, justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}
         uiBackground={{ color: hov ? PAL.violet : PAL.violetDark }}
       >
-        <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: w - 12, height: Math.max(24, h - 12) }} />
+        {props.cost === undefined ? (
+          <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: w - 12, height: Math.max(24, h - 12) }} />
+        ) : (
+          <UiEntity uiTransform={{ width: w - 12, height: Math.max(24, h - 12), flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
+            <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: Math.round((props.font ?? 24) * 2.3), height: Math.max(24, h - 12) }} />
+            <CoinIcon size={Math.round((props.font ?? 24) * 0.95)} margin={{ left: 4, right: 4 }} />
+            <Label value={`${props.cost}`} fontSize={props.font ?? 24} font="sans-serif" color={PAL.yellow} textWrap="nowrap" uiTransform={{ width: Math.round((props.font ?? 24) * 1.2), height: Math.max(24, h - 12) }} />
+          </UiEntity>
+        )}
       </UiEntity>
     </UiEntity>
   )
@@ -239,6 +269,8 @@ export const LetterTile = (props: {
   pop?: number
   shake?: number
   flash?: Color4 | null
+  onClick?: () => void // makes the tile a button (e.g. place the cube you hold)
+  glow?: boolean // pulses the rim to show it can be pressed
   margin?: number
   key?: string
 }) => {
@@ -246,7 +278,8 @@ export const LetterTile = (props: {
   const inner = Math.round(props.size * k)
   const off = Math.round((props.size - inner) / 2)
   const own = letterColor(props.letter)
-  const rim = props.flash ?? (props.state === 'locked' ? own : props.state === 'hint' ? PAL.slotRim : PAL.slotRim)
+  const pulse = props.glow ? 0.5 + 0.5 * Math.sin(Date.now() / 180) : 0
+  const rim = props.flash ?? (props.glow ? lighten(PAL.yellow, -0.1 + 0.1 * pulse) : props.state === 'locked' ? own : PAL.slotRim)
   const fill = props.state === 'locked' ? PAL.cream : PAL.slot
   const ink = props.state === 'locked' ? darken(own, 0.12) : c(1, 1, 1, 0.5)
   const showLetter = props.state !== 'empty' && props.letter !== '' && props.letter !== '_'
@@ -260,9 +293,10 @@ export const LetterTile = (props: {
           height: inner,
           padding: Math.max(3, Math.round(props.size * 0.07)),
           borderRadius: Math.round(props.size * 0.22),
-          pointerFilter: 'none'
+          pointerFilter: props.onClick ? 'block' : 'none'
         }}
         uiBackground={{ color: rim }}
+        onMouseDown={props.onClick}
       >
         <UiEntity
           uiTransform={{

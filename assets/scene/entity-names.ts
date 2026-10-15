@@ -80,6 +80,7 @@ export enum EntityNames {
   MidPlatform_glb = "MidPlatform.glb",
   OuterFloor_glb = "OuterFloor.glb",
   OuterWalls_glb = "OuterWalls.glb",
+  RankNpc = "RankNpc",
   Rock01_glb = "Rock01.glb",
   Rock01_glb_2 = "Rock01.glb_2",
   Rock01_glb_3 = "Rock01.glb_3",
@@ -130,4 +131,6 @@ export enum EntityNames {
   Tree03_glb_4 = "Tree03.glb_4",
   Tree03_glb_5 = "Tree03.glb_5",
   Tree03_glb_6 = "Tree03.glb_6",
+  VendorNpc = "VendorNpc",
+  VendorNpc_2 = "VendorNpc_2",
 } 

@@ -29,7 +29,7 @@ import {
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
-import { CubeData, modelFor } from '../shared/schemas'
+import { CubeData, modelFor, letterLabel } from '../shared/schemas'
 import { room } from '../shared/messages'
 import { worldParams, syncEnvParams } from '../shared/world'
 import { envOrigin } from '../shared/env'
@@ -123,7 +123,7 @@ function newCopy(letter: string): Copy {
   MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
   const copy: Copy = { entity, hit, letter, cubeId: -1 }
   pointerEventsSystem.onPointerDown(
-    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letter}`, maxDistance: C.INTERACT_DISTANCE } },
+    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
     () => {
       if (copy.cubeId >= 0) room.send('grab', { cubeId: copy.cubeId })
     }

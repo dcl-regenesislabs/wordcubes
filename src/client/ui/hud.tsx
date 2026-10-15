@@ -1,15 +1,23 @@
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
 import { GameState } from '../../shared/schemas'
-import { cs } from '../state'
+import { cs, lockoutLeft, showMessage, setting } from '../state'
 import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
 import { room } from '../../shared/messages'
 import { returnToLobby } from '../lobby'
+import { clickSlot } from '../arena'
+import { MAX_DIFFICULTY, ITEMS, SETTINGS } from '../../config'
 import { canvas, mobile, EDGE, fs, sz } from './platform'
-import { PAL, Frame, OutlineLabel, PillButton, LetterTile, TileState, clamp, c } from './theme'
+import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c } from './theme'
+import { rankName, rankIndex } from './rank'
+import { parseBoard } from '../ranktags'
+import { worldPosition } from '../lobby'
+import { getPlayer } from '@dcl/sdk/players'
+import { Transform } from '@dcl/sdk/ecs'
+import { EntityNames } from '../../../assets/scene/entity-names'
 
-type Game = { phase: string; round: number; completed: number; question: string; length: number; masked: string; hint: string }
+type Game = { frozen: number; players: number; builders: number; hintCost: number; phase: string; round: number; difficulty: number; timeLeft: number; voteLeft: number; voteDown: number; voteSame: number; voteUp: number; completed: number; question: string; length: number; masked: string; hint: string }
 
 function game(): Game | null {
   if (C.UI_PREVIEW) return mockGame()
@@ -31,7 +39,7 @@ function mockGame(): Game {
   if (t >= 8) placed = Math.min(5, Math.floor(t - 7))
   const masked = MOCK_WORD.split('').map((ch, i) => (i < placed ? ch : '_')).join('')
   const hint = t >= 6 && t < 12 ? 'PA___' : ''
-  return { phase: t >= 12 ? 'won' : 'playing', round: mockRound(), completed: mockRound() - 1, question: 'What is the capital of France?', length: MOCK_WORD.length, masked, hint }
+  return { frozen: 0, players: 3, builders: 2, hintCost: 10, phase: t >= 13 ? 'vote' : t >= 12 ? 'won' : 'playing', voteLeft: Math.max(0, Math.ceil(MOCK_LOOP - t)), voteDown: 0, voteSame: 1, voteUp: t >= 14 ? 2 : 0, round: mockRound(), difficulty: 1, timeLeft: Math.max(0, 240 - Math.floor(t)), completed: mockRound() - 1, question: 'What is the capital of France?', length: MOCK_WORD.length, masked, hint }
 }
 
 const heldLetter = (): string => {
@@ -54,8 +62,12 @@ let prevPhase = ''
 let failAt = 0
 let winAt = 0
 const lockAt: number[] = []
+let lastDifficulty = 0
+let levelFrom = 0
+let levelTo = 0
+let levelAt = 0
 
-// Called once per frame from the HUD: compares the new masked word with the last one and starts the matching effect.
+// Called by the HUD system. Rendering only reads animation timestamps.
 function track(g: Game) {
   if (g.round !== seenRound || prev.length !== g.masked.length) {
     seenRound = g.round
@@ -69,10 +81,18 @@ function track(g: Game) {
     if (g.masked[i] !== '_') now++
     if (prev[i] === '_' && g.masked[i] !== '_') lockAt[i] = Date.now()
   }
-  if (was > 0 && now === 0 && g.phase === 'playing') failAt = Date.now()
+  if ((was > 0 && now === 0 && g.phase === 'playing') || (g.phase === 'timeout' && prevPhase !== 'timeout')) failAt = Date.now()
   if (g.phase === 'won' && prevPhase !== 'won') winAt = Date.now()
   prev = g.masked
   prevPhase = g.phase
+  if (g.difficulty !== lastDifficulty) {
+    if (lastDifficulty > 0) {
+      levelFrom = lastDifficulty
+      levelTo = g.difficulty
+      levelAt = Date.now()
+    }
+    lastDifficulty = g.difficulty
+  }
 }
 
 const swell = (since: number, ms: number, amount: number) => {
@@ -83,12 +103,14 @@ const swell = (since: number, ms: number, amount: number) => {
 function WordPanel(props: { g: Game }) {
   const { g } = props
   const n = Math.max(g.length, 1)
-  const maxW = canvas().virtualWidth * 0.92 - 2 * EDGE()
+  // Reserve room for the side panel and, on phones, the native right-hand controls.
+  const panelW = canvas().virtualWidth - sz(300, 520)
+  const maxW = panelW * 0.92 - 2 * EDGE()
   const tile = clamp(Math.floor(maxW / n) - TILE_GAP, 36, sz(84, 58))
   const rowW = n * (tile + TILE_GAP)
   const qFont = fs(sz(32, 22))
-  const qLines = Math.ceil((g.question.length * qFont * 0.55) / (canvas().virtualWidth * 0.6)) || 1
-  const qW = clamp(Math.round(g.question.length * qFont * 0.56) + 90, sz(380, 300), canvas().virtualWidth * 0.7)
+  const qLines = Math.ceil((g.question.length * qFont * 0.55) / (panelW * 0.6)) || 1
+  const qW = clamp(Math.round(g.question.length * qFont * 0.56) + 90, sz(380, 300), panelW * 0.9)
   const qH = Math.round(qFont * 1.5 * Math.min(qLines, 2)) + 28
 
   const failT = (Date.now() - failAt) / FAIL_MS
@@ -96,6 +118,8 @@ function WordPanel(props: { g: Game }) {
   const shake = failing ? Math.sin(failT * 38) * (1 - failT) * 10 : 0
   const winning = winAt > 0 && Date.now() - winAt < WIN_MS && g.phase === 'won'
 
+  // while you hold a cube the empty tiles are buttons: tap one to throw the cube into that frame (easier than aiming at the 3D frame)
+  const placeable = heldLetter() !== '' && g.phase === 'playing' && lockoutLeft() <= 0
   const tiles = []
   for (let i = 0; i < g.length; i++) {
     const letter = g.masked[i] ?? '_'
@@ -112,6 +136,8 @@ function WordPanel(props: { g: Game }) {
         pop={locked ? swell(lockAt[i] ?? 0, 300, 0.3) : winning ? swell(winAt + i * 90, 400, 0.25) : 1}
         shake={shake}
         flash={failing && failT < 0.7 ? PAL.red : winning ? PAL.yellow : null}
+        glow={placeable && !locked}
+        onClick={placeable && !locked ? () => clickSlot(i) : undefined}
         margin={TILE_GAP / 2}
       />
     )
@@ -120,7 +146,7 @@ function WordPanel(props: { g: Game }) {
   // Only the question sits in a panel (a cream block face). The letter tiles float on their own under it.
   return (
     <UiEntity
-      uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16) }, width: '100%', alignItems: 'center', flexDirection: 'column', pointerFilter: 'none' }}
+      uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16) }, width: panelW, alignItems: 'center', flexDirection: 'column', pointerFilter: 'none' }}
     >
       <Frame width={qW} height={qH} edge={PAL.violet} fill={PAL.cream} radius={22} border={5} align="center" justify="center">
         <Label
@@ -138,20 +164,25 @@ function WordPanel(props: { g: Game }) {
   )
 }
 
-// Coins, round and the two buttons, stacked at the top right.
+const clock = (sec: number) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Math.max(0, sec) % 60).padStart(2, '0')}`
+
+// Coins, level, time and the two buttons, stacked at the top right.
 function SidePanel(props: { g: Game | null }) {
   const { g } = props
   const w = sz(250, 210)
-  const edge = EDGE()
+  const edge = mobile() ? EDGE() + 240 : EDGE()
   return (
     <UiEntity
       uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16), right: edge }, width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}
     >
-      <Frame width={w} height={sz(104, 84)} edge={PAL.violetLight} fill={PAL.violetDark} radius={20} border={4} pad={sz(10, 6)} align="center" justify="center">
-        <OutlineLabel value={`${coins()} coins`} fontSize={fs(sz(34, 26))} color={PAL.yellow} width="100%" height={sz(44, 34)} />
-        <OutlineLabel value={g ? `Round ${g.round}  -  Words ${g.completed}` : ''} fontSize={fs(sz(20, 18))} color={PAL.dim} width="100%" height={sz(28, 24)} />
+      <Frame width={w} height={sz(150, 118)} edge={PAL.violetLight} fill={PAL.violetDark} radius={20} border={4} pad={sz(10, 6)} align="center" justify="center">
+        <CoinsRow size={sz(34, 26)} />
+        <OutlineLabel value={g ? `Level ${g.difficulty}   ${rankName(cs.rating)}` : ''} fontSize={fs(sz(22, 18))} color={PAL.dim} width="100%" height={sz(30, 24)} />
+        <OutlineLabel value={g ? (g.frozen > 0 ? `Frozen ${g.frozen}s` : clock(g.timeLeft)) : ''} fontSize={fs(sz(36, 28))} color={g && g.frozen > 0 ? PAL.cyan : g && g.timeLeft <= 30 && g.phase === 'playing' ? PAL.pink : PAL.text} width="100%" height={sz(46, 36)} />
       </Frame>
-      <PillButton id="hint" label="Hint" width={w} height={sz(66, 54)} font={fs(sz(28, 22))} tint={PAL.pink} margin={{ top: 10 }} onClick={() => room.send('hint', { n: 0 })} />
+      <PillButton id="hint" label={g && g.hintCost > 0 ? 'Hint' : 'No hints'} cost={g && g.hintCost > 0 ? g.hintCost : undefined} width={w} height={sz(66, 54)} font={fs(sz(28, 22))} tint={PAL.pink} margin={{ top: 10 }} onClick={() => room.send('hint', { n: 0 })} />
+      <PillButton id="howto-game" label="How to play" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} margin={{ top: 8 }} onClick={() => (cs.showHowTo = true)} />
+      <PillButton id="settings-game" label="Settings" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} margin={{ top: 8 }} onClick={() => (cs.showSettings = true)} />
       <PillButton id="lobby" label="Back to lobby" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} tint={PAL.cyan} margin={{ top: 8 }} onClick={returnToLobby} />
     </UiEntity>
   )
@@ -159,6 +190,18 @@ function SidePanel(props: { g: Game | null }) {
 
 const message = (): string => (C.UI_PREVIEW ? mockMessage() : cs.message)
 const coins = (): number => (C.UI_PREVIEW ? 125 : cs.coins)
+// Coin icon and your coin count.
+function CoinsRow(props: { size: number }) {
+  const text = `${coins()}`
+  const font = fs(props.size)
+  return (
+    <UiEntity uiTransform={{ width: '100%', height: props.size + 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
+      <CoinIcon size={props.size} margin={{ right: 10 }} />
+      <OutlineLabel value={text} fontSize={font} color={PAL.yellow} width={Math.max(40, text.length * font * 0.62)} height={props.size + 6} align="middle-left" />
+    </UiEntity>
+  )
+}
+
 const estW = (text: string, font: number) => Math.round(text.length * font * 0.55)
 
 // What you are holding, the latest message and one line of help, centred at the bottom.
@@ -181,10 +224,15 @@ function BottomArea() {
     <UiEntity
       uiTransform={{ positionType: 'absolute', position: { bottom: sz(36, 24) }, width: '100%', alignItems: 'center', flexDirection: 'column', pointerFilter: 'none' }}
     >
+      {lockoutLeft() > 0 && (
+        <Frame width={sz(420, 320)} height={sz(52, 42)} edge={PAL.pink} fill={PAL.violetDark} radius={26} border={4} align="center" justify="center" margin={{ bottom: 8 }}>
+          <Label value={`Locked out  ${lockoutLeft()}s`} fontSize={fs(sz(28, 22))} font="sans-serif" color={PAL.pink} uiTransform={{ width: '100%', height: '100%' }} />
+        </Frame>
+      )}
       {held !== '' && (
         <UiEntity uiTransform={{ width: heldSize + 190, height: heldSize, margin: { bottom: 10 }, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
-          <OutlineLabel value="Holding" fontSize={fs(sz(26, 20))} color={PAL.text} width={130} height={heldSize} />
-          <LetterTile size={heldSize} index={held.charCodeAt(0)} letter={held} state="locked" />
+          <OutlineLabel value={held === '*' ? 'Wildcard' : 'Holding'} fontSize={fs(sz(26, 20))} color={held === '*' ? PAL.yellow : PAL.text} width={130} height={heldSize} />
+          <LetterTile size={heldSize} index={held.charCodeAt(0)} letter={held === '*' ? '?' : held} state="locked" />
         </UiEntity>
       )}
       {message() !== '' && (
@@ -199,13 +247,301 @@ function BottomArea() {
   )
 }
 
-export function GameHud() {
+// ---- vote screen: shown between rounds ----
+let myVote: number | null = null // -1 easier, 0 same, 1 harder; reset whenever a vote is not open
+let votedRound = -1
+
+function VoteScreen(props: { g: Game }) {
+  const { g } = props
+  const pick = (choice: number) => {
+    myVote = choice
+    if (!C.UI_PREVIEW) room.send('vote', { choice })
+  }
+  const bw = sz(250, 190)
+  const bh = sz(120, 92)
+  const panelW = 3 * bw + 2 * 18 + 70
+  const can = { down: g.difficulty > 1, up: g.difficulty < MAX_DIFFICULTY }
+  const option = (id: string, label: string, choice: number, count: number, tint: typeof PAL.cyan, enabled: boolean) => (
+    <UiEntity uiTransform={{ width: bw, height: bh + 26, margin: { left: 9, right: 9 }, flexDirection: 'column', alignItems: 'center', pointerFilter: 'none' }}>
+      {enabled ? (
+        <PillButton id={id} label={label} width={bw} height={bh} font={fs(sz(34, 24))} tint={tint} active={myVote === choice} onClick={() => pick(choice)} />
+      ) : (
+        <Frame width={bw} height={bh} edge={c(0.6, 0.55, 0.7, 0.6)} fill={c(0.2, 0.1, 0.4, 0.5)} radius={bh / 2} border={4} align="center" justify="center">
+          <Label value={label} fontSize={fs(sz(34, 24))} font="sans-serif" color={c(1, 1, 1, 0.4)} uiTransform={{ width: '100%', height: '100%' }} />
+        </Frame>
+      )}
+      <OutlineLabel value={`${count}`} fontSize={fs(sz(26, 20))} color={PAL.text} width="100%" height={26} />
+    </UiEntity>
+  )
+  return (
+    <UiEntity
+      uiTransform={{ positionType: 'absolute', position: { top: Math.round((canvas().virtualHeight - sz(330, 270)) / 2), left: Math.round((canvas().virtualWidth - panelW) / 2) }, width: panelW, pointerFilter: 'none' }}
+    >
+      <Frame width={panelW} height={sz(330, 270)} edge={PAL.violet} fill={PAL.cream} radius={30} border={6} pad={sz(18, 12)} align="center" justify="center" block>
+        <Label value="Next round: how hard?" fontSize={fs(sz(40, 28))} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: sz(56, 44) }} />
+        <Label
+          value={`Level ${g.difficulty} now  -  ${g.voteLeft}s  -  no vote counts as Same`}
+          fontSize={fs(sz(22, 18))}
+          font="sans-serif"
+          color={c(0.45, 0.35, 0.6, 1)}
+          uiTransform={{ width: '100%', height: sz(34, 28) }}
+        />
+        <UiEntity uiTransform={{ width: '100%', height: bh + 26, margin: { top: 8 }, flexDirection: 'row', justifyContent: 'center', pointerFilter: 'none' }}>
+          {option('vote-down', 'Easier', -1, g.voteDown, PAL.cyan, can.down)}
+          {option('vote-same', 'Same', 0, g.voteSame, PAL.violetLight, true)}
+          {option('vote-up', 'Harder', 1, g.voteUp, PAL.pink, can.up)}
+        </UiEntity>
+      </Frame>
+    </UiEntity>
+  )
+}
+
+const centerLeft = (w: number) => Math.round((canvas().virtualWidth - w) / 2)
+
+// ---- result of the round: shown for a few seconds before the vote opens ----
+function ResultBanner(props: { g: Game }) {
+  const { g } = props
+  if (g.phase !== 'won' && g.phase !== 'timeout') return null
+  const won = g.phase === 'won'
+  const w = sz(560, 440)
+  const h = sz(230, 180)
+  const mine = C.UI_PREVIEW ? true : cs.earnedRound === g.round
+  const earned = C.UI_PREVIEW ? 25 : cs.earned
+  return (
+    <UiEntity uiTransform={{ positionType: 'absolute', position: { top: sz(300, 215), left: centerLeft(w) }, width: w, pointerFilter: 'none' }}>
+      <Frame width={w} height={h} edge={won ? PAL.green : PAL.pink} fill={PAL.cream} radius={26} border={6} align="center" justify="center">
+        <Label value={won ? 'Word complete!' : "Time's up!"} fontSize={fs(sz(42, 30))} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: sz(56, 42) }} />
+        <Label
+          value={won ? `Built by ${g.builders} player${g.builders === 1 ? '' : 's'}` : 'Nobody finished in time'}
+          fontSize={fs(sz(24, 18))}
+          font="sans-serif"
+          color={c(0.45, 0.35, 0.6, 1)}
+          uiTransform={{ width: '100%', height: sz(34, 26) }}
+        />
+        {mine && cs.earnedRound === g.round && cs.delta !== 0 && (
+          <Label
+            value={`Rating ${cs.delta > 0 ? '+' : ''}${cs.delta}`}
+            fontSize={fs(sz(26, 20))}
+            font="sans-serif"
+            color={cs.delta > 0 ? PAL.green : PAL.red}
+            uiTransform={{ width: '100%', height: sz(36, 28) }}
+          />
+        )}
+        {won && mine && (
+          <UiEntity uiTransform={{ width: '100%', height: sz(44, 34), flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
+            <CoinIcon size={sz(34, 26)} margin={{ right: 8 }} />
+            <Label value={`+${earned}`} fontSize={fs(sz(32, 24))} font="sans-serif" color={c(0.75, 0.5, 0.05, 1)} uiTransform={{ width: sz(90, 70), height: sz(40, 30) }} />
+          </UiEntity>
+        )}
+      </Frame>
+    </UiEntity>
+  )
+}
+
+// ---- "Level 2 -> 3" for a moment when the vote changed the difficulty ----
+const LEVEL_BANNER_MS = 2800
+function LevelBanner() {
+  const age = Date.now() - levelAt
+  if (!levelAt || age > LEVEL_BANNER_MS) return null
+  const up = levelTo > levelFrom
+  const pop = 1 + 0.12 * Math.sin(Math.min(1, age / 350) * Math.PI)
+  const w = Math.round(sz(520, 400) * pop)
+  const h = Math.round(sz(96, 76) * pop)
+  return (
+    <UiEntity uiTransform={{ positionType: 'absolute', position: { top: sz(300, 215), left: centerLeft(w) }, width: w, pointerFilter: 'none' }}>
+      <Frame width={w} height={h} edge={up ? PAL.pink : PAL.cyan} fill={PAL.violetDark} radius={h / 2} border={5} align="center" justify="center">
+        <OutlineLabel value={`Level ${levelFrom} to ${levelTo}  -  ${up ? 'Harder!' : 'Easier'}`} fontSize={fs(sz(34, 24))} color={PAL.text} width="100%" height={sz(48, 36)} />
+      </Frame>
+    </UiEntity>
+  )
+}
+
+// ---- NPC conversation: a panel at the bottom of the screen, Next / Close ----
+export function NpcDialog() {
+  const d = cs.dialog
+  if (!d) return null
+  const last = d.page >= d.pages.length - 1
+  const w = sz(1100, 900)
+  const h = sz(250, 220)
+  return (
+    <UiEntity
+      uiTransform={{ positionType: 'absolute', position: { bottom: sz(60, 40), left: centerLeft(w) }, width: w, pointerFilter: 'none' }}
+    >
+      <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={28} border={6} pad={sz(22, 14)} align="flex-start" justify="center" block>
+        <Label value={d.name} fontSize={fs(sz(30, 22))} font="sans-serif" color={PAL.violet} textAlign="middle-left" uiTransform={{ width: '100%', height: sz(40, 30) }} />
+        <Label value={d.pages[d.page]} fontSize={fs(sz(28, 20))} font="sans-serif" color={PAL.ink} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: sz(110, 90) }} />
+        <UiEntity uiTransform={{ width: '100%', height: sz(60, 48), flexDirection: 'row', justifyContent: 'flex-end', pointerFilter: 'none' }}>
+          <PillButton id="npc-close" label="Close" width={sz(150, 120)} height={sz(52, 42)} font={fs(sz(24, 20))} margin={{ right: 12 }} onClick={() => (cs.dialog = null)} />
+          <PillButton
+            id="npc-next"
+            label={last ? 'Done' : 'Next'}
+            width={sz(170, 130)}
+            height={sz(52, 42)}
+            font={fs(sz(24, 20))}
+            tint={PAL.green}
+            onClick={() => (cs.dialog = last || !cs.dialog ? null : { ...cs.dialog, page: cs.dialog.page + 1 })}
+          />
+        </UiEntity>
+      </Frame>
+    </UiEntity>
+  )
+}
+
+// ---- inventory: the power-ups you own, as buttons on the right while you play ----
+const ITEM_TINT: Record<string, typeof PAL.cyan> = { wildcard: PAL.yellow, freeze: PAL.cyan, reroll: PAL.purple, bomb: PAL.red }
+function ItemBar(props: { g: Game | null }) {
+  const owned = ITEMS.filter((i) => (cs.items[i.id] ?? 0) > 0)
+  if (owned.length === 0 || !props.g || props.g.phase !== 'playing') return null
+  const w = sz(250, 180)
+  return (
+    <UiEntity
+      uiTransform={{ positionType: 'absolute', position: { top: sz(500, 384), right: mobile() ? EDGE() + 240 : EDGE() }, width: mobile() ? owned.length * (w + 8) : w, flexDirection: mobile() ? 'row' : 'column', alignItems: 'flex-end', pointerFilter: 'none' }}
+    >
+      {owned.map((i) => (
+        <PillButton
+          key={`item-${i.id}`}
+          id={`item-${i.id}`}
+          label={`${i.name}  x${cs.items[i.id]}`}
+          width={w}
+          height={sz(52, 42)}
+          font={fs(sz(22, 18))}
+          tint={ITEM_TINT[i.id]}
+          margin={{ top: 6, left: mobile() ? 8 : 0 }}
+          onClick={() => room.send('useItem', { item: i.id })}
+        />
+      ))}
+    </UiEntity>
+  )
+}
+
+// ---- settings: on/off switches, saved with your profile ----
+export function SettingsPanel() {
+  const w = sz(820, 700)
+  const rowH = sz(96, 72)
+  const h = sz(110, 84) + SETTINGS.length * rowH + sz(90, 70)
+  const toggle = (id: string, on: boolean) => {
+    cs.settings = { ...cs.settings, [id]: on }
+    if (!C.UI_PREVIEW) room.send('setSetting', { key: id, value: on ? 1 : 0 })
+  }
+  return (
+    <UiEntity
+      uiTransform={{ positionType: 'absolute', position: { top: Math.round((canvas().virtualHeight - h) / 2), left: centerLeft(w) }, width: w, pointerFilter: 'none' }}
+    >
+      <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={30} border={6} pad={sz(22, 14)} align="center" justify="flex-start" block>
+        <Label value="Settings" fontSize={fs(sz(44, 30))} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: sz(64, 46) }} />
+        {SETTINGS.map((s) => {
+          const on = setting(s.id)
+          return (
+            <UiEntity key={`set-${s.id}`} uiTransform={{ width: '100%', height: rowH, flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
+              <UiEntity uiTransform={{ width: w - sz(260, 210), height: rowH, flexDirection: 'column', justifyContent: 'center', pointerFilter: 'none' }}>
+                <Label value={s.label} fontSize={fs(sz(30, 22))} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: '100%', height: sz(42, 32) }} />
+                <Label value={s.desc} fontSize={fs(sz(20, 16))} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: sz(44, 34) }} />
+              </UiEntity>
+              <PillButton id={`set-btn-${s.id}`} label={on ? 'On' : 'Off'} width={sz(150, 110)} height={sz(56, 44)} font={fs(sz(26, 20))} tint={on ? PAL.green : c(0.6, 0.55, 0.7, 0.8)} onClick={() => toggle(s.id, !on)} />
+            </UiEntity>
+          )
+        })}
+        <PillButton id="settings-close" label="Close" width={sz(220, 170)} height={sz(60, 46)} font={fs(sz(28, 22))} margin={{ top: 10 }} onClick={() => (cs.showSettings = false)} />
+      </Frame>
+    </UiEntity>
+  )
+}
+
+// ---- the vendor's shop ----
+export function ShopPanel() {
+  const w = sz(1020, 880)
+  const rowH = sz(112, 84)
+  const h = sz(150, 112) + ITEMS.length * rowH + sz(86, 66)
+  return (
+    <UiEntity
+      uiTransform={{ positionType: 'absolute', position: { top: Math.round((canvas().virtualHeight - h) / 2), left: centerLeft(w) }, width: w, pointerFilter: 'none' }}
+    >
+      <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={30} border={6} pad={sz(22, 14)} align="center" justify="flex-start" block>
+        <UiEntity uiTransform={{ width: '100%', height: sz(64, 46), flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', pointerFilter: 'none' }}>
+          <Label value="Cubby's Shop" fontSize={fs(sz(44, 30))} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: '60%', height: '100%' }} />
+          <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
+            <CoinIcon size={sz(36, 28)} margin={{ right: 8 }} />
+            <Label value={`${coins()}`} fontSize={fs(sz(34, 24))} font="sans-serif" color={c(0.75, 0.5, 0.05, 1)} uiTransform={{ width: sz(110, 80), height: sz(44, 34) }} />
+          </UiEntity>
+        </UiEntity>
+        {ITEMS.map((i) => {
+          const afford = coins() >= i.price
+          return (
+            <UiEntity key={`shop-${i.id}`} uiTransform={{ width: '100%', height: rowH, flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
+              <Frame width={sz(64, 48)} height={sz(64, 48)} edge={ITEM_TINT[i.id]} fill={PAL.cream} radius={sz(16, 12)} border={5} align="center" justify="center" margin={{ left: 6, right: 16 }}>
+                <Label value={`${cs.items[i.id] ?? 0}`} fontSize={fs(sz(30, 22))} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: '100%' }} />
+              </Frame>
+              <UiEntity uiTransform={{ width: w - sz(470, 380), height: rowH, flexDirection: 'column', justifyContent: 'center', pointerFilter: 'none' }}>
+                <Label value={i.name} fontSize={fs(sz(30, 22))} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: '100%', height: sz(40, 30) }} />
+                <Label value={i.desc} fontSize={fs(sz(20, 16))} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: sz(54, 40) }} />
+              </UiEntity>
+              <UiEntity uiTransform={{ width: sz(190, 150), height: rowH, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
+                <CoinIcon size={sz(30, 24)} margin={{ right: 6 }} />
+                <Label value={`${i.price}`} fontSize={fs(sz(30, 22))} font="sans-serif" color={c(0.75, 0.5, 0.05, 1)} uiTransform={{ width: sz(90, 70), height: sz(40, 30) }} />
+              </UiEntity>
+              <PillButton id={`buy-${i.id}`} label="Buy" width={sz(150, 110)} height={sz(56, 44)} font={fs(sz(26, 20))} tint={afford ? PAL.green : c(0.6, 0.55, 0.7, 0.8)} onClick={() => room.send('buy', { item: i.id })} />
+            </UiEntity>
+          )
+        })}
+        <PillButton id="shop-close" label="Close" width={sz(220, 170)} height={sz(60, 46)} font={fs(sz(28, 22))} margin={{ top: 8 }} onClick={() => (cs.shop = false)} />
+      </Frame>
+    </UiEntity>
+  )
+}
+
+// ---- how to play: opens by itself the first time you enter the game, and from the "How to play" buttons ----
+export function HowToPlay() {
+  const phone = mobile()
+  const w = sz(900, 760)
+  const rowH = sz(96, 70)
+  const h = sz(650, 470)
+  const font = fs(sz(26, 20))
+  const rows: { color: typeof PAL.red; text: string }[] = [
+    { color: PAL.orange, text: phone ? 'Tap a cube in the pile to grab it. Dig around: the letters you need are in there.' : 'Click a cube in the pile to grab it. Dig around: the letters you need are in there.' },
+    { color: PAL.green, text: phone ? 'Tap a frame to throw the cube in. The right letter in the right spot stays.' : 'Click a frame to throw the cube in. The right letter in the right spot stays.' },
+    { color: PAL.red, text: 'A wrong letter collapses the word and briefly locks your cube actions. Needed letters cannot be broken.' },
+    { color: PAL.cyan, text: phone ? 'Not sure? Break extra cubes for coins. Coins buy hints.' : 'Not sure? Break extra cubes for coins (E) or throw them away (F). Coins buy hints.' }
+  ]
+  return (
+    <UiEntity
+      uiTransform={{ positionType: 'absolute', position: { top: Math.round((canvas().virtualHeight - h) / 2), left: centerLeft(w) }, width: w, pointerFilter: 'none' }}
+    >
+      <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={30} border={6} pad={sz(24, 14)} align="center" justify="center" block>
+        <Label value="How to play" fontSize={fs(sz(46, 32))} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: sz(64, 46) }} />
+        {rows.map((r, i) => (
+          <UiEntity key={`how${i}`} uiTransform={{ width: '100%', height: rowH, flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
+            <Frame width={sz(56, 42)} height={sz(56, 42)} edge={r.color} fill={PAL.cream} radius={sz(28, 21)} border={5} align="center" justify="center" margin={{ left: 10, right: 16 }}>
+              <Label value={`${i + 1}`} fontSize={fs(sz(30, 22))} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: '100%' }} />
+            </Frame>
+            <Label value={r.text} fontSize={font} font="sans-serif" color={PAL.ink} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: w - sz(150, 120), height: rowH }} />
+          </UiEntity>
+        ))}
+        <Label value="When a round ends, everyone votes: easier, the same, or harder." fontSize={fs(sz(22, 17))} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} uiTransform={{ width: '100%', height: sz(40, 30) }} />
+        <PillButton id="howto-close" label="Got it!" width={sz(260, 200)} height={sz(64, 50)} font={fs(sz(30, 24))} tint={PAL.green} margin={{ top: 6 }} onClick={() => (cs.showHowTo = false)} />
+      </Frame>
+    </UiEntity>
+  )
+}
+
+export function updateHud() {
   const g = game()
   if (g) track(g)
+  if (!g || g.phase !== 'vote' || votedRound !== g.round) {
+    votedRound = g?.round ?? -1
+    myVote = null
+  }
+}
+
+export function GameHud() {
+  const g = game()
   return (
     <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', pointerFilter: 'none' }}>
       {g && <WordPanel g={g} />}
+      {g && g.phase === 'vote' && <VoteScreen g={g} />}
+      {g && <ResultBanner g={g} />}
+      {g && g.phase === 'playing' && <LevelBanner />}
       <SidePanel g={g} />
+      <ItemBar g={g} />
       <BottomArea />
     </UiEntity>
   )
@@ -226,6 +562,82 @@ export function LobbyCountdown() {
         <OutlineLabel value={`${n}`} fontSize={sz(urgent ? 170 : 130, urgent ? 120 : 96)} color={urgent ? PAL.pink : PAL.yellow} width="100%" height={sz(190, 140)} />
         <OutlineLabel value="Step off the pad to cancel" fontSize={fs(sz(24, 18))} color={PAL.text} width="100%" height={sz(34, 28)} />
       </UiEntity>
+    </UiEntity>
+  )
+}
+
+// Server messages that only the HUD cares about.
+export function setupHudMessages() {
+  room.onMessage('profile', (d) => {
+    if (rankIndex(d.rating) > rankIndex(cs.rating) && cs.rating > 0) showMessage(`Rank up! You are now a ${rankName(d.rating)}`, 4)
+    cs.rating = d.rating
+    cs.items = { wildcard: d.wildcard, reroll: d.reroll, freeze: d.freeze, bomb: d.bomb }
+    try {
+      cs.settings = JSON.parse(d.settings || '{}')
+    } catch (e) {
+      cs.settings = {}
+    }
+  })
+  room.onMessage('result', (d) => {
+    cs.delta = d.delta
+    cs.earned = d.coins
+    for (const [, g] of engine.getEntitiesWith(GameState)) cs.earnedRound = (g as unknown as Game).round
+  })
+  room.onMessage('lockout', (d) => {
+    cs.lockoutUntil = Date.now() + d.seconds * 1000
+  })
+}
+
+// Lobby: your coins and rank, top right. (Rank is a placeholder until ratings are stored per player.)
+export function LobbyHud() {
+  const edge = EDGE()
+  const w = sz(250, 210)
+  return (
+    <UiEntity uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16), right: edge }, width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}>
+      <Frame width={w} height={sz(150, 120)} edge={PAL.violetLight} fill={PAL.violetDark} radius={20} border={4} pad={sz(10, 6)} align="center" justify="center">
+        <CoinsRow size={sz(34, 26)} />
+        <OutlineLabel value="Rank" fontSize={fs(sz(18, 16))} color={PAL.dim} width="100%" height={sz(24, 20)} />
+        <OutlineLabel value={rankName(cs.rating)} fontSize={fs(sz(30, 24))} color={PAL.pink} width="100%" height={sz(38, 30)} />
+      </Frame>
+      <PillButton id="howto-lobby" label="How to play" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} tint={PAL.cyan} margin={{ top: 10 }} onClick={() => (cs.showHowTo = true)} />
+      <PillButton id="settings-lobby" label="Settings" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} margin={{ top: 8 }} onClick={() => (cs.showSettings = true)} />
+    </UiEntity>
+  )
+}
+
+// ---- Top players: appears in the lobby while you stand near the Leaderboard sign ----
+let signEntity: ReturnType<typeof engine.getEntityOrNullByName> = null
+const shortAddress = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`
+const nameOf = (address: string): string => {
+  const p = getPlayer({ userId: address })
+  return p && p.name ? p.name : shortAddress(address)
+}
+
+export function LeaderboardPanel() {
+  if (cs.inGame) return null
+  if (!signEntity) signEntity = engine.getEntityOrNullByName(EntityNames.Leaderboard_glb)
+  const me = Transform.getOrNull(engine.PlayerEntity)?.position
+  if (!signEntity || !me || !Transform.getOrNull(signEntity)) return null
+  const sign = worldPosition(signEntity)
+  if (Math.hypot(me.x - sign.x, me.z - sign.z) > 14) return null
+  let top: [string, number][] = []
+  for (const [, g] of engine.getEntitiesWith(GameState)) top = parseBoard((g as unknown as { board: string }).board ?? '')
+  const w = sz(430, 340)
+  const rowH = sz(46, 36)
+  const h = sz(120, 90) + Math.max(1, top.length) * rowH
+  return (
+    <UiEntity uiTransform={{ positionType: 'absolute', position: { top: Math.round((canvas().virtualHeight - h) / 2), left: EDGE() }, width: w, pointerFilter: 'none' }}>
+      <Frame width={w} height={h} edge={PAL.violetLight} fill={PAL.violetDark} radius={22} border={5} pad={sz(14, 10)} align="center" justify="flex-start">
+        <OutlineLabel value="Top players" fontSize={fs(sz(32, 24))} color={PAL.yellow} width="100%" height={sz(52, 40)} />
+        {top.length === 0 && <OutlineLabel value="Nobody ranked yet" fontSize={fs(sz(22, 18))} color={PAL.dim} width="100%" height={rowH} />}
+        {top.map(([address, rating], i) => (
+          <UiEntity key={`lb${i}`} uiTransform={{ width: '100%', height: rowH, flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
+            <OutlineLabel value={`${i + 1}`} fontSize={fs(sz(24, 18))} color={PAL.yellow} width={sz(40, 30)} height={rowH} />
+            <OutlineLabel value={nameOf(address)} fontSize={fs(sz(22, 17))} color={PAL.text} width={sz(190, 140)} height={rowH} align="middle-left" />
+            <OutlineLabel value={rankName(rating)} fontSize={fs(sz(20, 16))} color={PAL.pink} width={sz(150, 120)} height={rowH} align="middle-right" />
+          </UiEntity>
+        ))}
+      </Frame>
     </UiEntity>
   )
 }
