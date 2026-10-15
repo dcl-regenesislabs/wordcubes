@@ -14,7 +14,7 @@ Everything in this doc is built on the `roundsystem` branch and type-checked. No
 | --- | --- |
 | Core loop: question, cube pile, free-for-all placing, collapse on a wrong cube | Built |
 | Round timer, difficulty levels 1 to 7, vote between rounds | Built |
-| Word bank with a list per level | Built; 105 words, a starter set |
+| Word bank with a list per level | Built; 315 words (42 to 49 per level), still small for 24/7 play |
 | Pile can never become unsolvable | Built |
 | Coins only for the players who built the word; vote bonus | Built |
 | Collapse lockout, hints that cost coins | Built |
@@ -157,7 +157,7 @@ Prices are a first guess. Coins come from 25 per finished word, 5 per broken cub
 ## Technical dependencies
 
 - **Round timer** on the server, paused when the room is empty. Built.
-- **Tiered word bank.** Built with 7 levels and 105 words. A 24/7 room needs a much larger bank, which is content work (a generated bank, reviewed).
+- **Tiered word bank.** Built with 7 levels and 315 words, English only. A 24/7 room still needs a much larger bank and other languages, which is content work (a generated bank, reviewed).
 - **Persistence by wallet address.** Built with the server Storage. Profiles are saved at most every 15 seconds and when a player leaves, never on every change. Reading the data back for the D7-return metric is not built.
 - **Per-round contributor tracking** on the server: who placed each cube in the final word, and who placed any correct cube during the round. Built.
 - **New messages and UI:** a vote message and vote screen, a lockout countdown and hint pricing are built. The rank display at the pad and over nameplates is not.
