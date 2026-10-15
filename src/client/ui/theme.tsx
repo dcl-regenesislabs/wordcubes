@@ -182,6 +182,26 @@ export const OutlineLabel = (props: {
   )
 }
 
+// A gold coin drawn from rounded boxes (no image needed): dark rim, bright face, a small highlight.
+export const CoinIcon = (props: { size: number; margin?: Edges; key?: string }) => {
+  const s = props.size
+  return (
+    <UiEntity uiTransform={{ width: s, height: s, margin: props.margin, padding: Math.max(2, Math.round(s * 0.09)), borderRadius: s / 2, pointerFilter: 'none' }} uiBackground={{ color: c(0.72, 0.45, 0.08, 1) }}>
+      <UiEntity
+        uiTransform={{ width: '100%', height: '100%', borderRadius: s / 2, padding: Math.round(s * 0.18), pointerFilter: 'none' }}
+        uiBackground={{ color: c(1, 0.84, 0.25, 1) }}
+      >
+        <UiEntity
+          uiTransform={{ width: '100%', height: '100%', borderRadius: s / 2, padding: Math.round(s * 0.12), pointerFilter: 'none' }}
+          uiBackground={{ color: c(0.95, 0.68, 0.12, 1) }}
+        >
+          <UiEntity uiTransform={{ width: Math.round(s * 0.2), height: Math.round(s * 0.2), borderRadius: s, pointerFilter: 'none' }} uiBackground={{ color: c(1, 0.96, 0.7, 1) }} />
+        </UiEntity>
+      </UiEntity>
+    </UiEntity>
+  )
+}
+
 // A pill button with hover and press feedback. Wood by default, candy-coloured when `tint` is set.
 export const PillButton = (props: {
   id: string
@@ -191,6 +211,7 @@ export const PillButton = (props: {
   font?: number
   tint?: Color4
   active?: boolean // e.g. the option you picked: gold rim and bright text
+  cost?: number // shows a coin and this price after the label
   onClick: () => void
   at?: Edges
   margin?: Edges
@@ -224,7 +245,15 @@ export const PillButton = (props: {
         uiTransform={{ width: '100%', height: '100%', borderRadius: h / 2 - 4, justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}
         uiBackground={{ color: hov ? PAL.violet : PAL.violetDark }}
       >
-        <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: w - 12, height: Math.max(24, h - 12) }} />
+        {props.cost === undefined ? (
+          <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: w - 12, height: Math.max(24, h - 12) }} />
+        ) : (
+          <UiEntity uiTransform={{ width: w - 12, height: Math.max(24, h - 12), flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
+            <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: Math.round((props.font ?? 24) * 2.3), height: Math.max(24, h - 12) }} />
+            <CoinIcon size={Math.round((props.font ?? 24) * 0.95)} margin={{ left: 4, right: 4 }} />
+            <Label value={`${props.cost}`} fontSize={props.font ?? 24} font="sans-serif" color={PAL.yellow} textWrap="nowrap" uiTransform={{ width: Math.round((props.font ?? 24) * 1.2), height: Math.max(24, h - 12) }} />
+          </UiEntity>
+        )}
       </UiEntity>
     </UiEntity>
   )

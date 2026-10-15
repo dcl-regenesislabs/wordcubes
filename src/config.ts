@@ -11,6 +11,11 @@ export const STAGE_UPPER_RADIUS = 0 // no second tier any more
 export const STAGE_UPPER_TOP = STAGE_TOP
 export const SLOT_Y = 3.1 // letter frames float about head height over the platform
 export const SLOT_SPACING = 1.15
+// Invisible click area of a letter frame (metres, world size). Bigger than the frame itself so it is easy to hit from any angle,
+// but narrower than SLOT_SPACING so neighbouring frames do not overlap. Depth is generous so a ray from the side still hits.
+export const SLOT_HIT_WIDTH = 1.05
+export const SLOT_HIT_HEIGHT = 1.05
+export const SLOT_HIT_DEPTH = 1.4
 // PathArrow marker standing left of the first frame, level with its centre, tip pointing at it.
 export const START_ARROW_SCALE = 1
 export const START_ARROW_GAP = 0.15 // metres between the arrow's tip and the first frame

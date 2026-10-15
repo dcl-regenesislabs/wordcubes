@@ -2,6 +2,7 @@
 export const cs = {
   myAddress: '',
   coins: 0,
+  rating: 0, // placeholder until ratings are stored per player (see docs/round-system-design.md)
   message: '',
   messageTime: 0,
   inGame: false, // false in the lobby, true once teleported into (or standing in) the game

@@ -8,7 +8,8 @@ import { room } from '../../shared/messages'
 import { returnToLobby } from '../lobby'
 import { MAX_DIFFICULTY } from '../../config'
 import { canvas, mobile, EDGE, fs, sz } from './platform'
-import { PAL, Frame, OutlineLabel, PillButton, LetterTile, TileState, clamp, c } from './theme'
+import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c } from './theme'
+import { rankName } from './rank'
 
 type Game = { hintCost: number; phase: string; round: number; difficulty: number; timeLeft: number; voteLeft: number; voteDown: number; voteSame: number; voteUp: number; completed: number; question: string; length: number; masked: string; hint: string }
 
@@ -151,11 +152,11 @@ function SidePanel(props: { g: Game | null }) {
       uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16), right: edge }, width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}
     >
       <Frame width={w} height={sz(150, 118)} edge={PAL.violetLight} fill={PAL.violetDark} radius={20} border={4} pad={sz(10, 6)} align="center" justify="center">
-        <OutlineLabel value={`${coins()} coins`} fontSize={fs(sz(34, 26))} color={PAL.yellow} width="100%" height={sz(44, 34)} />
+        <CoinsRow size={sz(34, 26)} />
         <OutlineLabel value={g ? `Level ${g.difficulty}   Words ${g.completed}` : ''} fontSize={fs(sz(22, 18))} color={PAL.dim} width="100%" height={sz(30, 24)} />
         <OutlineLabel value={g ? clock(g.timeLeft) : ''} fontSize={fs(sz(36, 28))} color={g && g.timeLeft <= 30 && g.phase === 'playing' ? PAL.pink : PAL.text} width="100%" height={sz(46, 36)} />
       </Frame>
-      <PillButton id="hint" label={g && g.hintCost > 0 ? `Hint  ${g.hintCost}c` : 'No hints'} width={w} height={sz(66, 54)} font={fs(sz(28, 22))} tint={PAL.pink} margin={{ top: 10 }} onClick={() => room.send('hint', { n: 0 })} />
+      <PillButton id="hint" label={g && g.hintCost > 0 ? 'Hint' : 'No hints'} cost={g && g.hintCost > 0 ? g.hintCost : undefined} width={w} height={sz(66, 54)} font={fs(sz(28, 22))} tint={PAL.pink} margin={{ top: 10 }} onClick={() => room.send('hint', { n: 0 })} />
       <PillButton id="lobby" label="Back to lobby" width={w} height={sz(54, 46)} font={fs(sz(22, 18))} tint={PAL.cyan} margin={{ top: 8 }} onClick={returnToLobby} />
     </UiEntity>
   )
@@ -163,6 +164,18 @@ function SidePanel(props: { g: Game | null }) {
 
 const message = (): string => (C.UI_PREVIEW ? mockMessage() : cs.message)
 const coins = (): number => (C.UI_PREVIEW ? 125 : cs.coins)
+// Coin icon and your coin count.
+function CoinsRow(props: { size: number }) {
+  const text = `${coins()}`
+  const font = fs(props.size)
+  return (
+    <UiEntity uiTransform={{ width: '100%', height: props.size + 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
+      <CoinIcon size={props.size} margin={{ right: 10 }} />
+      <OutlineLabel value={text} fontSize={font} color={PAL.yellow} width={Math.max(40, text.length * font * 0.62)} height={props.size + 6} align="middle-left" />
+    </UiEntity>
+  )
+}
+
 const estW = (text: string, font: number) => Math.round(text.length * font * 0.55)
 
 // What you are holding, the latest message and one line of help, centred at the bottom.
@@ -296,4 +309,19 @@ export function setupHudMessages() {
   room.onMessage('lockout', (d) => {
     cs.lockoutUntil = Date.now() + d.seconds * 1000
   })
+}
+
+// Lobby: your coins and rank, top right. (Rank is a placeholder until ratings are stored per player.)
+export function LobbyHud() {
+  const edge = EDGE()
+  const w = sz(250, 210)
+  return (
+    <UiEntity uiTransform={{ positionType: 'absolute', position: { top: sz(24, 16), right: edge }, width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}>
+      <Frame width={w} height={sz(118, 96)} edge={PAL.violetLight} fill={PAL.violetDark} radius={20} border={4} pad={sz(10, 6)} align="center" justify="center">
+        <CoinsRow size={sz(34, 26)} />
+        <OutlineLabel value="Rank" fontSize={fs(sz(18, 16))} color={PAL.dim} width="100%" height={sz(24, 20)} />
+        <OutlineLabel value={rankName(cs.rating)} fontSize={fs(sz(30, 24))} color={PAL.pink} width="100%" height={sz(38, 30)} />
+      </Frame>
+    </UiEntity>
+  )
 }
