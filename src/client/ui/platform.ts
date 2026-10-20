@@ -54,7 +54,15 @@ export function getUiRendererConfig() {
 
 /** Global UI scale: ×1.6 on mobile, ×1.18 everywhere else (no pixel-ratio term, on purpose). */
 export function S(n: number): number {
-  return Math.round(n * (mobile() ? 1.6 : 1.18))
+  return Math.round(n * (mobile() ? 1.6 * shortPhone() : 1.18))
+}
+
+// ×1.6 is tuned for the phone canvas expanded by a pixel ratio of 2-3 (1440+ tall). A phone that reports a ratio near
+// 1 gets a 720 tall canvas where the HUD cannot fit, so only then shrink with the canvas height. Not a pixel-ratio
+// term: real phones (ratio >= 2) are unaffected.
+const PHONE_DESIGN_H = 1100
+function shortPhone(): number {
+  return Math.min(1, view().h / PHONE_DESIGN_H)
 }
 
 /** Touch buttons: a little bigger on mobile only, on top of S(). */
@@ -77,6 +85,8 @@ export function view(): { w: number; h: number } {
 export const EDGE = (): number => (mobile() ? Math.round(view().w * 0.035) : S(20))
 /** Extra room on the right of a phone for the app's own buttons. */
 export const RIGHT_RESERVE = (): number => (mobile() ? Math.round(view().w * 0.15) : 0)
+/** The phone app's own top bar: screenInset is 'none', so top-anchored pieces start below it themselves. */
+export const TOP_RESERVE = (): number => (mobile() ? Math.round(view().h * 0.09) : 0)
 
 let rootComponent: UiComponent | null = null
 let lastSignature = ''

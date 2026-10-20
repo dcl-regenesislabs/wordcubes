@@ -8,7 +8,7 @@ import { room } from '../../shared/messages'
 import { returnToLobby } from '../lobby'
 import { clickSlot } from '../arena'
 import { MAX_DIFFICULTY, ITEMS, SETTINGS } from '../../config'
-import { mobile, EDGE, RIGHT_RESERVE, S, view } from './platform'
+import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, S, view } from './platform'
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c, Edges } from './theme'
 import { rankName, rankIndex } from './rank'
 import { parseBoard } from '../ranktags'
@@ -123,9 +123,33 @@ function Layer(props: { align?: Flex; justify?: Flex; pad?: Edges; dir?: 'row' |
   )
 }
 
-// Top-right column (coins, timer, buttons, items). The word panel keeps clear of it on both sides so it stays centred.
+// Top-right column (coins, timer, buttons, items) and the word row next to it, computed in one place so the pieces
+// cannot overlap and the tests can check the numbers.
 const SIDE_W = () => S(250)
-const sideReserve = () => SIDE_W() + EDGE() + RIGHT_RESERVE() + S(16)
+const ITEM_H = () => S(52)
+const ITEM_GAP = () => S(6)
+function ownedItems() {
+  return ITEMS.filter((i) => (cs.items[i.id] ?? 0) > 0)
+}
+export function hudLayout(g: Game | null) {
+  const v = view()
+  const top = S(24) + TOP_RESERVE()
+  const right = EDGE() + RIGHT_RESERVE()
+  const columnH = S(150) + S(10) + S(66) + 3 * (S(8) + S(54)) // stats frame + hint + three buttons
+  const items = g && g.phase === 'playing' ? ownedItems().length : 0
+  const itemsH = items > 0 ? S(10) + items * (ITEM_GAP() + ITEM_H()) : 0
+  // a tall stack would run off a short screen: then the items get their own column left of the buttons
+  const itemsBeside = items > 0 && top + columnH + itemsH > v.h - EDGE()
+  const sideW = SIDE_W() + (itemsBeside ? S(10) + SIDE_W() : 0)
+  const reserve = right + sideW + S(16)
+  // centred on the screen when it fits between equal margins, otherwise centred in the space left of the column
+  const left = v.w - 2 * reserve >= S(700) ? reserve : EDGE()
+  const panelW = Math.max(S(120), v.w - left - reserve)
+  const n = Math.max(g?.length ?? 1, 1)
+  const gap = S(TILE_GAP)
+  const tile = Math.min(S(84), Math.max(S(16), Math.floor(panelW / n) - gap))
+  return { top, right, left, reserve, panelW, tile, gap, rowW: n * (tile + gap), sideW, columnH, itemsH, itemsBeside }
+}
 // A panel width that never runs off a narrow screen.
 const fit = (w: number, share = 0.92) => Math.min(w, Math.round(view().w * share))
 const fitH = (h: number, share = 0.92) => Math.min(h, Math.round(view().h * share))
@@ -133,11 +157,7 @@ const fitH = (h: number, share = 0.92) => Math.min(h, Math.round(view().h * shar
 function WordPanel(props: { g: Game }) {
   const { g } = props
   const n = Math.max(g.length, 1)
-  // Room between the side columns (kept equal on both sides, so the word is centred on the screen).
-  const panelW = Math.max(S(300), view().w - 2 * sideReserve())
-  const gap = S(TILE_GAP)
-  const tile = clamp(Math.floor(panelW / n) - gap, S(30), S(84))
-  const rowW = n * (tile + gap)
+  const { top, left, reserve, panelW, tile, gap, rowW } = hudLayout(g)
   const qFont = S(32)
   const qLines = Math.ceil((g.question.length * qFont * 0.55) / (panelW * 0.6)) || 1
   const qW = clamp(Math.round(g.question.length * qFont * 0.56) + S(90), Math.min(S(380), panelW), panelW)
@@ -175,7 +195,7 @@ function WordPanel(props: { g: Game }) {
 
   // Only the question sits in a panel (a cream block face). The letter tiles float on their own under it.
   return (
-    <Layer justify="flex-start" pad={{ top: S(24) }}>
+    <Layer justify="flex-start" pad={{ top, left, right: reserve }}>
       <Frame width={qW} height={qH} edge={PAL.violet} fill={PAL.cream} radius={S(22)} border={S(5)} align="center" justify="center">
         <Label
           value={g.question || 'Connecting...'}
@@ -198,8 +218,9 @@ const clock = (sec: number) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Ma
 function SidePanel(props: { g: Game | null }) {
   const { g } = props
   const w = SIDE_W()
-  return (
-    <Layer align="flex-end" justify="flex-start" pad={{ top: S(24), right: EDGE() + RIGHT_RESERVE() }}>
+  const L = hudLayout(g)
+  const column = (
+    <UiEntity uiTransform={{ width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}>
       <Frame width={w} height={S(150)} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(20)} pad={S(10)} align="center" justify="center">
         <CoinsRow size={S(34)} />
         <OutlineLabel value={g ? `Level ${g.difficulty}   ${rankName(cs.rating)}` : ''} fontSize={S(22)} color={PAL.dim} width="100%" height={S(30)} />
@@ -209,7 +230,15 @@ function SidePanel(props: { g: Game | null }) {
       <PillButton id="howto-game" label="How to play" width={w} height={S(54)} font={S(22)} margin={{ top: S(8) }} onClick={() => (cs.showHowTo = true)} />
       <PillButton id="settings-game" label="Settings" width={w} height={S(54)} font={S(22)} margin={{ top: S(8) }} onClick={() => (cs.showSettings = true)} />
       <PillButton id="lobby" label="Back to lobby" width={w} height={S(54)} font={S(22)} tint={PAL.cyan} margin={{ top: S(8) }} onClick={returnToLobby} />
-      <ItemBar g={g} />
+      {!L.itemsBeside && <ItemBar g={g} />}
+    </UiEntity>
+  )
+  return (
+    <Layer align="flex-end" justify="flex-start" pad={{ top: L.top, right: L.right }}>
+      <UiEntity uiTransform={{ width: L.sideW, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end', pointerFilter: 'none' }}>
+        {L.itemsBeside && <ItemBar g={g} beside />}
+        {column}
+      </UiEntity>
     </Layer>
   )
 }
@@ -407,23 +436,23 @@ export function NpcDialog() {
 
 // ---- inventory: the power-ups you own, as buttons on the right while you play ----
 const ITEM_TINT: Record<string, typeof PAL.cyan> = { wildcard: PAL.yellow, freeze: PAL.cyan, reroll: PAL.purple, bomb: PAL.red }
-function ItemBar(props: { g: Game | null }) {
-  const owned = ITEMS.filter((i) => (cs.items[i.id] ?? 0) > 0)
+function ItemBar(props: { g: Game | null; beside?: boolean }) {
+  const owned = ownedItems()
   if (owned.length === 0 || !props.g || props.g.phase !== 'playing') return null
-  // Lives in the side column, under its buttons, so it can never overlap them.
+  // Under the side column's buttons, or in its own column beside them when the screen is too short (see hudLayout).
   const w = SIDE_W()
   return (
-    <UiEntity uiTransform={{ width: w, margin: { top: S(10) }, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}>
+    <UiEntity uiTransform={{ width: w, margin: props.beside ? { right: S(10) } : { top: S(10) }, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}>
       {owned.map((i) => (
         <PillButton
           key={`item-${i.id}`}
           id={`item-${i.id}`}
           label={`${i.name}  x${cs.items[i.id]}`}
           width={w}
-          height={S(52)}
+          height={ITEM_H()}
           font={S(22)}
           tint={ITEM_TINT[i.id]}
-          margin={{ top: S(6) }}
+          margin={{ top: ITEM_GAP() }}
           onClick={() => room.send('useItem', { item: i.id })}
         />
       ))}
@@ -600,7 +629,7 @@ export function setupHudMessages() {
 export function LobbyHud() {
   const w = SIDE_W()
   return (
-    <Layer align="flex-end" justify="flex-start" pad={{ top: S(24), right: EDGE() + RIGHT_RESERVE() }}>
+    <Layer align="flex-end" justify="flex-start" pad={{ top: S(24) + TOP_RESERVE(), right: EDGE() + RIGHT_RESERVE() }}>
       <Frame width={w} height={S(150)} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(20)} pad={S(10)} align="center" justify="center">
         <CoinsRow size={S(34)} />
         <OutlineLabel value="Rank" fontSize={S(18)} color={PAL.dim} width="100%" height={S(24)} />

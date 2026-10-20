@@ -1,7 +1,7 @@
 # UI sizing & screen model for DCL SDK7 (Unity desktop · Bevy web · Mobile)
 
 This is the sizing system that makes our HUD look right on **all three** DCL
-clients. Port `ui/scale.ts` and follow the rules below. Everything here is the
+clients. In Word Cubes it lives in `src/client/ui/platform.ts`; follow the rules below. Everything here is the
 distilled result of several real bugs — the "don't do X" notes are not
 hypothetical.
 
@@ -43,7 +43,7 @@ resolves a frame or more into the session). But the virtual canvas
 - When the lookup settles and we learn it's mobile, **call `setUiRenderer`
   again** with the mobile canvas.
 
-`setupResponsiveUi(Root)` in `scale.ts` does all of this (a tiny per-frame
+`setupResponsiveUi(Root)` in `platform.ts` does all of this (a tiny per-frame
 system re-applies the renderer only when the config signature changes, so it's
 a no-op after the one flip). **If you wire `setUiRenderer` yourself and forget
 the re-apply, mobile stays on the desktop canvas forever.**
@@ -77,6 +77,9 @@ the re-apply, mobile stays on the desktop canvas forever.**
   landed too low / off-center on one client. When exact placement matters
   (e.g. pinning something to a panel's base), use `positionType: 'absolute'`
   with explicit `position` offsets instead of relying on flex stacking.
+- **Phones that report a pixel ratio near 1:** their canvas is only 720 tall and the
+  ×1.6 HUD cannot fit, so `S()` shrinks with the canvas height below 1100 (Word Cubes
+  only). Phones at ratio 2–3 are unaffected. This is a height clamp, not a DPR term.
 - **Touch buttons:** use `Sbtn(n)` (adds `MOBILE_BTN_BOOST` ×1.2 on mobile only)
   so tap targets stay comfortable without bloating desktop.
 
@@ -98,4 +101,4 @@ export function main() {
 
 That's the whole system. `mobile()`, `bevy()`, `S()`, `Sbtn()`,
 `getUiRendererConfig()` and `resolveRuntimePlatform()` are all exported from
-`scale.ts` if you need them directly.
+`platform.ts` if you need them directly.
