@@ -1,5 +1,6 @@
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { Color4 } from '@dcl/sdk/math'
+import { S } from './platform'
 
 // Word Cubes look: a candy toy-block world. Cream alphabet-block faces, bright violet panels, rainbow accents.
 // Every colour lives here so the whole UI can be re-skinned from one place.
@@ -81,7 +82,7 @@ export const hover = (id: string) => ({
   }
 })
 
-type Edges = { top?: number; left?: number; right?: number; bottom?: number }
+export type Edges = { top?: number; left?: number; right?: number; bottom?: number }
 
 // A rounded card with a coloured rim: the rim is the outer entity's padding, the fill sits inside.
 export const Frame = (props: {
@@ -101,8 +102,8 @@ export const Frame = (props: {
   key?: string
   children?: any
 }) => {
-  const r = props.radius ?? 18
-  const b = props.border ?? 4
+  const r = props.radius ?? S(18)
+  const b = props.border ?? S(4)
   return (
     <UiEntity
       uiTransform={{
@@ -137,12 +138,15 @@ export const Frame = (props: {
 }
 
 // Text with a dark outline so it stays readable over the 3D world.
-const OFF = [
-  { left: -2, top: 0 },
-  { left: 2, top: 0 },
-  { left: 0, top: -2 },
-  { left: 0, top: 2 }
-]
+const OFF = () => {
+  const d = Math.max(1, S(2))
+  return [
+    { left: -d, top: 0 },
+    { left: d, top: 0 },
+    { left: 0, top: -d },
+    { left: 0, top: d }
+  ]
+}
 export const OutlineLabel = (props: {
   value: string
   fontSize: number
@@ -157,7 +161,7 @@ export const OutlineLabel = (props: {
   const wrap = props.wrap ? 'wrap' : 'nowrap'
   return (
     <UiEntity uiTransform={{ width: props.width, height: props.height, pointerFilter: 'none' }}>
-      {OFF.map((o, i) => (
+      {OFF().map((o, i) => (
         <Label
           key={`o${i}`}
           value={props.value}
@@ -222,6 +226,10 @@ export const PillButton = (props: {
   const w = Math.round(props.width * k)
   const h = Math.round(props.height * k)
   const rim = props.tint ?? PAL.violetLight
+  const p = S(4) // rim thickness
+  const font = props.font ?? S(24)
+  const innerW = w - 3 * p
+  const innerH = Math.max(S(20), h - 3 * p)
   return (
     <UiEntity
       uiTransform={{
@@ -230,7 +238,7 @@ export const PillButton = (props: {
         margin: props.margin,
         width: w,
         height: h,
-        padding: 4,
+        padding: p,
         borderRadius: h / 2,
         pointerFilter: 'block'
       }}
@@ -242,16 +250,16 @@ export const PillButton = (props: {
       {...hover(props.id)}
     >
       <UiEntity
-        uiTransform={{ width: '100%', height: '100%', borderRadius: h / 2 - 4, justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}
+        uiTransform={{ width: '100%', height: '100%', borderRadius: h / 2 - p, justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}
         uiBackground={{ color: hov ? PAL.violet : PAL.violetDark }}
       >
         {props.cost === undefined ? (
-          <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: w - 12, height: Math.max(24, h - 12) }} />
+          <Label value={props.label} fontSize={font} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: innerW, height: innerH }} />
         ) : (
-          <UiEntity uiTransform={{ width: w - 12, height: Math.max(24, h - 12), flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
-            <Label value={props.label} fontSize={props.font ?? 24} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: Math.round((props.font ?? 24) * 2.3), height: Math.max(24, h - 12) }} />
-            <CoinIcon size={Math.round((props.font ?? 24) * 0.95)} margin={{ left: 4, right: 4 }} />
-            <Label value={`${props.cost}`} fontSize={props.font ?? 24} font="sans-serif" color={PAL.yellow} textWrap="nowrap" uiTransform={{ width: Math.round((props.font ?? 24) * 1.2), height: Math.max(24, h - 12) }} />
+          <UiEntity uiTransform={{ width: innerW, height: innerH, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
+            <Label value={props.label} fontSize={font} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: Math.round(font * 2.3), height: innerH }} />
+            <CoinIcon size={Math.round(font * 0.95)} margin={{ left: p, right: p }} />
+            <Label value={`${props.cost}`} fontSize={font} font="sans-serif" color={PAL.yellow} textWrap="nowrap" uiTransform={{ width: Math.round(font * 1.2), height: innerH }} />
           </UiEntity>
         )}
       </UiEntity>

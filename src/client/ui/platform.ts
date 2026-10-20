@@ -1,8 +1,16 @@
+// Responsive UI sizing, ported from the shared scale.ts (see dclcontext/UI_SIZING.md). Two regimes only: mobile and
+// not mobile. Unity desktop and Bevy are sized the same way.
+//
+//   • every width / height / fontSize / margin / offset goes through S() (Sbtn() for touch buttons)
+//   • setupResponsiveUi(Root) replaces ReactEcsRenderer.setUiRenderer: it renders at the desktop canvas right away and
+//     re-applies the renderer once the async platform lookup says we are on a phone (the virtual canvas is read only
+//     when setUiRenderer is called)
+//   • layout is centred with flex (see Layer in hud.tsx), never with left = (1920 - w) / 2: the visible canvas is not
+//     always 1920 wide
+import { engine, UiCanvasInformation } from '@dcl/sdk/ecs'
+import { ReactEcsRenderer, type UiComponent } from '@dcl/sdk/react-ecs'
 import { getExplorerInformation } from '~system/Runtime'
 
-// One place that knows whether we are on a phone. The UI reads mobile() every frame, so it switches as soon as the
-// lookup answers. Same approach as Marsh Colony / Pumpkin Ball / Last Gate: ask the Explorer once, add an agent-string
-// fallback, and stay on desktop if the lookup fails.
 const MOBILE_AGENT_RE = /mobile|android|iphone|ipad|ios/
 
 let detected = false
@@ -19,21 +27,78 @@ export function resolvePlatform(onResolved?: () => void) {
       detected = platform === 'mobile' || MOBILE_AGENT_RE.test(agent)
       console.log('[CLIENT] platform', platform || '?', 'agent', agent || '?', 'mobile', detected)
     })
-    .catch(() => {})
+    .catch(() => {}) // couldn't read it: stay on desktop rather than guess
     .then(() => onResolved && onResolved())
 }
 
+/** True on the DCL mobile app. false on Unity desktop and on Bevy. */
 export const mobile = (): boolean => (forced === null ? detected : forced)
 export function forceMobile(v: boolean | null) {
   forced = v
 }
 
-// The SDK draws the UI on a fixed virtual canvas: 1920x1080 on desktop, 1600x720 on phones.
-export const canvas = () => (mobile() ? { virtualWidth: 1600, virtualHeight: 720 } : { virtualWidth: 1920, virtualHeight: 1080 })
+/** Device pixel ratio. Used ONLY to expand the mobile virtual canvas, never in S() (that made Bevy/retina giant). */
+function devicePixelRatio(): number {
+  return UiCanvasInformation.getOrNull(engine.RootEntity)?.devicePixelRatio || 1
+}
 
-// Keep things away from notches and rounded corners on the left and right edges of a phone.
-export const EDGE = (): number => (mobile() ? 56 : 24)
-// Smallest text on a phone.
-export const fs = (n: number): number => (mobile() ? Math.max(n, 18) : n)
-// Phone layouts are drawn a bit smaller than desktop ones because the canvas is shorter (720 vs 1080).
-export const sz = (desktop: number, phone: number): number => (mobile() ? phone : desktop)
+/** Desktop / Bevy: fixed 1920x1080. Mobile: 1600x720 expanded by the pixel ratio. Full screen, no safe-area inset. */
+export function getUiRendererConfig() {
+  const density = mobile() ? Math.max(1, devicePixelRatio()) : 1
+  return {
+    virtualWidth: mobile() ? Math.max(1, Math.round(1600 * density)) : 1920,
+    virtualHeight: mobile() ? Math.max(1, Math.round(720 * density)) : 1080,
+    screenInset: 'none' as const
+  }
+}
+
+/** Global UI scale: ×1.6 on mobile, ×1.18 everywhere else (no pixel-ratio term, on purpose). */
+export function S(n: number): number {
+  return Math.round(n * (mobile() ? 1.6 : 1.18))
+}
+
+/** Touch buttons: a little bigger on mobile only, on top of S(). */
+export const MOBILE_BTN_BOOST = 1.2
+export function Sbtn(n: number): number {
+  return Math.round(S(n) * (mobile() ? MOBILE_BTN_BOOST : 1))
+}
+
+/** The visible screen in virtual units. The SDK contain-fits the virtual canvas, so one side is usually larger than
+ *  the canvas. Only a safety net for clamping (mobile under-reports its canvas): sizes come from S(). */
+export function view(): { w: number; h: number } {
+  const cfg = getUiRendererConfig()
+  const ci = UiCanvasInformation.getOrNull(engine.RootEntity)
+  if (!ci || !ci.width || !ci.height) return { w: cfg.virtualWidth, h: cfg.virtualHeight }
+  const scale = Math.min(ci.width / cfg.virtualWidth, ci.height / cfg.virtualHeight)
+  return { w: ci.width / scale, h: ci.height / scale }
+}
+
+/** Gap kept from the screen edges: notches and rounded corners on phones. */
+export const EDGE = (): number => (mobile() ? Math.round(view().w * 0.035) : S(20))
+/** Extra room on the right of a phone for the app's own buttons. */
+export const RIGHT_RESERVE = (): number => (mobile() ? Math.round(view().w * 0.15) : 0)
+
+let rootComponent: UiComponent | null = null
+let lastSignature = ''
+let syncRegistered = false
+
+function applyUiRenderer(force = false) {
+  if (!rootComponent) return
+  const config = getUiRendererConfig()
+  const signature = `${mobile()}:${config.virtualWidth}x${config.virtualHeight}`
+  if (!force && signature === lastSignature) return
+  ReactEcsRenderer.setUiRenderer(rootComponent, config)
+  lastSignature = signature
+}
+
+/** Call once at startup instead of ReactEcsRenderer.setUiRenderer. Re-applies the renderer when the platform lookup
+ *  (or forceMobile, or the pixel ratio) changes the canvas; a no-op every other frame. */
+export function setupResponsiveUi(Root: UiComponent) {
+  rootComponent = Root
+  if (!syncRegistered) {
+    syncRegistered = true
+    engine.addSystem(() => applyUiRenderer())
+  }
+  resolvePlatform(() => applyUiRenderer())
+  applyUiRenderer(true)
+}
