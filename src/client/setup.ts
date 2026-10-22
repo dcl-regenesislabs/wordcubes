@@ -2,8 +2,8 @@ import { engine, inputSystem, InputAction, PointerEventType } from '@dcl/sdk/ecs
 import { getPlayer } from '@dcl/sdk/players'
 import { isStateSyncronized } from '@dcl/sdk/network'
 import { room } from '../shared/messages'
-import { GameState } from '../shared/schemas'
-import { buildSlots, disableArenaPassports, setSlotClickHandler } from './arena'
+import { myState } from './gamestate'
+import { buildSlots, clearSlots, disableArenaPassports, setSlotClickHandler } from './arena'
 import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './frames'
 import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { predictSystem } from './predict'
@@ -11,7 +11,7 @@ import { playThrowEmote } from './emotes'
 import { cs, showMessage, lockoutLeft } from './state'
 import { grassSystem } from './grass'
 import { setupUi } from './ui'
-import { setupLobby } from './lobby'
+import { setupLobby, onEntered, onEjected } from './lobby'
 import { setupFx } from './fx'
 import { setupNpcs } from './npcs'
 import { rankTagSystem } from './ranktags'
@@ -20,6 +20,7 @@ import { setupCheats } from './cheats'
 let joined = false
 let lastRound = -1
 let lastLength = -1
+let lastGame = -1
 
 function useHint() {
   room.send('hint', { n: 0 })
@@ -39,7 +40,14 @@ function clientSystem(dt: number) {
   }
 
   // keep the frame row in step with the server's word
-  for (const [, g] of engine.getEntitiesWith(GameState)) {
+  const g = myState()
+  if (cs.game !== lastGame) {
+    lastGame = cs.game
+    lastRound = -1
+    lastLength = -1
+    if (cs.game < 0) clearSlots()
+  }
+  if (g) {
     setWordLength(g.length)
     if (g.round !== lastRound || g.length !== lastLength) {
       lastRound = g.round
@@ -47,9 +55,8 @@ function clientSystem(dt: number) {
       if (g.length > 0) {
         buildSlots(g.length)
         resetFrames()
-      }
+      } else clearSlots()
     }
-    break
   }
 
   cubesSystem(dt)
@@ -91,6 +98,8 @@ export function initClient() {
   })
 
   room.onMessage('toast', (d) => showMessage(d.text, 3))
+  room.onMessage('entered', (d) => onEntered(d.game, d.ok === 1))
+  room.onMessage('eject', () => onEjected())
   room.onMessage('coins', (d) => {
     cs.coins = d.value
   })

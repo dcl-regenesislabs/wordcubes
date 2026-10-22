@@ -44,6 +44,7 @@ interface ClientCube {
   // cube is drawn as a predicted copy (the copy carries its own click) so there is never a second, invisible target.
   hit: Entity
   hitOn: boolean
+  hidden: boolean // the cube belongs to another game: not drawn, not clickable
 }
 
 const known = new Map<Entity, ClientCube>()
@@ -88,7 +89,7 @@ function handPos(address: string): Vector3 {
       }
     }
   }
-  if (!t) return envOrigin()
+  if (!t) return envOrigin(Math.max(0, cs.game))
   const fwd = Vector3.rotate(Vector3.Forward(), t.rotation)
   const right = Vector3.rotate(Vector3.Right(), t.rotation)
   return Vector3.create(
@@ -213,7 +214,7 @@ export function cubesSystem(dt: number) {
       // Child of the cube: the GLB's collider is a 0.5 m box, the parent already carries CUBE_SCALE.
       Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
       MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
-      c = { mode: 'free', holder: '', slot: -1, letter: data.letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true }
+      c = { mode: 'free', holder: '', slot: -1, letter: data.letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true, hidden: false }
       known.set(entity, c)
       const id = data.id
       const letter = data.letter
@@ -221,6 +222,23 @@ export function cubesSystem(dt: number) {
         { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
         () => room.send('grab', { cubeId: id })
       )
+    }
+    // Cubes of other games are invisible and untouchable: you only see the game you sit in.
+    if (data.game !== cs.game) {
+      if (!c.hidden) {
+        c.hidden = true
+        enterMode(entity, c, 'free', '', -1) // drops any copy drawn for it
+        VisibilityComponent.createOrReplace(entity, { visible: false })
+        if (c.hitOn) {
+          c.hitOn = false
+          MeshCollider.deleteFrom(c.hit)
+        }
+      }
+      continue
+    }
+    if (c.hidden) {
+      c.hidden = false
+      VisibilityComponent.deleteFrom(entity)
     }
     if (data.mode !== c.mode || data.holder !== c.holder || data.slot !== c.slot) enterMode(entity, c, data.mode, data.holder, data.slot)
 

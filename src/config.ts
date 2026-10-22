@@ -165,7 +165,22 @@ export const GRASS_SPRING = 12 // stiffness: higher snaps back faster
 export const GRASS_DAMPING = 6 // lower = more wobble after a player passes
 
 // Lobby: one start pad. Stand on it and the lights spin up, a countdown runs, then you are teleported to the game.
-export const LOBBY_PAD_NAME = 'StartPad.glb_6' // the one pad (child of "Lobby") that starts the game
+// Several games run side by side, up to GAME_COUNT. Pad i (child of "Lobby") sends players to game i, whose arena is the
+// composite entity GAME_ENV_NAMES[i]. Every arena is a copy of the "GameEnv" subtree placed somewhere else in the scene.
+export const GAME_COUNT = 7
+export const MAX_PLAYERS_PER_GAME = 5
+export const LOBBY_PAD_NAMES = [
+  'StartPad.glb',
+  'StartPad.glb_2',
+  'StartPad.glb_3',
+  'StartPad.glb_4',
+  'StartPad.glb_5',
+  'StartPad.glb_6',
+  'StartPad.glb_7'
+]
+export const GAME_ENV_NAMES = ['GameEnv', 'GameEnv_2', 'GameEnv_3', 'GameEnv_4', 'GameEnv_5', 'GameEnv_6', 'GameEnv_7']
+export const SEAT_HOLD_SECONDS = 20 // a seat granted at the pad is kept this long for the player to arrive
+export const SEAT_LEAVE_SECONDS = 10 // seconds outside the arena before a seated player loses the seat (falls, reconnects)
 export const LOBBY_LIGHTS_MODEL = 'assets/models/environment/StartPadLight.glb' // lights spawned over that pad
 export const PAD_RADIUS = 4.4 // m from the pad centre that counts as standing on it
 export const PAD_LEAVE_MARGIN = 1 // extra metres before you count as having left (no flicker on the rim)

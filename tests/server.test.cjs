@@ -33,26 +33,41 @@ function harness() {
   const Storage = { get: async () => undefined, set: async () => true,
     player: { get: async () => undefined, set: async () => true } }
   const profiles = loadTs('src/server/profiles.ts', { '@dcl/sdk/server': { Storage } })
-  const env = { envOrigin: () => Vector3.create() }
+  const env = {
+    envOrigin: () => Vector3.create(),
+    // game 0 is the arena around the origin, like the old single GameEnv
+    arenaAt: (x, y, z) => (x * x + z * z < (config.ARENA_RADIUS + 4) ** 2 && y > -2 ? 0 : -1)
+  }
   const world = loadTs('src/shared/world.ts', { '../config': config, './env': env })
   const handlers = new Map()
   const sent = []
-  const room = { onMessage: (name, fn) => handlers.set(name, fn), send: (name, data) => sent.push({ name, data }) }
-  const server = loadTs('src/server/server.ts', {
-    '@dcl/sdk/ecs': { engine, Transform, PlayerIdentityData, GltfContainer, ColliderLayer: { CL_NONE: 0 } },
-    '@dcl/sdk/math': { Vector3, Quaternion: { fromEulerDegrees: () => ({ x: 0, y: 0, z: 0, w: 1 }) } },
-    '@dcl/sdk/network': { syncEntity: noop }, '@dcl/sdk/server': { Storage },
+  const room = { onMessage: (name, fn) => handlers.set(name, fn), send: (name, data, opts) => sent.push({ name, data, to: opts && opts.to }) }
+  const ecs = { engine, Transform, PlayerIdentityData, GltfContainer, ColliderLayer: { CL_NONE: 0 } }
+  const math = { Vector3, Quaternion: { fromEulerDegrees: () => ({ x: 0, y: 0, z: 0, w: 1 }) } }
+  const schemas = { CubeData, GameState, PlayerRanks, protectServerEntity: noop, modelFor: letter => letter }
+  const common = loadTs('src/server/common.ts', {
+    '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math, '../config': config, '../shared/messages': { room }, './profiles': profiles
+  })
+  const game = loadTs('src/server/game.ts', {
+    '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math, '@dcl/sdk/network': { syncEntity: noop },
     '../config': config, './words': { pickWord: () => ({ answer: 'DOG', question: 'A pet?' }) },
-    './profiles': profiles, '../shared/messages': { room }, '../shared/env': env,
-    '../shared/schemas': { CubeData, GameState, PlayerRanks, protectServerEntity: noop, modelFor: letter => letter },
-    '../shared/world': world,
+    './profiles': profiles, '../shared/messages': { room }, '../shared/env': env, '../shared/schemas': schemas,
+    '../shared/world': world, './common': common,
     '../shared/pushers': { PusherTracker: class { update() { return { x: 0, y: 0, z: 0, vx: 0, vz: 0 } } prune() {} } },
     '../sim/physics': loadTs('src/sim/physics.ts')
-  }, 'exports.testing = { cubes, spawnSome, startRound, startVote, endVote, collapse, publishRanks, land, timeUp, advance: seconds => { clock += seconds } }')
+  })
+  const server = loadTs('src/server/server.ts', {
+    '@dcl/sdk/ecs': ecs, '@dcl/sdk/network': { syncEntity: noop }, '@dcl/sdk/server': { Storage },
+    '../config': config, './profiles': profiles, '../shared/messages': { room }, '../shared/env': env,
+    '../shared/schemas': schemas, './common': common, './game': game
+  }, 'exports.games = games; exports.publishRanks = publishRanks')
   server.initServer()
+  const g0 = server.games[0]
+  server.testing = { cubes: g0.cubes, ...g0.testing, publishRanks: server.publishRanks, game: g0 }
   Transform.create(1, { position: Vector3.create(8, 0, 0), rotation: {} })
   PlayerIdentityData.create(1, { address: 'alice' })
   const send = (name, data = {}, from = 'alice') => handlers.get(name)(data, { from })
+  send('enter', { game: 0 }) // alice takes a seat in game 0 (the player stands in its arena)
   const fill = () => { for (let i = 0; i < 8; i++) server.testing.spawnSome() }
   const grab = cube => {
     Transform.get(1).position = Vector3.create(cube.body.x, cube.body.y, cube.body.z)
@@ -271,4 +286,32 @@ test('a timeout settles contributors and returns to play through voting', async 
   assert.equal(game().phase, 'playing')
   assert.equal(game().round, 2)
   assert.equal(profile.coins, h.config.VOTE_BONUS_COINS)
+})
+
+test('a game holds at most MAX_PLAYERS_PER_GAME seats and a full game says no', () => {
+  const h = harness()
+  const max = h.config.MAX_PLAYERS_PER_GAME
+  for (let i = 1; i < max; i++) h.send('enter', { game: 0 }, `p${i}`) // alice already sits, so max-1 more fit
+  const answers = h.sent.filter(m => m.name === 'entered')
+  assert.equal(answers.length, max)
+  assert.ok(answers.every(m => m.data.ok === 1), 'the first MAX players all get a seat')
+  h.send('enter', { game: 0 }, 'late')
+  const last = h.sent.filter(m => m.name === 'entered').pop()
+  assert.equal(last.data.ok, 0, 'the next player is turned away')
+  assert.equal(h.server.games[0].seats.size, max)
+  h.send('leave', {}, 'p1')
+  h.send('enter', { game: 0 }, 'late')
+  assert.equal(h.sent.filter(m => m.name === 'entered').pop().data.ok, 1, 'a freed seat can be taken')
+})
+
+test('players without a seat cannot act in a game, and an idle game has no cubes', () => {
+  const h = harness()
+  assert.ok(h.server.games[1].cubes.size === 0 && !h.server.games[1].isActive(), 'game 2 has not been started')
+  h.fill()
+  const cube = [...h.server.testing.cubes.values()][0]
+  h.send('grab', { cubeId: cube.id }, 'stranger')
+  assert.equal(cube.mode, 'free', 'a stranger cannot grab')
+  h.send('enter', { game: 1 })
+  assert.ok(h.server.games[1].isActive(), 'the first seat wakes the game up')
+  assert.ok(!h.server.games[0].hasSeat('alice'), 'taking a seat elsewhere gives the old one up')
 })

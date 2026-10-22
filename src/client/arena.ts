@@ -14,19 +14,21 @@ import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { envOrigin } from '../shared/env'
-import { EntityNames } from '../../assets/scene/entity-names'
+import { cs } from './state'
 
 // Apply on each client once the composite has loaded. Using GameEnv keeps the
 // region centred on the arena when it moves, with enough height for stage jumps.
 export function disableArenaPassports() {
-  const arena = engine.getEntityOrNullByName(EntityNames.GameEnv)
-  if (!arena || !Transform.has(arena) || AvatarModifierArea.has(arena)) return
-  const diameter = C.ARENA_RADIUS * 2
-  AvatarModifierArea.create(arena, {
-    area: Vector3.create(diameter, diameter, diameter),
-    excludeIds: [],
-    modifiers: [AvatarModifierType.AMT_DISABLE_PASSPORTS]
-  })
+  for (const name of C.GAME_ENV_NAMES) {
+    const arena = engine.getEntityOrNullByName(name)
+    if (!arena || !Transform.has(arena) || AvatarModifierArea.has(arena)) continue
+    const diameter = C.ARENA_RADIUS * 2
+    AvatarModifierArea.create(arena, {
+      area: Vector3.create(diameter, diameter, diameter),
+      excludeIds: [],
+      modifiers: [AvatarModifierType.AMT_DISABLE_PASSPORTS]
+    })
+  }
 }
 
 let slotEntities: Entity[] = []
@@ -44,7 +46,7 @@ export function clickSlot(index: number) {
 
 export function slotPosition(index: number, count: number): Vector3 {
   const offset = (index - (count - 1) / 2) * C.SLOT_SPACING
-  const o = envOrigin()
+  const o = envOrigin(Math.max(0, cs.game))
   return Vector3.create(o.x + offset, o.y + C.SLOT_Y, o.z)
 }
 

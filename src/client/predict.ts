@@ -100,7 +100,7 @@ export function isPredicted(entity: Entity): boolean {
 // ---------- pooled copies ----------
 
 function poolPos(): Vector3 {
-  const o = envOrigin()
+  const o = envOrigin(Math.max(0, cs.game))
   return Vector3.create(o.x, POOL_Y, o.z)
 }
 
@@ -261,7 +261,7 @@ export function predictSystem(dt: number) {
   const seen = new Set<Entity>()
   for (const [entity, data, tr] of engine.getEntitiesWith(CubeData, Transform)) {
     const l = locals.get(entity)
-    if (data.mode !== 'free') {
+    if (data.mode !== 'free' || data.game !== cs.game) {
       if (l) forget(entity, l) // grabbed, thrown or placed: the server and cubes.ts take it from here
       continue
     }
@@ -299,7 +299,7 @@ export function predictSystem(dt: number) {
   if (locals.size === 0) return
 
   // 2. run the shared sim with every player as a pusher
-  syncEnvParams(world.params) // same GameEnv placement as the server
+  syncEnvParams(world.params, Math.max(0, cs.game)) // same GameEnv placement as the server
   setPushers(world, pushers)
   let left = dt
   for (let n = 0; n < MAX_STEPS && left > 1e-4; n++) {

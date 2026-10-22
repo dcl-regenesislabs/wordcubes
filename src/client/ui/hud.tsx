@@ -1,6 +1,6 @@
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
-import { GameState } from '../../shared/schemas'
+import { myState, boardText } from '../gamestate'
 import { cs, lockoutLeft, showMessage, setting } from '../state'
 import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
@@ -21,8 +21,7 @@ type Game = { frozen: number; players: number; builders: number; hintCost: numbe
 
 function game(): Game | null {
   if (C.UI_PREVIEW) return mockGame()
-  for (const [, g] of engine.getEntitiesWith(GameState)) return g as unknown as Game
-  return null
+  return (myState() as unknown as Game | undefined) ?? null
 }
 
 // ---- UI preview (config UI_PREVIEW): a fake 16 second round that loops, so the HUD can be checked without a server ----
@@ -581,7 +580,8 @@ export function setupHudMessages() {
   room.onMessage('result', (d) => {
     cs.delta = d.delta
     cs.earned = d.coins
-    for (const [, g] of engine.getEntitiesWith(GameState)) cs.earnedRound = (g as unknown as Game).round
+    const g = myState()
+    if (g) cs.earnedRound = g.round
   })
   room.onMessage('lockout', (d) => {
     cs.lockoutUntil = Date.now() + d.seconds * 1000
@@ -620,8 +620,7 @@ export function LeaderboardPanel() {
   if (!signEntity || !me || !Transform.getOrNull(signEntity)) return null
   const sign = worldPosition(signEntity)
   if (Math.hypot(me.x - sign.x, me.z - sign.z) > 14) return null
-  let top: [string, number][] = []
-  for (const [, g] of engine.getEntitiesWith(GameState)) top = parseBoard((g as unknown as { board: string }).board ?? '')
+  const top: [string, number][] = parseBoard(boardText())
   const w = sz(430, 340)
   const rowH = sz(46, 36)
   const h = sz(120, 90) + Math.max(1, top.length) * rowH

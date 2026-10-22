@@ -19,6 +19,7 @@ interface NpcDef {
   name: string
   entityName: string // composite entity that overrides the position
   where: 'lobby' | 'arena'
+  game?: number // arena vendors: which game's arena
   side: number // lobby: +1 / -1, which side of the path from the lobby centre to the pad
   shop?: boolean // opens the shop instead of a conversation
   female: boolean
@@ -57,18 +58,22 @@ const NPCS: NpcDef[] = [
     skin: Color3.create(0.8, 0.6, 0.45),
     pages: []
   },
-  {
-    id: 'wc-npc-vendor-arena',
-    name: 'Cubby, the Vendor',
-    entityName: 'VendorNpc_2', // the name the Creator Hub gave the second copy
-    where: 'arena',
-    side: 0,
-    shop: true,
-    female: false,
-    hair: Color3.create(0.9, 0.55, 0.1),
-    skin: Color3.create(0.8, 0.6, 0.45),
-    pages: []
-  }
+  // one vendor in every arena; the first is the composite's VendorNpc_2, the copies are VendorNpc_2_g2, _g3, ...
+  ...C.GAME_ENV_NAMES.map(
+    (_, game): NpcDef => ({
+      id: `wc-npc-vendor-arena-${game}`,
+      name: 'Cubby, the Vendor',
+      entityName: game === 0 ? 'VendorNpc_2' : `VendorNpc_2_g${game + 1}`,
+      where: 'arena',
+      game,
+      side: 0,
+      shop: true,
+      female: false,
+      hair: Color3.create(0.9, 0.55, 0.1),
+      skin: Color3.create(0.8, 0.6, 0.45),
+      pages: []
+    })
+  )
 ]
 
 const spawned = new Map<string, Entity>()
@@ -79,7 +84,7 @@ function standPosition(def: NpcDef): Vector3 | undefined {
   if (named && Transform.getOrNull(named)) return worldPosition(named)
   if (def.where === 'arena') {
     // fallback: inside the arena wall, on the side opposite the player spawn ring's first point
-    const o = envOrigin()
+    const o = envOrigin(def.game ?? 0)
     return Vector3.create(o.x - (C.ARENA_RADIUS - 1.8), o.y + C.FLOOR_Y, o.z)
   }
   const a = lobbyAnchors()

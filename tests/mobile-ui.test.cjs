@@ -18,7 +18,7 @@ function harness(phone) {
     clamp: (n, min, max) => Math.min(max, Math.max(min, n)) }
   const hud = loadTs('src/client/ui/hud.tsx', {
     '@dcl/sdk/react-ecs': react, '@dcl/sdk/ecs': { engine: { getEntitiesWith: () => currentGame ? [[0, currentGame]] : [] } },
-    '../../shared/schemas': {}, '../state': state, '../cubes': { heldLetter: () => '' },
+    '../../shared/schemas': {}, '../gamestate': { myState: () => currentGame || undefined, boardText: () => '' }, '../state': state, '../cubes': { heldLetter: () => '' },
     '../../config': config, '../../shared/messages': { room: { send: noop } },
     '../lobby': { returnToLobby: noop }, '../arena': {}, './platform': platform,
     './theme': theme, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
