@@ -3,16 +3,20 @@ import { Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 
 // Everything gameplay-related (floor, walls, answer platform, slots, cube spawn) is positioned relative to a game's
-// "GameEnv" entity in the composite (GameEnv, GameEnv_2, ... see GAME_ENV_NAMES). Move one in the Creator Hub and that
-// whole game follows.
-const FALLBACK_FIRST = Vector3.create(56.5, 160, 60.5)
+// arena origin. Game 0 is the "GameEnv" entity in the composite; the other games' arenas are the same layout shifted by
+// GAME_OFFSETS (the clients build their models on demand). Move GameEnv in the Creator Hub and every arena follows.
+const FALLBACK = Vector3.create(56.5, 160, 60.5)
+
+export function templateOrigin(): Vector3 {
+  const e = engine.getEntityOrNullByName(C.ARENA_TEMPLATE)
+  const t = e ? Transform.getOrNull(e) : null
+  return t ? Vector3.create(t.position.x, t.position.y, t.position.z) : FALLBACK
+}
 
 export function envOrigin(game = 0): Vector3 {
-  const e = engine.getEntityOrNullByName(C.GAME_ENV_NAMES[game] ?? C.GAME_ENV_NAMES[0])
-  const t = e ? Transform.getOrNull(e) : null
-  if (t) return Vector3.create(t.position.x, t.position.y, t.position.z)
-  // missing arena: stack the fallbacks 100 m apart so games never share a floor
-  return Vector3.create(FALLBACK_FIRST.x, FALLBACK_FIRST.y, FALLBACK_FIRST.z + 100 * game)
+  const o = templateOrigin()
+  const off = C.GAME_OFFSETS[game] ?? C.GAME_OFFSETS[0]
+  return Vector3.create(o.x + off[0], o.y + off[1], o.z + off[2])
 }
 
 /** Which game's arena a point is standing in (inside the walls and not far below the floor), or -1. */

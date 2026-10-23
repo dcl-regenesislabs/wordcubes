@@ -112,6 +112,7 @@ export function framesSystem(dt: number) {
   const holding = isHolding()
   for (let i = 0; i < n; i++) {
     const f = fx[i]
+    if (!Transform.has(f.frame)) continue // removed with the word (idle game or left it)
     f.t += dt
     f.lockT += dt
     let off = Vector3.Zero()

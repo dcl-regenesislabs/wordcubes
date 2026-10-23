@@ -16,6 +16,7 @@ import { envOrigin, arenaAt } from '../shared/env'
 import { room } from '../shared/messages'
 import { cs, showMessage } from './state'
 import { stateOf } from './gamestate'
+import { arenaReady, requestArena } from './arenas'
 
 const SCALE_STIFFNESS = 90
 const SCALE_DAMPING = 9 // under-damped: the lights overshoot a little and settle (soft bounce)
@@ -70,12 +71,19 @@ function teleportToLobby(origin: Vector3, lookAt: Vector3) {
   })
 }
 
+/** Tell the server you left (it frees the seat) and say so on screen. */
+function leaveGame(game: number) {
+  room.send('leave', { n: 0 })
+  if (game >= 0) showMessage(`You left game ${game + 1}`, 3)
+}
+
 /** Button in the game HUD: back to the lobby island. Gives your seat up so someone else can take it. */
 export function returnToLobby() {
   const origin = lobbyOrigin()
   if (!origin) return
   fallGrace = TELEPORT_LOCKOUT
-  if (cs.game >= 0) room.send('leave', { n: 0 })
+  pendingTeleport = undefined
+  if (cs.game >= 0) leaveGame(cs.game)
   cs.game = -1
   cs.inGame = false
   teleportToLobby(origin, padPos)
@@ -92,15 +100,18 @@ export function onEntered(game: number, ok: boolean) {
     showMessage(`Game ${game + 1} is full. Try another pad.`, 3)
     return
   }
-  fallGrace = TELEPORT_LOCKOUT
+  // The arena models are built on the spot: teleport once its floor and walls have loaded, or give up waiting
   cs.game = game
-  cs.inGame = true
-  teleportToGame(game)
+  requestArena(game)
+  pendingTeleport = { game, left: C.ARENA_LOAD_TIMEOUT }
+  showMessage(`Preparing game ${game + 1}...`, 4)
 }
+
+let pendingTeleport: { game: number; left: number } | undefined
 
 /** The server found you in an arena without a seat. */
 export function onEjected() {
-  if (waitingFor >= 0) return // a seat was just requested: the answer is on its way
+  if (waitingFor >= 0 || pendingTeleport) return // a seat was just requested: the answer is on its way
   const origin = lobbyOrigin()
   if (!origin) return
   fallGrace = TELEPORT_LOCKOUT
@@ -237,8 +248,8 @@ export function setupLobby() {
         fallGrace = TELEPORT_LOCKOUT
         if (cs.inGame && cs.game >= 0) teleportToGame(cs.game)
         else teleportToLobby(origin, padPos)
-      } else if (flat(me, origin) < C.LOBBY_RADIUS && Math.abs(me.y - origin.y) < C.PAD_HEIGHT_RANGE * 3) {
-        if (cs.game >= 0) room.send('leave', { n: 0 })
+      } else if (!pendingTeleport && flat(me, origin) < C.LOBBY_RADIUS && Math.abs(me.y - origin.y) < C.PAD_HEIGHT_RANGE * 3) {
+        if (cs.game >= 0 || cs.inGame) leaveGame(cs.game)
         cs.game = -1
         cs.inGame = false
       } else if (cs.game >= 0 && arenaAt(me.x, me.y, me.z) === cs.game) {
@@ -246,13 +257,27 @@ export function setupLobby() {
       }
     }
 
+    if (pendingTeleport) {
+      pendingTeleport.left -= dt
+      if (arenaReady(pendingTeleport.game) || pendingTeleport.left <= 0) {
+        const game = pendingTeleport.game
+        pendingTeleport = undefined
+        fallGrace = TELEPORT_LOCKOUT
+        cs.inGame = true
+        teleportToGame(game)
+      }
+    }
+
     // Countdown
     if (waitingFor >= 0) {
       waitTimer -= dt
-      if (waitTimer <= 0) waitingFor = -1 // no answer: let the player try again
+      if (waitTimer <= 0) {
+        waitingFor = -1 // no answer: let the player try again
+        showMessage('The game server did not answer. Is the multiplayer server running? Try again.', 4)
+      }
     }
     if (lockout > 0) lockout -= dt
-    if (onPad >= 0 && lockout <= 0 && waitingFor < 0) {
+    if (onPad >= 0 && lockout <= 0 && waitingFor < 0 && !pendingTeleport) {
       if (!counting) {
         counting = true
         timer = C.LOBBY_COUNTDOWN_SECONDS
@@ -270,6 +295,7 @@ export function setupLobby() {
           waitingFor = game
           waitTimer = 4
           lockout = TELEPORT_LOCKOUT
+          showMessage(`Joining game ${game + 1}...`, 4)
           room.send('enter', { game })
         }
       }

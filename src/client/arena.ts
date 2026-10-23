@@ -19,16 +19,19 @@ import { cs } from './state'
 // Apply on each client once the composite has loaded. Using GameEnv keeps the
 // region centred on the arena when it moves, with enough height for stage jumps.
 export function disableArenaPassports() {
-  for (const name of C.GAME_ENV_NAMES) {
-    const arena = engine.getEntityOrNullByName(name)
-    if (!arena || !Transform.has(arena) || AvatarModifierArea.has(arena)) continue
-    const diameter = C.ARENA_RADIUS * 2
-    AvatarModifierArea.create(arena, {
-      area: Vector3.create(diameter, diameter, diameter),
-      excludeIds: [],
-      modifiers: [AvatarModifierType.AMT_DISABLE_PASSPORTS]
-    })
-  }
+  const arena = engine.getEntityOrNullByName(C.ARENA_TEMPLATE)
+  if (!arena || !Transform.has(arena) || AvatarModifierArea.has(arena)) return
+  addPassportBlocker(arena)
+}
+
+/** No avatar passports inside an arena (the dynamic arenas call this for their own root, too). */
+export function addPassportBlocker(arena: Entity) {
+  const diameter = C.ARENA_RADIUS * 2
+  AvatarModifierArea.create(arena, {
+    area: Vector3.create(diameter, diameter, diameter),
+    excludeIds: [],
+    modifiers: [AvatarModifierType.AMT_DISABLE_PASSPORTS]
+  })
 }
 
 let slotEntities: Entity[] = []

@@ -178,7 +178,21 @@ export const LOBBY_PAD_NAMES = [
   'StartPad.glb_6',
   'StartPad.glb_7'
 ]
-export const GAME_ENV_NAMES = ['GameEnv', 'GameEnv_2', 'GameEnv_3', 'GameEnv_4', 'GameEnv_5', 'GameEnv_6', 'GameEnv_7']
+// Game 0 plays in the composite's "GameEnv". The other arenas are not in the composite: each client builds one on the fly (client/arenas.ts)
+// as a copy of GameEnv's models, shifted by these offsets (metres), only while it takes part in that game.
+export const ARENA_TEMPLATE = 'GameEnv'
+export const GAME_OFFSETS: [number, number, number][] = [
+  [0, 0, 0],
+  [0, 0, 100],
+  [0, 0, 200],
+  [0, 0, 300],
+  [260, 0, 0],
+  [260, 0, 100],
+  [260, 0, 200]
+]
+export const ARENA_LOAD_TIMEOUT = 10 // s to wait for a new arena's models before teleporting in anyway
+export const ARENA_KEEP_SECONDS = 4 // s an arena stays built after you stop needing it
+export const LOBBY_LEAVE_SECONDS = 1.5 // s in the lobby island before a seated player loses the seat (outside arenas elsewhere: SEAT_LEAVE_SECONDS)
 export const SEAT_HOLD_SECONDS = 20 // a seat granted at the pad is kept this long for the player to arrive
 export const SEAT_LEAVE_SECONDS = 10 // seconds outside the arena before a seated player loses the seat (falls, reconnects)
 export const LOBBY_LIGHTS_MODEL = 'assets/models/environment/StartPadLight.glb' // lights spawned over that pad

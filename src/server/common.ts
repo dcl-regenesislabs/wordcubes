@@ -46,6 +46,14 @@ export function giveCoins(address: string, amount: number) {
   room.send('coins', { value: p.coins }, { to: [address] })
 }
 
+/** True when a point is on the lobby island (the server uses it to give up the seat of a player who went back). */
+export function inLobby(pos: Vector3): boolean {
+  const e = engine.getEntityOrNullByName(C.LOBBY_ENTITY_NAME)
+  const t = e ? Transform.getOrNull(e) : null
+  if (!t) return false
+  return Math.hypot(pos.x - t.position.x, pos.z - t.position.z) < C.LOBBY_RADIUS && Math.abs(pos.y - t.position.y) < C.PAD_HEIGHT_RANGE * 3
+}
+
 export function rand(min: number, max: number) {
   return min + Math.random() * (max - min)
 }

@@ -20,38 +20,43 @@ function harness(phone) {
     '@dcl/sdk/react-ecs': react, '@dcl/sdk/ecs': { engine: { getEntitiesWith: () => currentGame ? [[0, currentGame]] : [] } },
     '../../shared/schemas': {}, '../gamestate': { myState: () => currentGame || undefined, boardText: () => '' }, '../state': state, '../cubes': { heldLetter: () => '' },
     '../../config': config, '../../shared/messages': { room: { send: noop } },
-    '../lobby': { returnToLobby: noop }, '../arena': {}, './platform': platform,
+    '../lobby': { returnToLobby: noop },  '../arena': {}, './platform': platform,
     './theme': theme, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
     '../../../assets/scene/entity-names': {}
   }, 'exports.testing = { WordPanel, SidePanel, ItemBar, VoteScreen, snapshot: () => ({ seenRound, prev, prevPhase, failAt, winAt, lastDifficulty, levelAt, myVote, votedRound }) }')
   return { hud: hud.testing, module: hud, state, platform, react, setGame: g => { currentGame = g } }
 }
 
-test('mobile gameplay controls clear the native action band with every inventory item visible', () => {
+test('phone HUD: question area and side buttons share one row and the side panel never overlaps the word', () => {
   const h = harness(true)
   Object.assign(h.state.cs.items, { wildcard: 1, freeze: 1, reroll: 1, bomb: 1 })
   const g = { phase: 'playing', length: 14, masked: '_'.repeat(14), question: 'A long question '.repeat(10), hint: '', frozen: 0, difficulty: 1 }
   const width = h.platform.canvas().virtualWidth
   const height = h.platform.canvas().virtualHeight
-  const bandLeft = width - 240
   const side = h.hud.SidePanel({ g })
   const sideLayout = side.props.uiTransform
-  const sideLeft = width - sideLayout.position.right - sideLayout.width
-  assert.ok(width - sideLayout.position.right <= bandLeft, 'side buttons must stay left of the native control band')
+  assert.notEqual(sideLayout.positionType, 'absolute', 'the side panel is a flex child, not pinned over the word')
+  assert.equal(sideLayout.flexShrink, 0)
   const sideHeight = side.children.reduce((sum, child) => sum + child.props.height + (child.props.margin?.top || 0), 0)
-  assert.ok(sideLayout.position.top + sideHeight <= height)
+  assert.ok(16 + sideHeight <= height)
   const word = h.hud.WordPanel({ g })
-  assert.ok(word.props.uiTransform.width <= sideLeft, 'question and tiles must not overlap the side buttons')
+  const wl = word.props.uiTransform
+  assert.equal(wl.flexGrow, 1, 'the word area takes the room the side panel leaves')
+  assert.equal(wl.minWidth, 0)
+  // everything inside the word area fits in what is left beside the side panel
+  const roomLeft = width - 2 * h.platform.EDGE() - sideLayout.width - wl.margin.right
+  const [question, tiles] = word.children
+  assert.ok(question.props.width <= roomLeft, 'question fits beside the side panel')
+  assert.ok(tiles.props.uiTransform.width <= roomLeft, 'letter tiles fit beside the side panel')
   const bar = h.hud.ItemBar({ g })
   const layout = bar.props.uiTransform
   assert.equal(bar.children.length, 4)
   assert.equal(layout.flexDirection, 'row')
-  assert.ok(width - layout.position.right <= bandLeft)
   assert.ok(width - layout.position.right - layout.width >= 0)
   for (const child of bar.children) {
     assert.ok(layout.position.top + child.props.height + child.props.margin.top <= height)
   }
-  assert.ok(layout.position.top >= sideLayout.position.top + sideHeight)
+  assert.ok(layout.position.top >= 16 + sideHeight)
 })
 
 test('desktop inventory stays in a vertical column and empty inventory is hidden', () => {

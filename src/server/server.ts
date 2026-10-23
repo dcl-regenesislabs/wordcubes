@@ -93,6 +93,7 @@ function init() {
     const current = gameOf(addr)
     if (current && current !== game) current.leaveSeat(addr)
     const ok = game.requestSeat(addr)
+    console.log('[ENTER]', addr, 'game', index, ok ? 'seat granted' : 'full')
     room.send('entered', { game: index, ok: ok ? 1 : 0 }, { to: [addr] })
     if (!ok) toastTo(`Game ${index + 1} is full (${C.MAX_PLAYERS_PER_GAME} players). Try another pad.`, addr)
   })

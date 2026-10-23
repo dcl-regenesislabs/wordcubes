@@ -14,7 +14,7 @@ import { worldParams, syncEnvParams } from '../shared/world'
 import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, clearBodies, step, applyImpulse, wake, wakeNear, setPushers } from '../sim/physics'
 import type { Body, Pusher } from '../sim/physics'
-import { players, playerOf, coinsOf, sendProfile, giveCoins, rand, handPos } from './common'
+import { players, playerOf, coinsOf, sendProfile, giveCoins, rand, handPos, inLobby } from './common'
 import type { PlayerInfo } from './common'
 
 type Mode = 'free' | 'held' | 'flying' | 'placed'
@@ -774,6 +774,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
 
     // seats: an unclaimed seat expires; a player who stays out of the arena loses theirs
     const here = new Set(arenaPlayers().map((p) => p.address))
+    const lobby = new Set(players().filter((p) => inLobby(p.pos)).map((p) => p.address))
     for (const [addr, seat] of Array.from(seats.entries())) {
       if (here.has(addr)) {
         seat.arrived = true
@@ -782,7 +783,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
         if (clock > seat.until) leaveSeat(addr)
       } else {
         seat.outside += dt
-        if (seat.outside > C.SEAT_LEAVE_SECONDS) leaveSeat(addr)
+        // back on the lobby island: gone almost at once; elsewhere (a fall, a slow reconnect) there is a longer grace
+        if (seat.outside > (lobby.has(addr) ? C.LOBBY_LEAVE_SECONDS : C.SEAT_LEAVE_SECONDS)) leaveSeat(addr)
       }
     }
     if (GameState.get(stateEntity).players !== seats.size) GameState.getMutable(stateEntity).players = seats.size

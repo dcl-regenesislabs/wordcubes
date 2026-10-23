@@ -21,7 +21,7 @@ function harness() {
   const systems = new Map()
   let next = 512
   const engine = {
-    addEntity: () => next++, removeEntity: entity => components.forEach(c => c.values.delete(entity)),
+    getEntityOrNullByName: () => null, addEntity: () => next++, removeEntity: entity => components.forEach(c => c.values.delete(entity)),
     getEntitiesWith: c => c.values.entries(), addSystem: (fn, priority, name) => systems.set(name, fn)
   }
   const Vector3 = {
