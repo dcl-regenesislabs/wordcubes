@@ -8,7 +8,7 @@ import { room } from '../../shared/messages'
 import { returnToLobby } from '../lobby'
 import { clickSlot } from '../arena'
 import { MAX_DIFFICULTY, ITEMS, SETTINGS } from '../../config'
-import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, S, view } from './platform'
+import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, S, view } from './platform'
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c, Edges } from './theme'
 import { rankName, rankIndex } from './rank'
 import { parseBoard } from '../ranktags'
@@ -276,7 +276,7 @@ function BottomArea() {
   const helpW = clamp(estW(help, helpFont) + S(50), S(200), fit(view().w, 0.8))
   const heldSize = S(76)
   return (
-    <Layer justify="flex-end" pad={{ bottom: S(36) }}>
+    <Layer justify="flex-end" pad={{ bottom: S(36) + BOTTOM_RESERVE() }}>
       {lockoutLeft() > 0 && (
         <Frame width={S(420)} height={S(52)} edge={PAL.pink} fill={PAL.violetDark} radius={S(26)} align="center" justify="center" margin={{ bottom: S(8) }}>
           <Label value={`Locked out  ${lockoutLeft()}s`} fontSize={S(28)} font="sans-serif" color={PAL.pink} uiTransform={{ width: '100%', height: '100%' }} />
@@ -413,7 +413,7 @@ export function NpcDialog() {
   const w = fit(S(1100))
   const h = S(250)
   return (
-    <Layer justify="flex-end" pad={{ bottom: S(60) }}>
+    <Layer justify="flex-end" pad={{ bottom: S(60) + BOTTOM_RESERVE() }}>
       <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={S(28)} border={S(6)} pad={S(22)} align="flex-start" justify="center" block>
         <Label value={d.name} fontSize={S(30)} font="sans-serif" color={PAL.violet} textAlign="middle-left" uiTransform={{ width: '100%', height: S(40) }} />
         <Label value={d.pages[d.page]} fontSize={S(28)} font="sans-serif" color={PAL.ink} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: S(110) }} />

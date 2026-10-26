@@ -87,6 +87,8 @@ export const EDGE = (): number => (mobile() ? Math.round(view().w * 0.035) : S(2
 export const RIGHT_RESERVE = (): number => (mobile() ? Math.round(view().w * 0.15) : 0)
 /** The phone app's own top bar: screenInset is 'none', so top-anchored pieces start below it themselves. */
 export const TOP_RESERVE = (): number => (mobile() ? Math.round(view().h * 0.09) : 0)
+/** The phone app's own bottom controls (about 8% of the height): bottom-anchored pieces start above them. */
+export const BOTTOM_RESERVE = (): number => (mobile() ? Math.round(view().h * 0.09) : 0)
 
 let rootComponent: UiComponent | null = null
 let lastSignature = ''

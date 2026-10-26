@@ -32,7 +32,7 @@ function harness(phone, canvas) {
     '../lobby': { returnToLobby: noop }, '../arena': {}, './platform': platform,
     './theme': theme, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
     '../../../assets/scene/entity-names': {}
-  }, 'exports.testing = { WordPanel, SidePanel, ItemBar, VoteScreen, snapshot: () => ({ seenRound, prev, prevPhase, failAt, winAt, lastDifficulty, levelAt, myVote, votedRound }) }')
+  }, 'exports.testing = { WordPanel, SidePanel, ItemBar, VoteScreen, BottomArea, snapshot: () => ({ seenRound, prev, prevPhase, failAt, winAt, lastDifficulty, levelAt, myVote, votedRound }) }')
   return { hud: hud.testing, module: hud, state, platform, react, setGame: g => { currentGame = g } }
 }
 
@@ -51,6 +51,10 @@ for (const [name, canvas] of [['pixel ratio 1', undefined], ['a 2400x1080 phone 
     const stack = L.itemsBeside ? Math.max(L.columnH, L.itemsH) : L.columnH + L.itemsH
     assert.ok(L.top + stack <= height, 'side column and items stay on screen')
     assert.ok(L.top >= Math.round(height * 0.08), 'top-anchored pieces start below the app top bar')
+    const bottom = h.hud.BottomArea()
+    assert.ok(bottom.props.pad.bottom >= Math.round(height * 0.08), 'help line and messages start above the app bottom controls')
+    h.state.cs.dialog = { name: 'Cubby', pages: ['Hi'], page: 0 }
+    assert.ok(h.module.NpcDialog().props.pad.bottom >= Math.round(height * 0.08), 'NPC dialog starts above the app bottom controls')
     const word = h.hud.WordPanel({ g: longGame })
     assert.equal(word.props.pad.right, L.reserve)
     assert.equal(word.props.pad.left, L.left)
