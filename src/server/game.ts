@@ -1,6 +1,6 @@
 // One game: its own arena (GameEnv_N), cube pile, physics world, round, vote and the players seated in it.
 // Up to GAME_COUNT run side by side; server.ts creates them and routes each player's messages to their game.
-import { engine, Transform, GltfContainer, ColliderLayer } from '@dcl/sdk/ecs'
+import { engine, Transform } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import { syncEntity } from '@dcl/sdk/network'
@@ -9,7 +9,7 @@ import { pickWord } from './words'
 import { profileOf, touch, ratingDelta } from './profiles'
 import { room } from '../shared/messages'
 import { envOrigin, arenaAt } from '../shared/env'
-import { CubeData, GameState, protectServerEntity, modelFor } from '../shared/schemas'
+import { CubeData, GameState, protectServerEntity } from '../shared/schemas'
 import { worldParams, syncEnvParams } from '../shared/world'
 import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, clearBodies, step, applyImpulse, wake, wakeNear, setPushers } from '../sim/physics'
@@ -213,12 +213,11 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
       rotation: Quaternion.fromEulerDegrees(0, (body.yaw * 180) / Math.PI, 0),
       scale: Vector3.scale(Vector3.One(), C.CUBE_SCALE)
     })
-    // No collider on the synced cube: each client adds its own click target (cubes.ts), which it can move onto its
-    // locally predicted copy. A server-side pointer collider would stay at the server position and steal clicks.
-    GltfContainer.create(entity, { src: modelFor(letter), invisibleMeshesCollisionMask: ColliderLayer.CL_NONE, visibleMeshesCollisionMask: ColliderLayer.CL_NONE })
+    // No model and no collider on the synced cube: each client adds the model and its own click target (cubes.ts),
+    // and only for cubes of the game it plays in, so nobody loads the other games' piles.
     CubeData.create(entity, { game: index, id, letter, mode: 'free', slot: -1, holder: '' })
-    protectServerEntity(entity, [Transform, GltfContainer])
-    syncEntity(entity, [Transform.componentId, GltfContainer.componentId, CubeData.componentId])
+    protectServerEntity(entity, [Transform])
+    syncEntity(entity, [Transform.componentId, CubeData.componentId])
     const cube: SCube = { id, letter, entity, body, mode: 'free', slot: -1, holder: '', placer: '', sentAsleep: false, breakReward }
     cubes.set(id, cube)
     return cube

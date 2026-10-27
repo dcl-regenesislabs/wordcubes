@@ -44,7 +44,6 @@ interface ClientCube {
   // cube is drawn as a predicted copy (the copy carries its own click) so there is never a second, invisible target.
   hit: Entity
   hitOn: boolean
-  hidden: boolean // the cube belongs to another game: not drawn, not clickable
 }
 
 const known = new Map<Entity, ClientCube>()
@@ -204,41 +203,48 @@ function smoothFree(entity: Entity, c: ClientCube, dt: number) {
   t.rotation = Quaternion.slerp(t.rotation, tr.rotation, k)
 }
 
+// A cube of the game you play in: give the synced entity its model (the server sends none) and a click target.
+function adopt(entity: Entity, letter: string, id: number): ClientCube {
+  GltfContainer.createOrReplace(entity, { src: modelFor(letter), invisibleMeshesCollisionMask: 0, visibleMeshesCollisionMask: 0 })
+  const hit = engine.addEntity()
+  // Child of the cube: the GLB's collider is a 0.5 m box, the parent already carries CUBE_SCALE.
+  Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
+  MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
+  pointerEventsSystem.onPointerDown(
+    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
+    () => room.send('grab', { cubeId: id })
+  )
+  return { mode: 'free', holder: '', slot: -1, letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true }
+}
+
+// Drop everything this client added for a cube: it was removed, or it belongs to a game you are not in (any more).
+// `alive` = the synced entity still exists, so its local model and visibility are taken off too.
+function forgetCube(entity: Entity, c: ClientCube, alive: boolean) {
+  if (c.mode === 'held' && c.holder === cs.myAddress) stopHoldEmote()
+  if (c.smooth) engine.removeEntity(c.smooth)
+  dropProxy(c)
+  pointerEventsSystem.removeOnPointerDown(c.hit)
+  engine.removeEntity(c.hit)
+  if (alive) {
+    GltfContainer.deleteFrom(entity)
+    VisibilityComponent.deleteFrom(entity)
+  }
+  known.delete(entity)
+}
+
 export function cubesSystem(dt: number) {
   const seen = new Set<Entity>()
   for (const [entity, data] of engine.getEntitiesWith(CubeData)) {
-    seen.add(entity)
     let c = known.get(entity)
-    if (!c) {
-      const hit = engine.addEntity()
-      // Child of the cube: the GLB's collider is a 0.5 m box, the parent already carries CUBE_SCALE.
-      Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
-      MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
-      c = { mode: 'free', holder: '', slot: -1, letter: data.letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true, hidden: false }
-      known.set(entity, c)
-      const id = data.id
-      const letter = data.letter
-      pointerEventsSystem.onPointerDown(
-        { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
-        () => room.send('grab', { cubeId: id })
-      )
-    }
-    // Cubes of other games are invisible and untouchable: you only see the game you sit in.
+    // Cubes of other games get no model, no click target and no bookkeeping: you only load the game you play in.
     if (data.game !== cs.game) {
-      if (!c.hidden) {
-        c.hidden = true
-        enterMode(entity, c, 'free', '', -1) // drops any copy drawn for it
-        VisibilityComponent.createOrReplace(entity, { visible: false })
-        if (c.hitOn) {
-          c.hitOn = false
-          MeshCollider.deleteFrom(c.hit)
-        }
-      }
+      if (c) forgetCube(entity, c, true)
       continue
     }
-    if (c.hidden) {
-      c.hidden = false
-      VisibilityComponent.deleteFrom(entity)
+    seen.add(entity)
+    if (!c) {
+      c = adopt(entity, data.letter, data.id)
+      known.set(entity, c)
     }
     if (data.mode !== c.mode || data.holder !== c.holder || data.slot !== c.slot) enterMode(entity, c, data.mode, data.holder, data.slot)
 
@@ -273,13 +279,5 @@ export function cubesSystem(dt: number) {
   }
 
   // cubes the server removed
-  for (const [entity, c] of Array.from(known.entries())) {
-    if (seen.has(entity)) continue
-    if (c.mode === 'held' && c.holder === cs.myAddress) stopHoldEmote()
-    if (c.smooth) engine.removeEntity(c.smooth)
-    dropProxy(c)
-    pointerEventsSystem.removeOnPointerDown(c.hit)
-    engine.removeEntity(c.hit)
-    known.delete(entity)
-  }
+  for (const [entity, c] of Array.from(known.entries())) if (!seen.has(entity)) forgetCube(entity, c, false)
 }
