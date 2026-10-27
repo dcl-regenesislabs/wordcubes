@@ -112,8 +112,8 @@ const PUSH_MAX_SPEED = 4.5
 const MAX_SPEED = 7 // no cube ever moves faster than this (keeps pile chaos from flinging cubes)
 const MAX_CORRECTION = 0.15 // m per step two overlapping cubes can be separated
 const SETTLED_OVERLAP = 0.02 // m: cubes overlapping more than this do not fall asleep
-const TIP_OFFSET = 0.5 // half-faces: a cube resting further off-centre than this on another slides off it
-const TIP_ACCEL = 6 // m/s² of that slide
+const SLIDE_OFF_ACCEL = 8 // m/s²: how hard a cube that may not rest where it is slides off
+const TIP_OFFSET = 0.5 // half-faces: a cube resting on a single cube further off-centre than this slides off it
 const SUPPORT_SLACK = 0.03 // m: a cube this close above another still rests on it
 const RESTING_DEPTH = 0.04 // m: a vertical overlap shallower than this always lifts the top cube
 const SLEEP_SPEED = 0.12
@@ -229,8 +229,8 @@ function collide(p: WorldParams, a: Body, b: Body, reach2: number) {
   }
 }
 
-// What each awake cube rests on this step: how many cubes, and its offset from the first one. Filled and cleared within
-// one step, so the server's several worlds can share it.
+// What each awake cube rests on this step: how many cubes, and the sum of its offsets from them. Filled and cleared
+// within one step, so the server's several worlds can share it.
 const supports = new Map<Body, { n: number; ox: number; oz: number }>()
 
 // Before the cubes are pushed apart: note what each cube rests on (a box overlapping it from below, within a few mm,
@@ -242,21 +242,30 @@ function countSupport(p: WorldParams, a: Body, b: Body) {
   const top = dy > 0 ? b : a
   const under = top === a ? b : a
   const s = supports.get(top)
-  if (s) s.n++
-  else supports.set(top, { n: 1, ox: top.x - under.x, oz: top.z - under.z })
+  if (s) {
+    s.n++
+    s.ox += top.x - under.x
+    s.oz += top.z - under.z
+  } else supports.set(top, { n: 1, ox: top.x - under.x, oz: top.z - under.z })
 }
 
-// Cubes resting on other cubes: friction on the top face, like the floor's. A cube that rests on a single cube with its
-// centre past the middle of it tips off (boxes do not stack into towers; the pile keeps a slope). One resting on two or
-// more is supported and stays.
+// Cubes resting on other cubes. The pile is at most two layers: a cube may lie on cubes that stand on the floor, but one
+// that lands on the second layer slides off it, and so does one resting on a single cube past its middle (a cube is
+// never perched on the edge of another). Otherwise friction on the top face, like the floor's.
 function supportStep(p: WorldParams, dt: number) {
   const f = Math.max(0, 1 - p.floorFriction * dt)
+  const secondLayer = p.floorY + 3 * p.cubeHalf // centre height of a cube lying on the floor cubes
   for (const [top, s] of supports) {
     if (top.asleep) continue
     const off = Math.sqrt(s.ox * s.ox + s.oz * s.oz)
-    if (s.n === 1 && off > TIP_OFFSET * p.cubeHalf) {
-      top.vx += (s.ox / off) * TIP_ACCEL * dt
-      top.vz += (s.oz / off) * TIP_ACCEL * dt
+    const tooHigh = top.y > secondLayer + p.cubeHalf
+    const perched = s.n === 1 && off > TIP_OFFSET * p.cubeHalf
+    if (tooHigh || perched) {
+      const ang = top.id * 2.399 // straight on top: a direction picked from its id
+      const ux = off > 0.01 ? s.ox / off : Math.cos(ang)
+      const uz = off > 0.01 ? s.oz / off : Math.sin(ang)
+      top.vx += ux * SLIDE_OFF_ACCEL * dt
+      top.vz += uz * SLIDE_OFF_ACCEL * dt
     } else {
       top.vx *= f
       top.vz *= f
@@ -321,7 +330,7 @@ export function step(world: World, dtIn: number) {
       }
     }
   }
-  // first what rests on what (before anything is moved), then push the pairs apart, then friction / tipping on top faces
+  // first what rests on what (before anything is moved), then push the pairs apart, then slide cubes off the ones below
   for (let i = 0; i < pairs.length; i += 2) countSupport(p, pairs[i], pairs[i + 1])
   for (let i = 0; i < pairs.length; i += 2) collide(p, pairs[i], pairs[i + 1], reach2)
   supportStep(p, dt)
