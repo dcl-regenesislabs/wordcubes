@@ -120,7 +120,7 @@ export const PLACED_YAW = 0
 export const PLACED_ROLL = 90
 
 // Player as a pusher: walking into cubes shoves them aside.
-export const PLAYER_RADIUS = 0.45
+export const PLAYER_RADIUS = 0.6 // m: how far around the avatar cubes are shoved
 export const PLAYER_HEIGHT = 1.2 // only legs/waist shove cubes, so stacks above you are left alone
 
 // Network feel (server -> clients)
