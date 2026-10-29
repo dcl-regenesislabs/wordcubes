@@ -4,6 +4,8 @@ import { registerMessages } from '@dcl/sdk/network'
 export const room = registerMessages({
   // client -> server
   join: Schemas.Map({ n: Schemas.Int }),
+  // A player on the lobby pad asks the server to start a shared game (or join an active one).
+  startGame: Schemas.Map({ n: Schemas.Int }),
   grab: Schemas.Map({ cubeId: Schemas.Int }),
   place: Schemas.Map({ slot: Schemas.Int }),
   toss: Schemas.Map({ n: Schemas.Int }),
@@ -17,6 +19,16 @@ export const room = registerMessages({
   // where a cube you pushed came to rest in your local prediction (predict.ts); the server checks it and adopts it
   settle: Schemas.Map({ cubeId: Schemas.Int, x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, yaw: Schemas.Number }),
   // server -> client
+  // The server is the only clock for the lobby countdown. It targets the players selected from the pad.
+  lobbyCountdown: Schemas.Map({ seconds: Schemas.Int }),
+  enterGame: Schemas.Map({
+    x: Schemas.Number,
+    y: Schemas.Number,
+    z: Schemas.Number,
+    lookAtX: Schemas.Number,
+    lookAtY: Schemas.Number,
+    lookAtZ: Schemas.Number
+  }),
   toast: Schemas.Map({ text: Schemas.String }),
   fx: Schemas.Map({ kind: Schemas.String, slot: Schemas.Int }), // 'lock' | 'fail' | 'win'
   coins: Schemas.Map({ value: Schemas.Int }),

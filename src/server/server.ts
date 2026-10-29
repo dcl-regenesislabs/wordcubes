@@ -83,6 +83,10 @@ let clock = 0
 const trails = new Map<string, { x: number; y: number; z: number; t: number }[]>()
 const lastSettle = new Map<number, number>()
 const flights: { cube: SCube; t: number }[] = []
+let lobbyPad: Entity | undefined
+let lobbyCountdownEndsAt = 0
+let lastLobbyCountdownSeconds = -1
+const lobbyCountdownPlayers = new Set<string>()
 
 // ---------- helpers ----------
 
@@ -119,6 +123,127 @@ function playerOf(address: string): PlayerInfo | null {
 function toast(text: string, to?: string) {
   if (to) room.send('toast', { text }, { to: [to] })
   else room.send('toast', { text })
+}
+
+/** World position for scene entities whose authored transforms are nested under a parent. */
+function worldPosition(entity: Entity): Vector3 | null {
+  const first = Transform.getOrNull(entity)
+  if (!first) return null
+  let pos = Vector3.create(first.position.x, first.position.y, first.position.z)
+  let parent = first.parent
+  while (parent !== undefined && parent !== engine.RootEntity) {
+    const pt = Transform.getOrNull(parent)
+    if (!pt) break
+    pos = Vector3.add(pt.position, Vector3.rotate(Vector3.multiply(pos, pt.scale), pt.rotation))
+    parent = pt.parent
+  }
+  return pos
+}
+
+function lobbyPadPlayers(): PlayerInfo[] {
+  if (lobbyPad === undefined) {
+    const found = engine.getEntityOrNullByName(C.LOBBY_PAD_NAME)
+    if (found === null) return []
+    lobbyPad = found
+  }
+  const pad = worldPosition(lobbyPad)
+  if (!pad) {
+    lobbyPad = undefined
+    return []
+  }
+  const radius2 = C.PAD_RADIUS * C.PAD_RADIUS
+  return players().filter((p) => {
+    const dx = p.pos.x - pad.x
+    const dz = p.pos.z - pad.z
+    return dx * dx + dz * dz <= radius2 && Math.abs(p.pos.y - pad.y) < C.PAD_HEIGHT_RANGE
+  })
+}
+
+// The server owns arena admission and chooses each spawn point, like Dead Surge's matchAutoTeleport flow. Keeping this
+// as a targeted message avoids a lobby client deciding its own entry point from a potentially stale GameState update.
+function sendGameEntry(address: string) {
+  const origin = envOrigin()
+  const angle = Math.random() * Math.PI * 2
+  const x = origin.x + Math.cos(angle) * C.GAME_SPAWN_RADIUS
+  const z = origin.z + Math.sin(angle) * C.GAME_SPAWN_RADIUS
+  room.send(
+    'enterGame',
+    {
+      x,
+      y: origin.y + C.FLOOR_Y + 0.5,
+      z,
+      lookAtX: origin.x,
+      lookAtY: origin.y + 1.5,
+      lookAtZ: origin.z
+    },
+    { to: [address] }
+  )
+}
+
+function sendLobbyCountdown(seconds: number) {
+  if (lobbyCountdownPlayers.size === 0) return
+  room.send('lobbyCountdown', { seconds }, { to: Array.from(lobbyCountdownPlayers) })
+}
+
+function clearLobbyCountdown() {
+  lobbyCountdownEndsAt = 0
+  lastLobbyCountdownSeconds = -1
+  lobbyCountdownPlayers.clear()
+}
+
+/** Advance the one shared lobby clock and keep only the selected players who still stand on the pad. */
+function updateLobbyCountdown() {
+  if (lobbyCountdownEndsAt === 0) return
+
+  const stillOnPad = new Set(lobbyPadPlayers().map((p) => p.address))
+  for (const address of Array.from(lobbyCountdownPlayers)) {
+    if (stillOnPad.has(address)) continue
+    room.send('lobbyCountdown', { seconds: 0 }, { to: [address] })
+    lobbyCountdownPlayers.delete(address)
+  }
+  if (lobbyCountdownPlayers.size === 0) {
+    clearLobbyCountdown()
+    return
+  }
+
+  const seconds = Math.max(0, Math.ceil(lobbyCountdownEndsAt - clock))
+  if (seconds !== lastLobbyCountdownSeconds) {
+    sendLobbyCountdown(seconds)
+    lastLobbyCountdownSeconds = seconds
+  }
+  if (clock < lobbyCountdownEndsAt) return
+
+  const targets = Array.from(lobbyCountdownPlayers)
+  clearLobbyCountdown()
+  for (const address of targets) sendGameEntry(address)
+}
+
+function startGameFromLobbyPad(address: string) {
+  const onPad = lobbyPadPlayers()
+  if (!onPad.some((p) => p.address === address)) {
+    toast('Stand on the start pad before starting a game.', address)
+    return
+  }
+
+  // An active arena accepts a late join immediately. It never changes the countdown of a newly starting group.
+  if (arenaPlayers().length > 0) {
+    sendGameEntry(address)
+    return
+  }
+
+  if (lobbyCountdownEndsAt !== 0) {
+    if (lobbyCountdownPlayers.has(address)) {
+      room.send('lobbyCountdown', { seconds: Math.max(1, Math.ceil(lobbyCountdownEndsAt - clock)) }, { to: [address] })
+    } else {
+      toast('A game is already starting. Wait for the next one.', address)
+    }
+    return
+  }
+
+  for (const p of onPad) lobbyCountdownPlayers.add(p.address)
+  lobbyCountdownEndsAt = clock + C.LOBBY_COUNTDOWN_SECONDS
+  lastLobbyCountdownSeconds = C.LOBBY_COUNTDOWN_SECONDS
+  sendLobbyCountdown(lastLobbyCountdownSeconds)
 }
 
 const coinsOf = (address: string): number => profileOf(address)?.coins ?? 0
@@ -622,6 +747,11 @@ function init() {
     void retain(addr).then(() => sendProfile(addr))
   })
 
+  room.onMessage('startGame', (_data: { n: number }, ctx?: { from: string }) => {
+    if (!ctx) return
+    startGameFromLobbyPad(ctx.from.toLowerCase())
+  })
+
   room.onMessage('grab', (data, ctx) => {
     if (!ctx || phase !== 'playing') return
     const addr = ctx.from.toLowerCase()
@@ -821,6 +951,7 @@ const pusherTracker = new PusherTracker()
 
 function gameSystem(dt: number) {
   clock += dt
+  updateLobbyCountdown()
   spawnSome()
 
   // players shove cubes (PusherTracker: same speed smoothing + lookahead as the clients' prediction)
@@ -985,6 +1116,8 @@ function clearStaleEntities() {
 }
 
 export function initServer() {
+  lobbyPad = undefined
+  clearLobbyCountdown()
   clearStaleEntities()
   stateEntity = engine.addEntity()
   GameState.create(stateEntity, {

@@ -5,7 +5,7 @@ import { cs, lockoutLeft, showMessage, setting } from '../state'
 import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
 import { room } from '../../shared/messages'
-import { returnToLobby } from '../lobby'
+import { returnToLobby, startGameFromLobbyPad } from '../lobby'
 import { clickSlot } from '../arena'
 import { MAX_DIFFICULTY, ITEMS, SETTINGS } from '../../config'
 import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, S, view } from './platform'
@@ -597,7 +597,7 @@ export function LobbyCountdown() {
       <UiEntity uiTransform={{ width: '100%', height: h, flexDirection: 'column', alignItems: 'center', pointerFilter: 'none' }}>
         <OutlineLabel value="Game starts in" fontSize={S(44)} color={PAL.text} width="100%" height={S(56)} />
         <OutlineLabel value={`${n}`} fontSize={S(urgent ? 170 : 130)} color={urgent ? PAL.pink : PAL.yellow} width="100%" height={S(190)} />
-        <OutlineLabel value="Step off the pad to cancel" fontSize={S(24)} color={PAL.text} width="100%" height={S(34)} />
+        <OutlineLabel value="Stay on the pad to join" fontSize={S(24)} color={PAL.text} width="100%" height={S(34)} />
       </UiEntity>
     </Layer>
   )
@@ -635,6 +635,18 @@ export function LobbyHud() {
         <OutlineLabel value="Rank" fontSize={S(18)} color={PAL.dim} width="100%" height={S(24)} />
         <OutlineLabel value={rankName(cs.rating)} fontSize={S(30)} color={PAL.pink} width="100%" height={S(38)} />
       </Frame>
+      {cs.onStartPad && cs.lobbyCountdown === 0 && (
+        <PillButton
+          id="start-game"
+          label={cs.lobbyGameInProgress ? 'Join game' : 'Start game'}
+          width={w}
+          height={S(62)}
+          font={S(26)}
+          tint={PAL.green}
+          margin={{ top: S(10) }}
+          onClick={startGameFromLobbyPad}
+        />
+      )}
       <PillButton id="howto-lobby" label="How to play" width={w} height={S(54)} font={S(22)} tint={PAL.cyan} margin={{ top: S(10) }} onClick={() => (cs.showHowTo = true)} />
       <PillButton id="settings-lobby" label="Settings" width={w} height={S(54)} font={S(22)} margin={{ top: S(8) }} onClick={() => (cs.showSettings = true)} />
     </Layer>

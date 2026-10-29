@@ -19,13 +19,18 @@ function harness() {
   const GltfContainer = component()
   const components = [Transform, PlayerIdentityData, CubeData, GameState, PlayerRanks, GltfContainer]
   const systems = new Map()
+  const namedEntities = new Map()
   let next = 512
   const engine = {
+    RootEntity: 0,
     addEntity: () => next++, removeEntity: entity => components.forEach(c => c.values.delete(entity)),
-    getEntitiesWith: c => c.values.entries(), addSystem: (fn, priority, name) => systems.set(name, fn)
+    getEntitiesWith: c => c.values.entries(), getEntityOrNullByName: name => namedEntities.get(name) ?? null,
+    addSystem: (fn, priority, name) => systems.set(name, fn)
   }
   const Vector3 = {
     create: (x = 0, y = 0, z = 0) => ({ x, y, z }), One: () => ({ x: 1, y: 1, z: 1 }),
+    add: (a, b) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }),
+    multiply: (a, b) => ({ x: a.x * b.x, y: a.y * b.y, z: a.z * b.z }),
     scale: (v, n) => ({ x: v.x * n, y: v.y * n, z: v.z * n }),
     distance: (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z),
     Forward: () => ({ x: 0, y: 0, z: 1 }), Right: () => ({ x: 1, y: 0, z: 0 }), rotate: v => v
@@ -37,7 +42,7 @@ function harness() {
   const world = loadTs('src/shared/world.ts', { '../config': config, './env': env })
   const handlers = new Map()
   const sent = []
-  const room = { onMessage: (name, fn) => handlers.set(name, fn), send: (name, data) => sent.push({ name, data }) }
+  const room = { onMessage: (name, fn) => handlers.set(name, fn), send: (name, data, options) => sent.push({ name, data, options }) }
   const server = loadTs('src/server/server.ts', {
     '@dcl/sdk/ecs': { engine, Transform, PlayerIdentityData, GltfContainer, ColliderLayer: { CL_NONE: 0 } },
     '@dcl/sdk/math': { Vector3, Quaternion: { fromEulerDegrees: () => ({ x: 0, y: 0, z: 0, w: 1 }) } },
@@ -50,6 +55,9 @@ function harness() {
     '../sim/physics': loadTs('src/sim/physics.ts')
   }, 'exports.testing = { cubes, spawnSome, startRound, startVote, endVote, collapse, publishRanks, land, timeUp, advance: seconds => { clock += seconds } }')
   server.initServer()
+  const padEntity = 300
+  namedEntities.set(config.LOBBY_PAD_NAME, padEntity)
+  Transform.create(padEntity, { position: Vector3.create(100, 0, 0), rotation: {}, scale: Vector3.One() })
   Transform.create(1, { position: Vector3.create(8, 0, 0), rotation: {} })
   PlayerIdentityData.create(1, { address: 'alice' })
   const send = (name, data = {}, from = 'alice') => handlers.get(name)(data, { from })
@@ -126,6 +134,49 @@ test('a present player is loaded without a join message and stays live across sa
   await new Promise(setImmediate)
   assert.equal(h.profiles.profileOf('alice'), profile)
   assert.ok(h.sent.some(m => m.name === 'profile'))
+})
+
+test('the server starts one countdown for everyone on the pad and teleports that same group', () => {
+  const h = harness()
+  h.sent.length = 0
+  h.Transform.get(1).position = h.Vector3.create(100, 0, 0)
+  h.PlayerIdentityData.create(2, { address: 'bob' })
+  h.Transform.create(2, { position: h.Vector3.create(100, 0, 0), rotation: {} })
+
+  h.send('startGame')
+
+  const initial = h.sent.find(message => message.name === 'lobbyCountdown')
+  assert.ok(initial)
+  assert.equal(initial.data.seconds, h.config.LOBBY_COUNTDOWN_SECONDS)
+  assert.deepEqual(Array.from(initial.options.to).sort(), ['alice', 'bob'])
+
+  h.systems.get('word-cubes-server')(h.config.LOBBY_COUNTDOWN_SECONDS)
+
+  const entries = h.sent.filter(message => message.name === 'enterGame')
+  assert.equal(entries.length, 2)
+  assert.deepEqual(entries.map(message => message.options.to[0]).sort(), ['alice', 'bob'])
+  for (const entry of entries) {
+    assert.equal(entry.data.y, h.config.FLOOR_Y + 0.5)
+    assert.ok(Math.abs(Math.hypot(entry.data.x, entry.data.z) - h.config.GAME_SPAWN_RADIUS) < 0.000001)
+  }
+})
+
+test('leaving the pad removes a selected player from the server countdown', () => {
+  const h = harness()
+  h.sent.length = 0
+  h.Transform.get(1).position = h.Vector3.create(100, 0, 0)
+  h.PlayerIdentityData.create(2, { address: 'bob' })
+  h.Transform.create(2, { position: h.Vector3.create(100, 0, 0), rotation: {} })
+  h.send('startGame')
+
+  h.Transform.get(2).position = h.Vector3.create(50, 0, 0)
+  h.systems.get('word-cubes-server')(1)
+  const cancelled = h.sent.find(message => message.name === 'lobbyCountdown' && message.data.seconds === 0 && message.options.to[0] === 'bob')
+  assert.ok(cancelled)
+
+  h.systems.get('word-cubes-server')(h.config.LOBBY_COUNTDOWN_SECONDS - 1)
+  const entries = h.sent.filter(message => message.name === 'enterGame')
+  assert.deepEqual(entries.map(message => message.options.to[0]), ['alice'])
 })
 
 test('rank publication includes 131 present players despite older cached profiles and removes departed pages', async () => {
