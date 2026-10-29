@@ -90,9 +90,10 @@ function init() {
     const index = Math.round(data.game)
     const game = games[index]
     if (!game) return
+    // a full game leaves you where you are: only give up your current seat once the new one is granted
     const current = gameOf(addr)
-    if (current && current !== game) current.leaveSeat(addr)
     const ok = game.requestSeat(addr)
+    if (ok && current && current !== game) current.leaveSeat(addr)
     console.log('[ENTER]', addr, 'game', index, ok ? 'seat granted' : 'full')
     room.send('entered', { game: index, ok: ok ? 1 : 0 }, { to: [addr] })
     if (!ok) toastTo(`Game ${index + 1} is full (${C.MAX_PLAYERS_PER_GAME} players). Try another pad.`, addr)

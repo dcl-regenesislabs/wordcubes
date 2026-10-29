@@ -20,7 +20,7 @@ export const uiMenu = () => (
     {cs.lobbyCountdown > 0 && <LobbyCountdown />}
     {!cs.inGame && !UI_PREVIEW && <LobbyHud />}
     {!cs.inGame && <LeaderboardPanel />}
-    {!cs.inGame && !UI_PREVIEW && <LobbyMessage />}
+    {!cs.inGame && !UI_PREVIEW && !cs.dialog && <LobbyMessage />}
     {(cs.inGame || UI_PREVIEW) && <GameHud />}
     {cs.showHowTo && <HowToPlay />}
     {cs.dialog && <NpcDialog />}

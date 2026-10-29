@@ -315,3 +315,30 @@ test('players without a seat cannot act in a game, and an idle game has no cubes
   assert.ok(h.server.games[1].isActive(), 'the first seat wakes the game up')
   assert.ok(!h.server.games[0].hasSeat('alice'), 'taking a seat elsewhere gives the old one up')
 })
+
+test('asking for a full game keeps your current seat', () => {
+  const h = harness()
+  const max = h.config.MAX_PLAYERS_PER_GAME
+  for (let i = 0; i < max; i++) h.send('enter', { game: 1 }, `q${i}`) // game 2 fills up
+  h.send('enter', { game: 1 }) // alice, seated in game 1, tries the full one
+  assert.equal(h.sent.filter(m => m.name === 'entered').pop().data.ok, 0)
+  assert.ok(h.server.games[0].hasSeat('alice'), 'still seated where she was')
+  assert.ok(!h.server.games[1].hasSeat('alice'))
+})
+
+test('re-sending enter cannot hold a seat you never arrive at', () => {
+  const h = harness()
+  const g = h.server.games[1]
+  h.send('enter', { game: 1 }, 'squatter') // no avatar in the scene: never arrives
+  const tick = g.tick
+  const step = 1
+  let seated = 0
+  const span = 3 * h.config.SEAT_HOLD_SECONDS
+  for (let t = 0; t < span; t += step) {
+    h.send('enter', { game: 1 }, 'squatter') // keeps asking
+    tick(step)
+    if (g.hasSeat('squatter')) seated += step
+  }
+  // a seat for SEAT_HOLD_SECONDS, then twice that locked out: about a third of the time, not all of it
+  assert.ok(seated <= span * 0.4, `held a seat ${seated}s of ${span}s`)
+})

@@ -38,18 +38,34 @@ function build(game: number): BuiltArena | undefined {
   addPassportBlocker(root)
   const parts: Entity[] = []
   const required: Entity[] = []
-  for (const [, t, gl] of engine.getEntitiesWith(Transform, GltfContainer)) {
-    if (t.parent !== template) continue
-    const part = engine.addEntity()
-    Transform.create(part, { parent: root, position: t.position, rotation: t.rotation, scale: t.scale })
-    GltfContainer.create(part, {
-      src: gl.src,
-      visibleMeshesCollisionMask: gl.visibleMeshesCollisionMask,
-      invisibleMeshesCollisionMask: gl.invisibleMeshesCollisionMask
-    })
-    parts.push(part)
-    if ((gl.visibleMeshesCollisionMask ?? 0) !== 0 || (gl.invisibleMeshesCollisionMask ?? 0) !== 0) required.push(part)
+  // Copy the template's whole subtree: models hang off GameEnv directly or off plain containers (the "Grass" entity
+  // holds its tufts), so every entity with a Transform is copied and the models are put back on the copies.
+  const children = new Map<Entity, Entity[]>()
+  for (const [entity, t] of engine.getEntitiesWith(Transform)) {
+    if (t.parent === undefined) continue
+    const list = children.get(t.parent)
+    if (list) list.push(entity)
+    else children.set(t.parent, [entity])
   }
+  const copy = (source: Entity, parent: Entity) => {
+    for (const child of children.get(source) ?? []) {
+      const t = Transform.get(child)
+      const part = engine.addEntity()
+      Transform.create(part, { parent, position: t.position, rotation: t.rotation, scale: t.scale })
+      parts.push(part)
+      const gl = GltfContainer.getOrNull(child)
+      if (gl) {
+        GltfContainer.create(part, {
+          src: gl.src,
+          visibleMeshesCollisionMask: gl.visibleMeshesCollisionMask,
+          invisibleMeshesCollisionMask: gl.invisibleMeshesCollisionMask
+        })
+        if ((gl.visibleMeshesCollisionMask ?? 0) !== 0 || (gl.invisibleMeshesCollisionMask ?? 0) !== 0) required.push(part)
+      }
+      copy(child, part)
+    }
+  }
+  copy(template, root)
   return { root, parts, required, dropVendor: vendorFactory(game), unwanted: 0 }
 }
 

@@ -59,6 +59,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
   let emptyFor = 0
   // Seats: who may play here. Granted at the pad ('enter'), kept while the player is in the arena.
   const seats = new Map<string, { until: number; arrived: boolean; outside: number }>()
+  const noShow = new Map<string, number>() // address -> clock time a seat they never came to expired
   let answer = ''
   let slots: (SCube | null)[] = []
   let hintsUsed = 0
@@ -700,11 +701,12 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
 
   // The pad asks for a seat; false when the game is full. The first seat wakes an idle game up.
   function requestSeat(addr: string): boolean {
-    const existing = seats.get(addr)
-    if (existing) {
-      existing.until = clock + C.SEAT_HOLD_SECONDS
-      return true
-    }
+    // Asking again keeps the seat but not the clock: a seat you never arrive at still expires SEAT_HOLD_SECONDS after
+    // the first ask, and then you cannot ask this game again for twice as long, so re-sending 'enter' cannot hold one.
+    if (seats.has(addr)) return true
+    const lapsed = noShow.get(addr)
+    if (lapsed !== undefined && clock - lapsed < 2 * C.SEAT_HOLD_SECONDS) return false
+    noShow.delete(addr)
     if (seats.size >= C.MAX_PLAYERS_PER_GAME) return false
     seats.set(addr, { until: clock + C.SEAT_HOLD_SECONDS, arrived: false, outside: 0 })
     emptyFor = 0
@@ -779,7 +781,10 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
         seat.arrived = true
         seat.outside = 0
       } else if (!seat.arrived) {
-        if (clock > seat.until) leaveSeat(addr)
+        if (clock > seat.until) {
+          leaveSeat(addr)
+          noShow.set(addr, clock)
+        }
       } else {
         seat.outside += dt
         // back on the lobby island: gone almost at once; elsewhere (a fall, a slow reconnect) there is a longer grace
