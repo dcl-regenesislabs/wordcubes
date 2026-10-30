@@ -12,6 +12,7 @@ export const cs = {
   settings: {} as Record<string, boolean>, // your saved switches (see SETTINGS in config); missing = the default
   message: '',
   messageTime: 0,
+  game: -1, // the game (pad) you hold a seat in, -1 in the lobby
   inGame: false, // false in the lobby, true once teleported into (or standing in) the game
   earned: 0, // coins you got for the last finished word
   earnedRound: -1, // the round that was

@@ -5,15 +5,21 @@ import { AUTH_SERVER_PEER_ID } from '@dcl/sdk/network/message-bus-sync'
 // One per cube. Transform is only meaningful while mode === 'free'; for the other modes the server parks the
 // real cube underground and clients draw their own copy (held in a player's hands, in flight, or in a frame).
 export const CubeData = engine.defineComponent('wc:Cube', {
+  game: Schemas.Int, // which game (arena) the cube belongs to; clients only show cubes of the game they are in
   id: Schemas.Int,
   letter: Schemas.String,
   mode: Schemas.String, // 'free' | 'held' | 'flying' | 'placed'
   slot: Schemas.Int, // frame index for 'flying' / 'placed', else -1
-  holder: Schemas.String // lowercased address of the player holding / throwing it, else ''
+  holder: Schemas.String, // lowercased address of the player holding / throwing it, else ''
+  // Server time (ms) the cube was created as part of a freshly settled pile, 0 otherwise. The server settles a new pile
+  // before anyone sees it; clients play the fall from this time (cubes.ts), and everyone ends on the same resting spots.
+  born: Schemas.Int64
 })
 
-// Singleton room state. The answer itself is never in here, only the letters already placed or hinted.
+// Per-game room state (one entity per game). The answer itself is never in here, only the letters already placed or hinted.
 export const GameState = engine.defineComponent('wc:GameState', {
+  game: Schemas.Int, // game index 0..GAME_COUNT-1, one GameState entity per game
+  active: Schemas.Int, // 1 while the game has players and is running, 0 when it is idle and waiting for a first player
   phase: Schemas.String, // 'playing' | 'won' | 'timeout' | 'vote'
   round: Schemas.Int,
   difficulty: Schemas.Int, // room level, 1..7

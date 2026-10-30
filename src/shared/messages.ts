@@ -4,6 +4,8 @@ import { registerMessages } from '@dcl/sdk/network'
 export const room = registerMessages({
   // client -> server
   join: Schemas.Map({ n: Schemas.Int }),
+  enter: Schemas.Map({ game: Schemas.Int }), // ask for a seat in a game before teleporting (max MAX_PLAYERS_PER_GAME)
+  leave: Schemas.Map({ n: Schemas.Int }), // back in the lobby: give the seat up
   grab: Schemas.Map({ cubeId: Schemas.Int }),
   place: Schemas.Map({ slot: Schemas.Int }),
   toss: Schemas.Map({ n: Schemas.Int }),
@@ -17,6 +19,8 @@ export const room = registerMessages({
   // where a cube you pushed came to rest in your local prediction (predict.ts); the server checks it and adopts it
   settle: Schemas.Map({ cubeId: Schemas.Int, x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, yaw: Schemas.Number }),
   // server -> client
+  entered: Schemas.Map({ game: Schemas.Int, ok: Schemas.Int }), // answer to enter: 1 seat granted, 0 game full
+  eject: Schemas.Map({ n: Schemas.Int }), // you stand in an arena without a seat: go back to the lobby
   toast: Schemas.Map({ text: Schemas.String }),
   fx: Schemas.Map({ kind: Schemas.String, slot: Schemas.Int }), // 'lock' | 'fail' | 'win'
   coins: Schemas.Map({ value: Schemas.Int }),

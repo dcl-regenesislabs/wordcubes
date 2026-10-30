@@ -30,6 +30,7 @@ export const SPAWN_MIN_RADIUS = STAGE_RADIUS + 1.5
 export const SPAWN_MAX_RADIUS = 10 // piled in a heap around the stage, not spread to the wall
 export const SPAWN_MIN_Y = 3
 export const SPAWN_MAX_Y = 22 // local to GameEnv
+export const DROP_SPREAD = 1.2 // s: a fresh pile's cubes start their (client-side) fall spread over this long
 
 // Interaction
 // The Carry_Box pose holds the box overhead in both raised hands, so the cube rides above the head bone.
@@ -120,7 +121,7 @@ export const PLACED_YAW = 0
 export const PLACED_ROLL = 90
 
 // Player as a pusher: walking into cubes shoves them aside.
-export const PLAYER_RADIUS = 0.45
+export const PLAYER_RADIUS = 0.6 // m: how far around the avatar cubes are shoved
 export const PLAYER_HEIGHT = 1.2 // only legs/waist shove cubes, so stacks above you are left alone
 
 // Network feel (server -> clients)
@@ -165,7 +166,36 @@ export const GRASS_SPRING = 12 // stiffness: higher snaps back faster
 export const GRASS_DAMPING = 6 // lower = more wobble after a player passes
 
 // Lobby: one start pad. Stand on it and the lights spin up, a countdown runs, then you are teleported to the game.
-export const LOBBY_PAD_NAME = 'StartPad.glb_6' // the one pad (child of "Lobby") that starts the game
+// Several games run side by side, up to GAME_COUNT. Pad i (child of "Lobby") sends players to game i, whose arena is the
+// composite entity GAME_ENV_NAMES[i]. Every arena is a copy of the "GameEnv" subtree placed somewhere else in the scene.
+export const GAME_COUNT = 7
+export const MAX_PLAYERS_PER_GAME = 5
+export const LOBBY_PAD_NAMES = [
+  'StartPad.glb',
+  'StartPad.glb_2',
+  'StartPad.glb_3',
+  'StartPad.glb_4',
+  'StartPad.glb_5',
+  'StartPad.glb_6',
+  'StartPad.glb_7'
+]
+// Game 0 plays in the composite's "GameEnv". The other arenas are not in the composite: each client builds one on the fly (client/arenas.ts)
+// as a copy of GameEnv's models, shifted by these offsets (metres), only while it takes part in that game.
+export const ARENA_TEMPLATE = 'GameEnv'
+export const GAME_OFFSETS: [number, number, number][] = [
+  [0, 0, 0],
+  [0, 0, 100],
+  [0, 0, 200],
+  [0, 0, 300],
+  [260, 0, 0],
+  [260, 0, 100],
+  [260, 0, 200]
+]
+export const ARENA_LOAD_TIMEOUT = 10 // s to wait for a new arena's models before teleporting in anyway
+export const ARENA_KEEP_SECONDS = 4 // s an arena stays built after you stop needing it
+export const LOBBY_LEAVE_SECONDS = 1.5 // s in the lobby island before a seated player loses the seat (outside arenas elsewhere: SEAT_LEAVE_SECONDS)
+export const SEAT_HOLD_SECONDS = 20 // a seat granted at the pad is kept this long for the player to arrive
+export const SEAT_LEAVE_SECONDS = 10 // seconds outside the arena before a seated player loses the seat (falls, reconnects)
 export const LOBBY_LIGHTS_MODEL = 'assets/models/environment/StartPadLight.glb' // lights spawned over that pad
 export const PAD_RADIUS = 4.4 // m from the pad centre that counts as standing on it
 export const PAD_LEAVE_MARGIN = 1 // extra metres before you count as having left (no flicker on the rim)

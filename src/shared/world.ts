@@ -27,8 +27,8 @@ export function worldParams(): WorldParams {
 }
 
 /** Move the params onto the GameEnv entity (re-read every tick, so moving GameEnv in the editor moves the sim). */
-export function syncEnvParams(p: WorldParams): void {
-  const o = envOrigin()
+export function syncEnvParams(p: WorldParams, game = 0): void {
+  const o = envOrigin(game)
   p.centerX = o.x
   p.centerZ = o.z
   p.floorY = o.y + C.FLOOR_Y

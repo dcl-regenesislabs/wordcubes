@@ -1,6 +1,6 @@
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
-import { GameState } from '../../shared/schemas'
+import { myState, boardText } from '../gamestate'
 import { cs, lockoutLeft, showMessage, setting } from '../state'
 import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
@@ -21,8 +21,7 @@ type Game = { frozen: number; players: number; builders: number; hintCost: numbe
 
 function game(): Game | null {
   if (C.UI_PREVIEW) return mockGame()
-  for (const [, g] of engine.getEntitiesWith(GameState)) return g as unknown as Game
-  return null
+  return (myState() as unknown as Game | undefined) ?? null
 }
 
 // ---- UI preview (config UI_PREVIEW): a fake 16 second round that loops, so the HUD can be checked without a server ----
@@ -586,6 +585,21 @@ export function GameHud() {
   )
 }
 
+// The latest message ("Joining game 2...", "You left game 2", "Game 3 is full") while you are in the lobby.
+export function LobbyMessage() {
+  const text = cs.message
+  if (text === '') return null
+  const msgFont = S(30)
+  const msgW = clamp(estW(text, msgFont) + S(60), S(200), fit(view().w, 0.8))
+  return (
+    <Layer justify="flex-end" pad={{ bottom: S(36) + BOTTOM_RESERVE() }}>
+      <Frame width={msgW} height={S(56)} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(28)} align="center" justify="center">
+        <Label value={text} fontSize={msgFont} font="sans-serif" color={PAL.text} textWrap="nowrap" uiTransform={{ width: '100%', height: '100%' }} />
+      </Frame>
+    </Layer>
+  )
+}
+
 // Shown while standing on the start pad in the lobby.
 export function LobbyCountdown() {
   const n = cs.lobbyCountdown
@@ -618,7 +632,8 @@ export function setupHudMessages() {
   room.onMessage('result', (d) => {
     cs.delta = d.delta
     cs.earned = d.coins
-    for (const [, g] of engine.getEntitiesWith(GameState)) cs.earnedRound = (g as unknown as Game).round
+    const g = myState()
+    if (g) cs.earnedRound = g.round
   })
   room.onMessage('lockout', (d) => {
     cs.lockoutUntil = Date.now() + d.seconds * 1000
@@ -656,8 +671,7 @@ export function LeaderboardPanel() {
   if (!signEntity || !me || !Transform.getOrNull(signEntity)) return null
   const sign = worldPosition(signEntity)
   if (Math.hypot(me.x - sign.x, me.z - sign.z) > 14) return null
-  let top: [string, number][] = []
-  for (const [, g] of engine.getEntitiesWith(GameState)) top = parseBoard((g as unknown as { board: string }).board ?? '')
+  const top: [string, number][] = parseBoard(boardText())
   const w = S(430)
   const rowH = S(46)
   const h = S(120) + Math.max(1, top.length) * rowH

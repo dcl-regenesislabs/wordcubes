@@ -2,7 +2,7 @@ import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
 import { cs } from './state'
 import { UI_PREVIEW } from '../config'
 import { setupResponsiveUi } from './ui/platform'
-import { GameHud, LobbyHud, LobbyCountdown, HowToPlay, NpcDialog, ShopPanel, SettingsPanel, LeaderboardPanel, setupHudMessages, updateHud } from './ui/hud'
+import { GameHud, LobbyHud, LobbyMessage, LobbyCountdown, HowToPlay, NpcDialog, ShopPanel, SettingsPanel, LeaderboardPanel, setupHudMessages, updateHud } from './ui/hud'
 import { engine } from '@dcl/sdk/ecs'
 
 // The UI canvas depends on the device (1920x1080 desktop, 1600x720 x pixel ratio on phones): setupResponsiveUi sets
@@ -20,6 +20,7 @@ export const uiMenu = () => (
     {cs.lobbyCountdown > 0 && <LobbyCountdown />}
     {!cs.inGame && !UI_PREVIEW && <LobbyHud />}
     {!cs.inGame && <LeaderboardPanel />}
+    {!cs.inGame && !UI_PREVIEW && !cs.dialog && <LobbyMessage />}
     {(cs.inGame || UI_PREVIEW) && <GameHud />}
     {cs.showHowTo && <HowToPlay />}
     {cs.dialog && <NpcDialog />}

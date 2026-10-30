@@ -24,6 +24,7 @@ import { envOrigin } from '../shared/env'
 import { playHoldEmote, stopHoldEmote } from './emotes'
 import { cs } from './state'
 import { isPredicted } from './predict'
+import { trackServerClock, dropAge, dropPlan } from './gamestate'
 
 interface ClientCube {
   mode: string
@@ -44,6 +45,7 @@ interface ClientCube {
   // cube is drawn as a predicted copy (the copy carries its own click) so there is never a second, invisible target.
   hit: Entity
   hitOn: boolean
+  fall: Entity | null // copy playing a fresh pile's fall (the real cube is hidden and not clickable until it lands)
 }
 
 const known = new Map<Entity, ClientCube>()
@@ -88,7 +90,7 @@ function handPos(address: string): Vector3 {
       }
     }
   }
-  if (!t) return envOrigin()
+  if (!t) return envOrigin(Math.max(0, cs.game))
   const fwd = Vector3.rotate(Vector3.Forward(), t.rotation)
   const right = Vector3.rotate(Vector3.Right(), t.rotation)
   return Vector3.create(
@@ -203,30 +205,87 @@ function smoothFree(entity: Entity, c: ClientCube, dt: number) {
   t.rotation = Quaternion.slerp(t.rotation, tr.rotation, k)
 }
 
+// A cube of the game you play in: give the synced entity its model (the server sends none) and a click target.
+function adopt(entity: Entity, letter: string, id: number): ClientCube {
+  GltfContainer.createOrReplace(entity, { src: modelFor(letter), invisibleMeshesCollisionMask: 0, visibleMeshesCollisionMask: 0 })
+  const hit = engine.addEntity()
+  // Child of the cube: the GLB's collider is a 0.5 m box, the parent already carries CUBE_SCALE.
+  Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
+  MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
+  pointerEventsSystem.onPointerDown(
+    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
+    () => room.send('grab', { cubeId: id })
+  )
+  return { mode: 'free', holder: '', slot: -1, letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true, fall: null }
+}
+
+// A fresh pile: the server created it already at rest, so this client plays the fall itself. A copy drops from the
+// spawn height onto the spot the server put the cube (the same spot for everyone), then the real cube takes over.
+function drawFall(entity: Entity, c: ClientCube, id: number, age: number) {
+  if (!c.fall) {
+    c.fall = makeProxy(c.letter)
+    VisibilityComponent.createOrReplace(entity, { visible: false })
+  }
+  const rest = Transform.get(entity)
+  const plan = dropPlan(id)
+  const t = Transform.getMutable(c.fall)
+  if (age < plan.delay) {
+    t.scale = Vector3.Zero() // not dropped yet
+    return
+  }
+  const k = age - plan.delay
+  const y = Math.max(rest.position.y, rest.position.y + plan.height + 0.5 * C.GRAVITY * k * k)
+  t.position = Vector3.create(rest.position.x, y, rest.position.z)
+  t.rotation = rest.rotation
+  t.scale = Vector3.scale(Vector3.One(), C.CUBE_SCALE)
+}
+
+function endFall(entity: Entity, c: ClientCube, alive: boolean) {
+  if (!c.fall) return
+  engine.removeEntity(c.fall)
+  c.fall = null
+  if (alive) VisibilityComponent.deleteFrom(entity)
+}
+
+// Drop everything this client added for a cube: it was removed, or it belongs to a game you are not in (any more).
+// `alive` = the synced entity still exists, so its local model and visibility are taken off too.
+function forgetCube(entity: Entity, c: ClientCube, alive: boolean) {
+  if (c.mode === 'held' && c.holder === cs.myAddress) stopHoldEmote()
+  if (c.smooth) engine.removeEntity(c.smooth)
+  dropProxy(c)
+  endFall(entity, c, alive)
+  pointerEventsSystem.removeOnPointerDown(c.hit)
+  engine.removeEntity(c.hit)
+  if (alive) {
+    GltfContainer.deleteFrom(entity)
+    VisibilityComponent.deleteFrom(entity)
+  }
+  known.delete(entity)
+}
+
 export function cubesSystem(dt: number) {
+  trackServerClock()
   const seen = new Set<Entity>()
   for (const [entity, data] of engine.getEntitiesWith(CubeData)) {
-    seen.add(entity)
     let c = known.get(entity)
+    // Cubes of other games get no model, no click target and no bookkeeping: you only load the game you play in.
+    if (data.game !== cs.game) {
+      if (c) forgetCube(entity, c, true)
+      continue
+    }
+    seen.add(entity)
     if (!c) {
-      const hit = engine.addEntity()
-      // Child of the cube: the GLB's collider is a 0.5 m box, the parent already carries CUBE_SCALE.
-      Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
-      MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
-      c = { mode: 'free', holder: '', slot: -1, letter: data.letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true }
+      c = adopt(entity, data.letter, data.id)
       known.set(entity, c)
-      const id = data.id
-      const letter = data.letter
-      pointerEventsSystem.onPointerDown(
-        { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
-        () => room.send('grab', { cubeId: id })
-      )
     }
     if (data.mode !== c.mode || data.holder !== c.holder || data.slot !== c.slot) enterMode(entity, c, data.mode, data.holder, data.slot)
+    const age = c.mode === 'free' ? dropAge(data.id, data.born) : null
+    if (age !== null) drawFall(entity, c, data.id, age)
+    else endFall(entity, c, true)
 
     c.t += dt
     const predicted = isPredicted(entity)
-    const hitOn = c.mode === 'free' && !predicted
+    const hitOn = c.mode === 'free' && !predicted && !c.fall
     if (hitOn !== c.hitOn) {
       c.hitOn = hitOn
       // Remove the collider rather than setBox(CL_NONE): setBox drops a 0 mask, and a MeshCollider without a mask
@@ -255,13 +314,5 @@ export function cubesSystem(dt: number) {
   }
 
   // cubes the server removed
-  for (const [entity, c] of Array.from(known.entries())) {
-    if (seen.has(entity)) continue
-    if (c.mode === 'held' && c.holder === cs.myAddress) stopHoldEmote()
-    if (c.smooth) engine.removeEntity(c.smooth)
-    dropProxy(c)
-    pointerEventsSystem.removeOnPointerDown(c.hit)
-    engine.removeEntity(c.hit)
-    known.delete(entity)
-  }
+  for (const [entity, c] of Array.from(known.entries())) if (!seen.has(entity)) forgetCube(entity, c, false)
 }

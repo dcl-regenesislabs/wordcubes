@@ -19,6 +19,7 @@ interface NpcDef {
   name: string
   entityName: string // composite entity that overrides the position
   where: 'lobby' | 'arena'
+  game?: number // arena vendors: which game's arena
   side: number // lobby: +1 / -1, which side of the path from the lobby centre to the pad
   shop?: boolean // opens the shop instead of a conversation
   female: boolean
@@ -57,11 +58,13 @@ const NPCS: NpcDef[] = [
     skin: Color3.create(0.8, 0.6, 0.45),
     pages: []
   },
+  // the vendor of the first arena (game 0); the other arenas get theirs when they are built (spawnArenaVendor)
   {
     id: 'wc-npc-vendor-arena',
     name: 'Cubby, the Vendor',
     entityName: 'VendorNpc_2', // the name the Creator Hub gave the second copy
     where: 'arena',
+    game: 0,
     side: 0,
     shop: true,
     female: false,
@@ -79,7 +82,7 @@ function standPosition(def: NpcDef): Vector3 | undefined {
   if (named && Transform.getOrNull(named)) return worldPosition(named)
   if (def.where === 'arena') {
     // fallback: inside the arena wall, on the side opposite the player spawn ring's first point
-    const o = envOrigin()
+    const o = envOrigin(def.game ?? 0)
     return Vector3.create(o.x - (C.ARENA_RADIUS - 1.8), o.y + C.FLOOR_Y, o.z)
   }
   const a = lobbyAnchors()
@@ -91,7 +94,7 @@ function standPosition(def: NpcDef): Vector3 | undefined {
   return Vector3.create(mid.x + (-dz / len) * 3.5 * def.side, mid.y, mid.z + (dx / len) * 3.5 * def.side)
 }
 
-function spawn(def: NpcDef, pos: Vector3) {
+function spawn(def: NpcDef, pos: Vector3): () => void {
   const npc = engine.addEntity()
   Transform.create(npc, { position: pos })
   AvatarShape.create(npc, {
@@ -114,13 +117,22 @@ function spawn(def: NpcDef, pos: Vector3) {
       else cs.dialog = { name: def.name, pages: def.pages, page: 0 }
     }
   )
-  if (def.shop) addShopSign(pos)
+  const extras = def.shop ? addShopSign(pos) : []
   spawned.set(def.id, npc)
+  return () => {
+    pointerEventsSystem.removeOnPointerDown(hit)
+    for (const e of [hit, npc, ...extras]) engine.removeEntity(e)
+    for (const e of extras) {
+      const at = emblems.indexOf(e)
+      if (at >= 0) emblems.splice(at, 1)
+    }
+    spawned.delete(def.id)
+  }
 }
 
 // A vendor is easy to spot: a wildcard box spinning above their head with SHOP over it.
 const emblems: Entity[] = []
-function addShopSign(pos: Vector3) {
+function addShopSign(pos: Vector3): Entity[] {
   const box = engine.addEntity()
   Transform.create(box, { position: Vector3.create(pos.x, pos.y + 2.9, pos.z), scale: Vector3.scale(Vector3.One(), 1.1) })
   GltfContainer.create(box, { src: 'assets/models/CubeWildCard.glb' })
@@ -136,6 +148,20 @@ function addShopSign(pos: Vector3) {
     textAlign: TextAlignMode.TAM_MIDDLE_CENTER
   })
   Billboard.create(sign, { billboardMode: BillboardMode.BM_Y })
+  return [box, sign]
+}
+
+/** The vendor of a dynamically built arena (game 1 and up), where the template arena's vendor stands, shifted to this arena. */
+export function spawnArenaVendor(game: number): () => void {
+  const def = NPCS.find((d) => d.where === 'arena')!
+  const named = engine.getEntityOrNullByName(def.entityName)
+  const base = envOrigin(0)
+  const o = envOrigin(game)
+  const at =
+    named && Transform.getOrNull(named)
+      ? Vector3.add(worldPosition(named), Vector3.subtract(o, base))
+      : Vector3.create(o.x - (C.ARENA_RADIUS - 1.8), o.y + C.FLOOR_Y, o.z)
+  return spawn({ ...def, id: `${def.id}-${game}`, game }, at)
 }
 
 export function setupNpcs() {
