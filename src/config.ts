@@ -30,6 +30,7 @@ export const SPAWN_MIN_RADIUS = STAGE_RADIUS + 1.5
 export const SPAWN_MAX_RADIUS = 10 // piled in a heap around the stage, not spread to the wall
 export const SPAWN_MIN_Y = 3
 export const SPAWN_MAX_Y = 22 // local to GameEnv
+export const DROP_SPREAD = 1.2 // s: a fresh pile's cubes start their (client-side) fall spread over this long
 
 // Interaction
 // The Carry_Box pose holds the box overhead in both raised hands, so the cube rides above the head bone.

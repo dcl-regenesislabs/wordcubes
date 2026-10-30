@@ -10,7 +10,10 @@ export const CubeData = engine.defineComponent('wc:Cube', {
   letter: Schemas.String,
   mode: Schemas.String, // 'free' | 'held' | 'flying' | 'placed'
   slot: Schemas.Int, // frame index for 'flying' / 'placed', else -1
-  holder: Schemas.String // lowercased address of the player holding / throwing it, else ''
+  holder: Schemas.String, // lowercased address of the player holding / throwing it, else ''
+  // Server time (ms) the cube was created as part of a freshly settled pile, 0 otherwise. The server settles a new pile
+  // before anyone sees it; clients play the fall from this time (cubes.ts), and everyone ends on the same resting spots.
+  born: Schemas.Int64
 })
 
 // Per-game room state (one entity per game). The answer itself is never in here, only the letters already placed or hinted.

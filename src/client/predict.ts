@@ -37,6 +37,7 @@ import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, setPushers, step } from '../sim/physics'
 import type { Body, Pusher } from '../sim/physics'
 import { cs } from './state'
+import { dropAge } from './gamestate'
 
 const POOL_Y = -40 // pooled copies wait hidden, underground
 const SETTLED_SPEED = 0.5 // m/s: below this a cube counts as settled for the handoff
@@ -261,7 +262,8 @@ export function predictSystem(dt: number) {
   const seen = new Set<Entity>()
   for (const [entity, data, tr] of engine.getEntitiesWith(CubeData, Transform)) {
     const l = locals.get(entity)
-    if (data.mode !== 'free' || data.game !== cs.game) {
+    // a fresh pile's cube still playing its fall (cubes.ts) is not pushed until it lands
+    if (data.mode !== 'free' || data.game !== cs.game || dropAge(data.id, data.born) !== null) {
       if (l) forget(entity, l) // grabbed, thrown or placed: the server and cubes.ts take it from here
       continue
     }

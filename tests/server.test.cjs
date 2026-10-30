@@ -68,7 +68,7 @@ function harness() {
   PlayerIdentityData.create(1, { address: 'alice' })
   const send = (name, data = {}, from = 'alice') => handlers.get(name)(data, { from })
   send('enter', { game: 0 }) // alice takes a seat in game 0 (the player stands in its arena)
-  const fill = () => { for (let i = 0; i < 8; i++) server.testing.spawnSome() }
+  const fill = () => server.testing.settlePile()
   const grab = cube => {
     Transform.get(1).position = Vector3.create(cube.body.x, cube.body.y, cube.body.z)
     send('grab', { cubeId: cube.id })
@@ -108,11 +108,11 @@ test('repeated paid rerolls cannot replenish break rewards, while a new round ca
   assert.equal(profile.coins, 330, 'the next actual round restores normal rewards')
 })
 
-test('reroll during the initial spawn keeps a held original reward without duplicating it into the new pile', async () => {
+test('a reroll keeps a held original reward without duplicating it into the new pile', async () => {
   const h = harness()
   const profile = await h.profiles.retain('alice')
   profile.coins = 100
-  h.server.testing.spawnSome() // most of the initial pile is still queued
+  h.server.testing.settlePile()
   const decoy = () => [...h.server.testing.cubes.values()].find(c => c.mode === 'free' && !'DOG'.includes(c.letter))
   h.grab(decoy())
   h.send('buy', { item: 'reroll' })
@@ -341,4 +341,18 @@ test('re-sending enter cannot hold a seat you never arrive at', () => {
   }
   // a seat for SEAT_HOLD_SECONDS, then twice that locked out: about a third of the time, not all of it
   assert.ok(seated <= span * 0.4, `held a seat ${seated}s of ${span}s`)
+})
+
+test('a new pile settles unseen and its cubes are created once, at rest, marked for the client fall', () => {
+  const h = harness()
+  const g = h.server.games[0]
+  assert.equal(g.cubes.size, 0, 'nothing is created while the pile settles')
+  let ticks = 0
+  while (g.cubes.size === 0 && ticks < 60) { g.tick(1 / 30); ticks++ }
+  assert.equal(g.cubes.size, h.config.CUBES_PER_ROUND, 'the whole pile appears at once')
+  assert.ok(ticks > 1, 'settling is spread over several ticks')
+  const cubes = [...g.cubes.values()]
+  assert.ok(cubes.every((c) => c.body.asleep && c.sentAsleep), 'created at rest: no transform has to follow')
+  const born = cubes.map((c) => h.server.testing.cubeData(c.entity).born)
+  assert.ok(born.every((b) => b > 0 && b === born[0]), 'one birth time for the pile')
 })

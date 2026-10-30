@@ -35,7 +35,8 @@ interface SCube {
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const SIM_DT = 1 / 30
 const FLIGHT_TOTAL = C.THROW_RELEASE_DELAY + C.THROW_FLIGHT_TIME
-const SPAWN_PER_TICK = 40
+const SETTLE_STEPS_PER_TICK = 20 // sim steps per server tick while a new pile settles unseen (~0.5 s for a pile)
+const SETTLE_MAX_SECONDS = 20 // of sim time: whatever still moves after this is created where it is
 const PARK_Y = -30
 const IDLE_SHUTDOWN_SECONDS = 5 // an empty game stays set up this long, then clears its pile and goes idle
 
@@ -75,7 +76,11 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
   let completed = 0
   let lastWord = ''
   let nextRoundIn = 0
-  let spawnQueue: { letter: string; breakReward: boolean }[] = []
+  // A new pile settles here first, unseen: its bodies fall and come to rest in the sim, and only then are the cubes
+  // created, already at rest. A round start then sends each cube once instead of 10-30 times a second while it falls;
+  // each client plays the fall itself (CubeData.born).
+  let settling: { body: Body; letter: string; breakReward: boolean }[] = []
+  let settleTime = 0
   const holders = new Map<string, SCube>()
   const lockedUntil = new Map<string, number>() // address -> clock time when placing is allowed again
   // Who took part in this round: locked in at least one correct cube (even one a later collapse knocked out).
@@ -206,22 +211,55 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
   // ---------- cubes ----------
 
   function spawnCube(letter: string, x: number, y: number, z: number, breakReward = false): SCube {
+    return createCube(letter, addBody(world, x, y, z), breakReward, 0)
+  }
+
+  // The synced entity for a body already in the sim. born > 0: part of a settled pile, created at rest.
+  function createCube(letter: string, body: Body, breakReward: boolean, born: number): SCube {
     const entity = engine.addEntity()
-    const body = addBody(world, x, y, z)
     const id = nextCubeId++
     Transform.create(entity, {
-      position: Vector3.create(x, y, z),
+      position: Vector3.create(body.x, body.y, body.z),
       rotation: Quaternion.fromEulerDegrees(0, (body.yaw * 180) / Math.PI, 0),
       scale: Vector3.scale(Vector3.One(), C.CUBE_SCALE)
     })
     // No model and no collider on the synced cube: each client adds the model and its own click target (cubes.ts),
     // and only for cubes of the game it plays in, so nobody loads the other games' piles.
-    CubeData.create(entity, { game: index, id, letter, mode: 'free', slot: -1, holder: '' })
+    CubeData.create(entity, { game: index, id, letter, mode: 'free', slot: -1, holder: '', born })
     protectServerEntity(entity, [Transform])
     syncEntity(entity, [Transform.componentId, CubeData.componentId])
-    const cube: SCube = { id, letter, entity, body, mode: 'free', slot: -1, holder: '', placer: '', sentAsleep: false, breakReward }
+    const cube: SCube = { id, letter, entity, body, mode: 'free', slot: -1, holder: '', placer: '', sentAsleep: body.asleep, breakReward }
     cubes.set(id, cube)
     return cube
+  }
+
+  // Start settling a new pile: bodies only, dropped from the heap's spawn heights.
+  function startPile(letters: { letter: string; breakReward: boolean }[]) {
+    for (const s of settling) removeBody(world, s.body)
+    const o = envOrigin(index)
+    settling = letters.map(({ letter, breakReward }) => {
+      const a = Math.random() * Math.PI * 2
+      const r = Math.sqrt(rand(C.SPAWN_MIN_RADIUS ** 2, C.SPAWN_MAX_RADIUS ** 2))
+      const body = addBody(world, o.x + Math.cos(a) * r, o.y + rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), o.z + Math.sin(a) * r)
+      return { body, letter, breakReward }
+    })
+    settleTime = 0
+  }
+
+  // Run the unseen pile a few steps; once it is at rest (or out of time), create its cubes where they lie.
+  function settleSome(steps: number) {
+    if (settling.length === 0) return
+    setPushers(world, []) // players do not touch a pile they cannot see yet
+    for (let n = 0; n < steps; n++) {
+      syncEnv()
+      step(world, SIM_DT)
+      settleTime += SIM_DT
+      if (settleTime >= SETTLE_MAX_SECONDS || settling.every((s) => s.body.asleep)) break
+    }
+    if (settleTime < SETTLE_MAX_SECONDS && !settling.every((s) => s.body.asleep)) return
+    const born = Date.now()
+    for (const s of settling) createCube(s.letter, s.body, s.breakReward, born)
+    settling = []
   }
 
   function removeCube(cube: SCube) {
@@ -286,7 +324,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[letters[i], letters[j]] = [letters[j], letters[i]]
     }
-    spawnQueue = letters.map((letter) => ({ letter, breakReward: true }))
+    startPile(letters.map((letter) => ({ letter, breakReward: true })))
     toast(message)
   }
 
@@ -297,12 +335,6 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     spawnCube(letter, o.x + Math.cos(a) * r, o.y + rand(C.SPAWN_MIN_Y, C.SPAWN_MAX_Y), o.z + Math.sin(a) * r, breakReward)
   }
 
-  function spawnSome() {
-    for (let n = 0; n < SPAWN_PER_TICK && spawnQueue.length > 0; n++) {
-      const cube = spawnQueue.pop()!
-      spawnInHeap(cube.letter, cube.breakReward)
-    }
-  }
 
   // The pile can never become unsolvable: for every letter the word still needs there must be at least that many cubes
   // that are not locked in yet (in the pile, in a hand, in flight, or still queued to spawn). A broken needed cube is replaced.
@@ -311,7 +343,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     const have = new Map<string, number>()
     const need = new Map<string, number>()
     for (const cube of cubes.values()) if (cube.mode !== 'placed') have.set(cube.letter, (have.get(cube.letter) ?? 0) + 1)
-    for (const { letter } of spawnQueue) have.set(letter, (have.get(letter) ?? 0) + 1)
+    for (const { letter } of settling) have.set(letter, (have.get(letter) ?? 0) + 1)
     for (let i = 0; i < answer.length; i++) {
       if (slots[i] && slots[i]!.mode === 'placed') continue
       need.set(answer[i], (need.get(answer[i]) ?? 0) + 1)
@@ -446,7 +478,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[letters[i], letters[j]] = [letters[j], letters[i]]
     }
-    spawnQueue = letters.map((letter) => ({ letter, breakReward: false }))
+    startPile(letters.map((letter) => ({ letter, breakReward: false })))
   }
 
   // Removes the loose letters around the player that the word does not use, and shoves the useful ones away.
@@ -736,7 +768,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     holders.clear()
     pendingToss.length = 0
     flights.length = 0
-    spawnQueue = []
+    settling = []
     votes.clear()
     participants.clear()
     lockedUntil.clear()
@@ -801,8 +833,6 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     }
     emptyFor = 0
 
-    spawnSome()
-
     // players shove cubes (PusherTracker: same speed smoothing + lookahead as the clients' prediction)
     const pushers: Pusher[] = []
     const present = new Set<string>()
@@ -812,17 +842,22 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
       recordTrail(p.address, p.pos)
       pushers.push(pusherTracker.update(p.address, p.pos.x, p.pos.y, p.pos.z, dt))
     }
-    setPushers(world, pushers)
 
-    simAcc += dt
-    let steps = 0
-    while (simAcc >= SIM_DT && steps < 3) {
-      syncEnv()
-      step(world, SIM_DT)
-      simAcc -= SIM_DT
-      steps++
+    if (settling.length > 0) {
+      settleSome(SETTLE_STEPS_PER_TICK) // a new pile is settling unseen: it owns the sim until its cubes exist
+      simAcc = 0
+    } else {
+      setPushers(world, pushers)
+      simAcc += dt
+      let steps = 0
+      while (simAcc >= SIM_DT && steps < 3) {
+        syncEnv()
+        step(world, SIM_DT)
+        simAcc -= SIM_DT
+        steps++
+      }
+      if (steps === 3) simAcc = 0
     }
-    if (steps === 3) simAcc = 0
 
     // moving cubes near a player are written every tick, the rest at a lower rate
     sendAcc += dt
@@ -934,7 +969,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     },
     broadcastToast: (text: string) => toast(text),
     // for tests
-    testing: { spawnSome, startRound, startVote, endVote, collapse, land, timeUp, advance: (seconds: number) => { clock += seconds }, get clock() { return clock } }
+    // settlePile: finish the pile that is settling, at once
+    testing: { settlePile: () => settleSome(Infinity), cubeData: (e: Entity) => CubeData.get(e), startRound, startVote, endVote, collapse, land, timeUp, advance: (seconds: number) => { clock += seconds }, get clock() { return clock } }
   }
 }
 

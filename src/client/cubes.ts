@@ -24,6 +24,7 @@ import { envOrigin } from '../shared/env'
 import { playHoldEmote, stopHoldEmote } from './emotes'
 import { cs } from './state'
 import { isPredicted } from './predict'
+import { trackServerClock, dropAge, dropPlan } from './gamestate'
 
 interface ClientCube {
   mode: string
@@ -44,6 +45,7 @@ interface ClientCube {
   // cube is drawn as a predicted copy (the copy carries its own click) so there is never a second, invisible target.
   hit: Entity
   hitOn: boolean
+  fall: Entity | null // copy playing a fresh pile's fall (the real cube is hidden and not clickable until it lands)
 }
 
 const known = new Map<Entity, ClientCube>()
@@ -214,7 +216,35 @@ function adopt(entity: Entity, letter: string, id: number): ClientCube {
     { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
     () => room.send('grab', { cubeId: id })
   )
-  return { mode: 'free', holder: '', slot: -1, letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true }
+  return { mode: 'free', holder: '', slot: -1, letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true, fall: null }
+}
+
+// A fresh pile: the server created it already at rest, so this client plays the fall itself. A copy drops from the
+// spawn height onto the spot the server put the cube (the same spot for everyone), then the real cube takes over.
+function drawFall(entity: Entity, c: ClientCube, id: number, age: number) {
+  if (!c.fall) {
+    c.fall = makeProxy(c.letter)
+    VisibilityComponent.createOrReplace(entity, { visible: false })
+  }
+  const rest = Transform.get(entity)
+  const plan = dropPlan(id)
+  const t = Transform.getMutable(c.fall)
+  if (age < plan.delay) {
+    t.scale = Vector3.Zero() // not dropped yet
+    return
+  }
+  const k = age - plan.delay
+  const y = Math.max(rest.position.y, rest.position.y + plan.height + 0.5 * C.GRAVITY * k * k)
+  t.position = Vector3.create(rest.position.x, y, rest.position.z)
+  t.rotation = rest.rotation
+  t.scale = Vector3.scale(Vector3.One(), C.CUBE_SCALE)
+}
+
+function endFall(entity: Entity, c: ClientCube, alive: boolean) {
+  if (!c.fall) return
+  engine.removeEntity(c.fall)
+  c.fall = null
+  if (alive) VisibilityComponent.deleteFrom(entity)
 }
 
 // Drop everything this client added for a cube: it was removed, or it belongs to a game you are not in (any more).
@@ -223,6 +253,7 @@ function forgetCube(entity: Entity, c: ClientCube, alive: boolean) {
   if (c.mode === 'held' && c.holder === cs.myAddress) stopHoldEmote()
   if (c.smooth) engine.removeEntity(c.smooth)
   dropProxy(c)
+  endFall(entity, c, alive)
   pointerEventsSystem.removeOnPointerDown(c.hit)
   engine.removeEntity(c.hit)
   if (alive) {
@@ -233,6 +264,7 @@ function forgetCube(entity: Entity, c: ClientCube, alive: boolean) {
 }
 
 export function cubesSystem(dt: number) {
+  trackServerClock()
   const seen = new Set<Entity>()
   for (const [entity, data] of engine.getEntitiesWith(CubeData)) {
     let c = known.get(entity)
@@ -247,10 +279,13 @@ export function cubesSystem(dt: number) {
       known.set(entity, c)
     }
     if (data.mode !== c.mode || data.holder !== c.holder || data.slot !== c.slot) enterMode(entity, c, data.mode, data.holder, data.slot)
+    const age = c.mode === 'free' ? dropAge(data.id, data.born) : null
+    if (age !== null) drawFall(entity, c, data.id, age)
+    else endFall(entity, c, true)
 
     c.t += dt
     const predicted = isPredicted(entity)
-    const hitOn = c.mode === 'free' && !predicted
+    const hitOn = c.mode === 'free' && !predicted && !c.fall
     if (hitOn !== c.hitOn) {
       c.hitOn = hitOn
       // Remove the collider rather than setBox(CL_NONE): setBox drops a 0 mask, and a MeshCollider without a mask
