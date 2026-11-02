@@ -356,3 +356,47 @@ test('a new pile settles unseen and its cubes are created once, at rest, marked 
   const born = cubes.map((c) => h.server.testing.cubeData(c.entity).born)
   assert.ok(born.every((b) => b > 0 && b === born[0]), 'one birth time for the pile')
 })
+
+test('Start game runs one shared countdown: nobody enters early, everyone enters at the end', () => {
+  const h = harness()
+  const realNow = Date.now
+  let now = realNow()
+  Date.now = () => now
+  try {
+    const state = () => h.GameState.get(h.server.games[1].stateEntity)
+    h.send('start', { game: 1 }, 'bob')
+    const startAt = Number(state().startAt)
+    assert.equal(startAt, now + h.config.LOBBY_COUNTDOWN_SECONDS * 1000, 'the server writes only when it ends')
+    now += 2000
+    h.send('start', { game: 1 }, 'carol')
+    assert.equal(Number(state().startAt), startAt, 'a second press joins the same countdown')
+    const answers = () => h.sent.filter(m => m.name === 'entered' && m.data.game === 1)
+    h.send('enter', { game: 1 }, 'bob')
+    assert.equal(answers().length, 0, 'no seat before the countdown ends')
+    assert.equal(h.server.games[1].hasSeat('bob'), false)
+    now = startAt
+    h.send('enter', { game: 1 }, 'bob')
+    h.send('enter', { game: 1 }, 'carol')
+    assert.deepEqual(answers().map(m => m.data.ok), [1, 1], 'the group enters together')
+    assert.equal(state().active, 1, 'the first seat starts the game')
+    // a finished countdown is cleared after the grace period
+    now = startAt + (h.config.START_GRACE_SECONDS + 1) * 1000
+    h.systems.get('word-cubes-server')(1)
+    assert.equal(Number(state().startAt), 0)
+  } finally {
+    Date.now = realNow
+  }
+})
+
+test('a running game cannot be restarted from its pad and takes players mid-round', () => {
+  const h = harness()
+  const g0 = h.GameState.get(h.server.games[0].stateEntity) // alice already plays game 0
+  assert.equal(g0.active, 1)
+  const round = g0.round
+  h.send('start', { game: 0 }, 'bob')
+  assert.equal(Number(g0.startAt), 0, 'no countdown on a running game')
+  assert.match(h.sent.filter(m => m.name === 'toast').pop().data.text, /Join game/)
+  h.send('enter', { game: 0 }, 'bob')
+  assert.equal(h.sent.filter(m => m.name === 'entered').pop().data.ok, 1, 'joined straight into the running game')
+  assert.equal(g0.round, round, 'joining does not restart the round')
+})

@@ -15,7 +15,7 @@ import * as C from '../config'
 import { envOrigin, arenaAt } from '../shared/env'
 import { room } from '../shared/messages'
 import { cs, showMessage } from './state'
-import { stateOf } from './gamestate'
+import { stateOf, serverNow } from './gamestate'
 import { arenaReady, requestArena } from './arenas'
 
 const SCALE_STIFFNESS = 90
@@ -153,19 +153,61 @@ function makeText(text: string, fontSize: number, color: Color4): Entity {
   return e
 }
 
+type PadState = { kind: 'idle' } | { kind: 'counting'; left: number } | { kind: 'running' } | { kind: 'full' }
+
+/**
+ * Where a game stands, seen from its pad. 'counting': someone pressed Start game and the shared countdown runs, with
+ * `left` seconds to go on the server's clock (the server wrote only when it ends). 'running': players are in it, join now.
+ */
+function padState(game: number): PadState {
+  const g = stateOf(game)
+  if (!g) return { kind: 'idle' }
+  if (g.active !== 0 && g.players >= C.MAX_PLAYERS_PER_GAME) return { kind: 'full' }
+  // Checked before 'running': the first of the group to enter starts the game a moment before the others reach zero.
+  const startAt = Number(g.startAt)
+  if (startAt > 0) {
+    const left = (startAt - (serverNow() ?? Date.now())) / 1000
+    if (left > -1) return { kind: 'counting', left } // a second past the end still counts: the 'enter' is on its way
+  }
+  if (g.active !== 0 && g.players > 0) return { kind: 'running' }
+  return { kind: 'idle' }
+}
+
 /** What the small line under a pad says about its game. */
 function padInfo(game: number): string {
-  const g = stateOf(game)
-  if (!g || g.active === 0 || g.players === 0) return 'Empty  -  start a game'
-  const full = g.players >= C.MAX_PLAYERS_PER_GAME
-  return `Level ${g.difficulty}  -  ${g.players}/${C.MAX_PLAYERS_PER_GAME}${full ? '  FULL' : ''}`
+  const s = padState(game)
+  if (s.kind === 'counting') return `Starting in ${Math.max(1, Math.ceil(s.left))}...`
+  if (s.kind === 'idle') return 'Empty  -  start a game'
+  const g = stateOf(game)!
+  if (s.kind === 'full') return `Level ${g.difficulty}  -  ${g.players}/${C.MAX_PLAYERS_PER_GAME}  FULL`
+  return `In progress  -  Level ${g.difficulty}  -  ${g.players}/${C.MAX_PLAYERS_PER_GAME}`
+}
+
+let joinTimer = -1 // seconds left of your Join game countdown, -1 when none runs
+let startPressed = -1 // the game you pressed Start game on, until its countdown shows up (or the press times out)
+let startPressTimer = 0
+
+/** HUD button on the pad of an idle game: ask the server to start the shared countdown. */
+export function pressStart() {
+  if (cs.padAction !== 'start' || cs.padGame < 0) return
+  startPressed = cs.padGame
+  startPressTimer = 4
+  room.send('start', { game: cs.padGame })
+}
+
+/** HUD button on the pad of a running game: your own short countdown, then you go in. */
+export function pressJoin() {
+  if (cs.padAction !== 'join' || cs.padGame < 0) return
+  joinTimer = C.JOIN_COUNTDOWN_SECONDS
 }
 
 /**
- * The lobby start pads, client only. There is one pad per game. Standing on one starts a 10 second countdown, then the
- * server gives you a seat (at most MAX_PLAYERS_PER_GAME per game) and you are teleported into that game's arena;
- * stepping off cancels it. The lights over a pad (StartPadLight.glb) pop up while anyone is on it, spin faster as your
- * countdown runs out and stretch for the final 3-2-1.
+ * The lobby start pads, client only. There is one pad per game. On the pad of a game nobody plays, a Start game button
+ * starts a countdown shared by everyone on that pad (the server writes once when it ends, each client counts on its own);
+ * when it ends, everyone still on the pad asks for a seat and is teleported in. On the pad of a running game, a Join game
+ * button runs a short countdown of your own and you join the round in progress. Stepping off cancels either for you.
+ * The server gives at most MAX_PLAYERS_PER_GAME seats per game. The lights over a pad (StartPadLight.glb) pop up while
+ * anyone is on it, spin faster as the countdown runs out and stretch for the final 3-2-1.
  */
 export function setupLobby() {
   const pads: PadView[] = []
@@ -194,7 +236,9 @@ export function setupLobby() {
   let onPad = -1 // the pad you stand on
   let counting = false
   let timer = 0
+  let total = C.LOBBY_COUNTDOWN_SECONDS // length of the countdown that runs (for the lights)
   let lockout = 0
+  let entered = -1 // the start countdown (its startAt) you already asked a seat for
 
   engine.addSystem((dt: number) => {
     let ready = false
@@ -268,7 +312,7 @@ export function setupLobby() {
       }
     }
 
-    // Countdown
+    // The pad you stand on: its button, the countdowns and the seat request
     if (waitingFor >= 0) {
       waitTimer -= dt
       if (waitTimer <= 0) {
@@ -277,30 +321,57 @@ export function setupLobby() {
       }
     }
     if (lockout > 0) lockout -= dt
-    if (onPad >= 0 && lockout <= 0 && waitingFor < 0 && !pendingTeleport) {
-      if (!counting) {
+    if (startPressTimer > 0) {
+      startPressTimer -= dt
+      if (startPressTimer <= 0) startPressed = -1
+    }
+
+    // Ask the server for a seat in a game: we teleport when it says yes
+    const enter = (game: number) => {
+      waitingFor = game
+      waitTimer = 4
+      lockout = TELEPORT_LOCKOUT
+      showMessage(`Joining game ${game + 1}...`, 4)
+      room.send('enter', { game })
+    }
+
+    counting = false
+    cs.padAction = ''
+    cs.padGame = onPad
+    const free = onPad >= 0 && lockout <= 0 && waitingFor < 0 && !pendingTeleport
+    if (!free) joinTimer = -1
+    if (free) {
+      const state = padState(onPad)
+      const startAt = Number(stateOf(onPad)?.startAt ?? 0)
+      if (state.kind !== 'running') joinTimer = -1
+      if (state.kind === 'counting') {
+        // the shared start: everyone on this pad sees the same numbers and enters at zero
+        startPressed = -1
         counting = true
-        timer = C.LOBBY_COUNTDOWN_SECONDS
-      }
-      timer -= dt
-      if (timer <= 0) {
-        counting = false
-        const game = onPad
-        const g = stateOf(game)
-        if (g && g.active !== 0 && g.players >= C.MAX_PLAYERS_PER_GAME) {
-          lockout = 2
-          showMessage(`Game ${game + 1} is full. Try another pad.`, 3)
-        } else {
-          // the server decides (seats can be taken a moment before this reaches us); we teleport when it says yes
-          waitingFor = game
-          waitTimer = 4
-          lockout = TELEPORT_LOCKOUT
-          showMessage(`Joining game ${game + 1}...`, 4)
-          room.send('enter', { game })
+        timer = state.left
+        total = C.LOBBY_COUNTDOWN_SECONDS
+        cs.countdownTitle = 'Game starts in'
+        if (state.left <= 0 && entered !== startAt) {
+          entered = startAt
+          enter(onPad)
         }
+      } else if (state.kind === 'running') {
+        if (joinTimer >= 0) {
+          joinTimer -= dt
+          counting = true
+          timer = joinTimer
+          total = C.JOIN_COUNTDOWN_SECONDS
+          cs.countdownTitle = 'Joining in'
+          if (joinTimer <= 0) {
+            joinTimer = -1
+            enter(onPad)
+          }
+        } else cs.padAction = 'join'
+      } else if (state.kind === 'full') {
+        cs.padAction = 'full'
+      } else if (startPressed !== onPad) {
+        cs.padAction = 'start'
       }
-    } else {
-      counting = false
     }
     cs.lobbyCountdown = counting ? Math.max(1, Math.ceil(timer)) : 0
 
@@ -329,7 +400,7 @@ export function setupLobby() {
       const finalSeconds = counting_ && timer <= 3
       const sizeTarget = anyone && (!mine || lockout <= 0) ? 1 : 0
       const tallTarget = finalSeconds ? 1 : 0
-      const progress = counting_ ? Math.min(1, Math.max(0, 1 - timer / C.LOBBY_COUNTDOWN_SECONDS)) : 0
+      const progress = counting_ ? Math.min(1, Math.max(0, 1 - timer / total)) : 0
       const spinTarget =
         C.LOBBY_LIGHTS_SPIN_SLOW + (C.LOBBY_LIGHTS_SPIN_FAST - C.LOBBY_LIGHTS_SPIN_SLOW) * progress * progress
       pad.spin += ((sizeTarget ? spinTarget : 0) - pad.spin) * Math.min(1, SPIN_EASE * dt)

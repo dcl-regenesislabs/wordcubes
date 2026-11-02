@@ -23,15 +23,16 @@ export function boardText(): string {
 }
 
 // ---- server clock: a freshly settled pile is stamped with server time (CubeData.born) and every client plays its fall
-// from that moment. The server writes GameState.heartbeat (its Date.now()) every 2 s; the offset is taken when it
-// changes, which is only one trip behind, never from the first value seen, which can be up to 2 s old. ----
+// from that moment; the pad's start countdown ends at a server time too (GameState.startAt). The server writes
+// GameState.heartbeat (its Date.now()) into every game every 2 s; the offset is taken when it changes, which is only one
+// trip behind, never from the first value seen, which can be up to 2 s old. Game 0's state works in the lobby too. ----
 let lastBeat = 0
 let seenBeats = 0
 let offset: number | null = null
 
 /** Call once a frame. */
 export function trackServerClock() {
-  const beat = Number(myState()?.heartbeat ?? 0)
+  const beat = Number(stateOf(0)?.heartbeat ?? 0)
   if (!beat || beat === lastBeat) return
   lastBeat = beat
   seenBeats++

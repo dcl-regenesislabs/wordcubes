@@ -5,7 +5,7 @@ import { cs, lockoutLeft, showMessage, setting } from '../state'
 import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
 import { room } from '../../shared/messages'
-import { returnToLobby } from '../lobby'
+import { returnToLobby, pressStart, pressJoin } from '../lobby'
 import { clickSlot } from '../arena'
 import { MAX_DIFFICULTY, ITEMS, SETTINGS } from '../../config'
 import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, S, view } from './platform'
@@ -609,9 +609,43 @@ export function LobbyCountdown() {
   return (
     <Layer>
       <UiEntity uiTransform={{ width: '100%', height: h, flexDirection: 'column', alignItems: 'center', pointerFilter: 'none' }}>
-        <OutlineLabel value="Game starts in" fontSize={S(44)} color={PAL.text} width="100%" height={S(56)} />
+        <OutlineLabel value={cs.countdownTitle} fontSize={S(44)} color={PAL.text} width="100%" height={S(56)} />
         <OutlineLabel value={`${n}`} fontSize={S(urgent ? 170 : 130)} color={urgent ? PAL.pink : PAL.yellow} width="100%" height={S(190)} />
         <OutlineLabel value="Step off the pad to cancel" fontSize={S(24)} color={PAL.text} width="100%" height={S(34)} />
+      </UiEntity>
+    </Layer>
+  )
+}
+
+// Standing on a start pad: Start game (nobody plays it yet), Join game (it runs: jump in mid-round) or a full notice.
+export function PadPrompt() {
+  const action = cs.padAction
+  if (action === '') return null
+  const n = cs.padGame + 1
+  const title = action === 'start' ? `Game ${n} is empty` : action === 'join' ? `Game ${n} is in progress` : `Game ${n} is full`
+  const hint =
+    action === 'start'
+      ? 'Everyone on this pad goes in together'
+      : action === 'join'
+        ? 'Jump into the round that is running'
+        : 'Try another pad'
+  return (
+    <Layer justify="center">
+      <UiEntity uiTransform={{ width: '100%', flexDirection: 'column', alignItems: 'center', pointerFilter: 'none', margin: { top: S(260) } }}>
+        <OutlineLabel value={title} fontSize={S(36)} color={PAL.text} width="100%" height={S(48)} />
+        {action !== 'full' && (
+          <PillButton
+            id="pad-action"
+            label={action === 'start' ? 'Start game' : 'Join game'}
+            width={S(320)}
+            height={S(84)}
+            font={S(38)}
+            tint={action === 'start' ? PAL.green : PAL.cyan}
+            margin={{ top: S(8) }}
+            onClick={action === 'start' ? pressStart : pressJoin}
+          />
+        )}
+        <OutlineLabel value={hint} fontSize={S(24)} color={PAL.text} width="100%" height={S(34)} />
       </UiEntity>
     </Layer>
   )

@@ -4,6 +4,7 @@ import { registerMessages } from '@dcl/sdk/network'
 export const room = registerMessages({
   // client -> server
   join: Schemas.Map({ n: Schemas.Int }),
+  start: Schemas.Map({ game: Schemas.Int }), // Start game on an idle game's pad: the server starts the shared countdown
   enter: Schemas.Map({ game: Schemas.Int }), // ask for a seat in a game before teleporting (max MAX_PLAYERS_PER_GAME)
   leave: Schemas.Map({ n: Schemas.Int }), // back in the lobby: give the seat up
   grab: Schemas.Map({ cubeId: Schemas.Int }),
