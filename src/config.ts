@@ -165,7 +165,9 @@ export const GRASS_PUSH_ANGLE = 14 // degrees of lean at point-blank range
 export const GRASS_SPRING = 12 // stiffness: higher snaps back faster
 export const GRASS_DAMPING = 6 // lower = more wobble after a player passes
 
-// Lobby: one start pad. Stand on it and the lights spin up, a countdown runs, then you are teleported to the game.
+// Lobby: one start pad per game. On the pad of a game that has not started, a Start game button starts a countdown shared
+// by everyone on that pad; when it ends they are all teleported in together. Once the game runs, the pad shows Join game
+// instead: a short countdown of your own, then you are in, mid-round.
 // Several games run side by side, up to GAME_COUNT. Pad i (child of "Lobby") sends players to game i, whose arena is the
 // composite entity GAME_ENV_NAMES[i]. Every arena is a copy of the "GameEnv" subtree placed somewhere else in the scene.
 export const GAME_COUNT = 7
@@ -200,7 +202,9 @@ export const LOBBY_LIGHTS_MODEL = 'assets/models/environment/StartPadLight.glb' 
 export const PAD_RADIUS = 4.4 // m from the pad centre that counts as standing on it
 export const PAD_LEAVE_MARGIN = 1 // extra metres before you count as having left (no flicker on the rim)
 export const PAD_HEIGHT_RANGE = 6 // m: vertical window around the pad
-export const LOBBY_COUNTDOWN_SECONDS = 10
+export const LOBBY_COUNTDOWN_SECONDS = 10 // Start game: shared countdown before everyone on the pad enters
+export const JOIN_COUNTDOWN_SECONDS = 3 // Join game (the game is already running): your own countdown
+export const START_GRACE_SECONDS = 5 // the server forgets a finished start countdown this long after it ends
 export const GAME_SPAWN_RADIUS = 11 // m from GameEnv centre, outside the cube heap, where lobby players land
 export const LOBBY_LIGHTS_SPIN_SLOW = 30 // deg/s with someone on the pad
 export const LOBBY_LIGHTS_SPIN_FAST = 540 // deg/s at the end of the countdown

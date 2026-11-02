@@ -38,7 +38,10 @@ export const GameState = engine.defineComponent('wc:GameState', {
   masked: Schemas.String, // placed letters, '_' for empty frames, e.g. "BR_D__"
   hint: Schemas.String, // revealed hint letters, '' if none yet
   hintCost: Schemas.Int, // coins the next hint costs, 0 when no hints are left
-  heartbeat: Schemas.Int64
+  heartbeat: Schemas.Int64,
+  // Server time (ms) when the start countdown on this game's pad ends, 0 when none runs. Written once, when a player
+  // presses Start game; every client counts down to it on its own clock (serverNow) and the players still on the pad then enter.
+  startAt: Schemas.Int64
 })
 
 // Everyone's rating, so every client can put a rank over each player: "address:rating,address:rating,..."

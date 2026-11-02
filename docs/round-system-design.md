@@ -126,7 +126,8 @@ Built, and kept in one UI kit (`src/client/ui/`) so desktop and phone share the 
 - **Letter tiles:** the word shows as a row of tiles that match the cube colours. While you hold a cube, tapping an empty tile throws the cube into that frame. This is the main way to place on a phone, because aiming at the 3D frame is hard on a touch screen. Grabbing stays in the 3D pile.
 - **Round result banner:** word complete or time's up, how many players built it, and your own coin reward.
 - **Level banner:** "Level 2 to 3" for a moment when the vote changes the difficulty.
-- **Pad sign:** the room's level and how many players are in the arena.
+- **Pad sign:** the room's level and how many players are in the arena, "In progress", or the start countdown.
+- **Start pads:** on the pad of a game nobody plays, a Start game button starts a 10 second countdown shared by everyone on that pad, and they all go in together. The server writes only the time it ends (`GameState.startAt`); each client counts down on its own server-synced clock, so no per-second updates are sent. Nobody can enter early. On the pad of a running game, a Join game button runs a 3 second countdown of your own and you join the round in progress. Stepping off cancels either one.
 - **Break effect:** gold sparks when a cube pays coins, a grey puff when it was a letter the word needs.
 
 - **Frame glow:** while you hold a cube, the empty frames pulse gold, and so do the empty letter tiles.

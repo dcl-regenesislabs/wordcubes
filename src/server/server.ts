@@ -74,6 +74,13 @@ function publishRanks() {
 
 const itemOf = (id: string) => C.ITEMS.find((i) => i.id === id)
 
+type State = ReturnType<typeof GameState.get>
+const ENTER_EARLY_MS = 1000 // a client's clock may run this far ahead of ours at the end of a start countdown
+/** A game that runs with players in it: newcomers join it mid-round instead of starting it. */
+const isRunning = (game: Game) => GameState.get(game.stateEntity).active !== 0 && game.seats.size > 0
+/** Milliseconds left on a game's start countdown (negative once it has ended, 0 when none runs). */
+const countdownLeft = (g: State) => (Number(g.startAt) > 0 ? Number(g.startAt) - Date.now() : 0)
+
 // ---------- messages ----------
 
 function init() {
@@ -83,6 +90,21 @@ function init() {
     void retain(addr).then(() => sendProfile(addr))
   })
 
+  // Start game on the pad of a game nobody plays: one countdown for everyone on that pad. The server only writes when it
+  // ends (GameState.startAt); each client counts down on its own and asks for a seat ('enter') when it reaches zero.
+  room.onMessage('start', (data, ctx) => {
+    if (!ctx) return
+    const addr = ctx.from.toLowerCase()
+    const index = Math.round(data.game)
+    const game = games[index]
+    if (!game) return
+    const g = GameState.get(game.stateEntity)
+    if (isRunning(game)) return toastTo(`Game ${index + 1} is already running. Press Join game.`, addr)
+    if (countdownLeft(g) > 0) return // someone pressed it first: that countdown is everyone's
+    GameState.getMutable(game.stateEntity).startAt = Date.now() + C.LOBBY_COUNTDOWN_SECONDS * 1000
+    console.log('[START]', addr, 'game', index, 'countdown', C.LOBBY_COUNTDOWN_SECONDS)
+  })
+
   // The start pad asks for a seat before the client teleports. At most MAX_PLAYERS_PER_GAME per game.
   room.onMessage('enter', (data, ctx) => {
     if (!ctx) return
@@ -90,6 +112,10 @@ function init() {
     const index = Math.round(data.game)
     const game = games[index]
     if (!game) return
+    // during the start countdown nobody goes in early: the group enters together when it ends
+    if (countdownLeft(GameState.get(game.stateEntity)) > ENTER_EARLY_MS) {
+      return toastTo(`Game ${index + 1} starts when the countdown ends.`, addr)
+    }
     // a full game leaves you where you are: only give up your current seat once the new one is granted
     const current = gameOf(addr)
     const ok = game.requestSeat(addr)
@@ -160,6 +186,10 @@ function serverSystem(dt: number) {
     // a player who left the scene gives up their seat
     for (const g of games) for (const addr of Array.from(g.seats.keys())) if (!present.has(addr)) g.leaveSeat(addr)
     for (const g of games) g.housekeep()
+    // a start countdown that ended a while ago is over: the players who were on the pad are in (or nobody stayed)
+    for (const g of games) {
+      if (countdownLeft(GameState.get(g.stateEntity)) < -C.START_GRACE_SECONDS * 1000) GameState.getMutable(g.stateEntity).startAt = 0
+    }
     // standing in an arena without a seat (walked in, or the game was full): back to the lobby
     for (const p of list) {
       const at = arenaAt(p.pos.x, p.pos.y, p.pos.z)
@@ -246,7 +276,8 @@ export function initServer() {
       masked: '',
       hint: '',
       hintCost: C.HINT_BASE_COST,
-      heartbeat: Date.now()
+      heartbeat: Date.now(),
+      startAt: 0
     })
     syncEntity(stateEntity, [GameState.componentId], 10 + i)
     games.push(createGame(i, stateEntity, { onRating: updateBoard }))
