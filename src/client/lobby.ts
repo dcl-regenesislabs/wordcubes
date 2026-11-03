@@ -178,7 +178,7 @@ function makeCubeTitle(game: number): { root: Entity; cubes: Entity[] } {
     Transform.create(cube, {
       parent: root,
       position: Vector3.create(side * (i - (text.length - 1) / 2) * C.PAD_TITLE_SPACING, 0, 0),
-      rotation: Quaternion.fromEulerDegrees(0, C.PAD_TITLE_YAW, C.PLACED_ROLL), // letter upright, facing the viewer
+      rotation: Quaternion.fromEulerDegrees(0, C.PAD_TITLE_YAW, C.PAD_TITLE_ROLL), // letter upright, facing the viewer
       scale: Vector3.scale(Vector3.One(), C.PAD_TITLE_CUBE_SCALE)
     })
     GltfContainer.create(cube, { src: modelFor(text[i]), visibleMeshesCollisionMask: 0, invisibleMeshesCollisionMask: 0 })
