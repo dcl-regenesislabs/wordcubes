@@ -1,6 +1,6 @@
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
-import { myState, boardText } from '../gamestate'
+import { myState } from '../gamestate'
 import { cs, lockoutLeft, showMessage, setting } from '../state'
 import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
@@ -11,11 +11,6 @@ import { MAX_DIFFICULTY, ITEMS, SETTINGS } from '../../config'
 import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, S, view } from './platform'
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c, Edges } from './theme'
 import { rankName, rankIndex } from './rank'
-import { parseBoard } from '../ranktags'
-import { worldPosition } from '../lobby'
-import { getPlayer } from '@dcl/sdk/players'
-import { Transform } from '@dcl/sdk/ecs'
-import { EntityNames } from '../../../assets/scene/entity-names'
 
 type Game = { frozen: number; players: number; builders: number; hintCost: number; phase: string; round: number; difficulty: number; timeLeft: number; voteLeft: number; voteDown: number; voteSame: number; voteUp: number; completed: number; question: string; length: number; masked: string; hint: string }
 
@@ -690,38 +685,3 @@ export function LobbyHud() {
   )
 }
 
-// ---- Top players: appears in the lobby while you stand near the Leaderboard sign ----
-let signEntity: ReturnType<typeof engine.getEntityOrNullByName> = null
-const shortAddress = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`
-const nameOf = (address: string): string => {
-  const p = getPlayer({ userId: address })
-  return p && p.name ? p.name : shortAddress(address)
-}
-
-export function LeaderboardPanel() {
-  if (cs.inGame) return null
-  if (!signEntity) signEntity = engine.getEntityOrNullByName(EntityNames.Leaderboard_glb)
-  const me = Transform.getOrNull(engine.PlayerEntity)?.position
-  if (!signEntity || !me || !Transform.getOrNull(signEntity)) return null
-  const sign = worldPosition(signEntity)
-  if (Math.hypot(me.x - sign.x, me.z - sign.z) > 14) return null
-  const top: [string, number][] = parseBoard(boardText())
-  const w = S(430)
-  const rowH = S(46)
-  const h = S(120) + Math.max(1, top.length) * rowH
-  return (
-    <Layer align="flex-start" pad={{ left: EDGE() }}>
-      <Frame width={w} height={h} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(22)} border={S(5)} pad={S(14)} align="center" justify="flex-start">
-        <OutlineLabel value="Top players" fontSize={S(32)} color={PAL.yellow} width="100%" height={S(52)} />
-        {top.length === 0 && <OutlineLabel value="Nobody ranked yet" fontSize={S(22)} color={PAL.dim} width="100%" height={rowH} />}
-        {top.map(([address, rating], i) => (
-          <UiEntity key={`lb${i}`} uiTransform={{ width: '100%', height: rowH, flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
-            <OutlineLabel value={`${i + 1}`} fontSize={S(24)} color={PAL.yellow} width={S(40)} height={rowH} />
-            <OutlineLabel value={nameOf(address)} fontSize={S(22)} color={PAL.text} width={S(190)} height={rowH} align="middle-left" />
-            <OutlineLabel value={rankName(rating)} fontSize={S(20)} color={PAL.pink} width={S(150)} height={rowH} align="middle-right" />
-          </UiEntity>
-        ))}
-      </Frame>
-    </Layer>
-  )
-}

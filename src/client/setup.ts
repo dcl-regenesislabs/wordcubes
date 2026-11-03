@@ -17,6 +17,7 @@ import { setupFx } from './fx'
 import { setupNpcs, spawnArenaVendor } from './npcs'
 import { arenaSystem, setArenaVendorFactory } from './arenas'
 import { rankTagSystem } from './ranktags'
+import { leaderboardSystem } from './leaderboard'
 import { setupCheats } from './cheats'
 
 let joined = false
@@ -131,4 +132,5 @@ export function initClient() {
   engine.addSystem(arenaSystem, 1, 'word-cubes-arenas')
   engine.addSystem(grassSystem, 1, 'word-cubes-grass')
   engine.addSystem(rankTagSystem, 1, 'word-cubes-rank-tags')
+  engine.addSystem(leaderboardSystem, 1, 'word-cubes-leaderboard')
 }
