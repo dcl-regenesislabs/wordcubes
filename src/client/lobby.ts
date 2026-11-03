@@ -4,17 +4,21 @@ import {
   engine,
   Entity,
   GltfContainer,
+  Material,
+  MaterialTransparencyMode,
+  MeshRenderer,
   PlayerIdentityData,
   TextAlignMode,
   TextShape,
   Transform
 } from '@dcl/sdk/ecs'
-import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
+import { Color3, Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
 import { movePlayerTo } from '~system/RestrictedActions'
 import * as C from '../config'
 import { envOrigin, arenaAt } from '../shared/env'
 import { room } from '../shared/messages'
 import { cs, showMessage } from './state'
+import { BLOCK } from './ui/theme'
 import { stateOf, serverNow } from './gamestate'
 import { arenaReady, requestArena } from './arenas'
 
@@ -127,7 +131,7 @@ interface PadView {
   pos: Vector3
   lights: Entity | undefined
   baseScale: Vector3
-  label: Entity
+  label: Entity // the spinning number cube's root (see makeNumberCube)
   info: Entity
   labelShown: number
   size: number // spring: 0 hidden, 1 shown
@@ -138,6 +142,7 @@ interface PadView {
   angle: number
 }
 
+// The status line under a pad's title: outlined in the panels' dark violet, with a soft drop shadow.
 function makeText(text: string, fontSize: number, color: Color4): Entity {
   const e = engine.addEntity()
   Transform.create(e, { position: Vector3.Zero(), scale: Vector3.Zero() })
@@ -145,12 +150,68 @@ function makeText(text: string, fontSize: number, color: Color4): Entity {
     text,
     fontSize,
     textColor: color,
-    outlineColor: Color4.create(0.1, 0.1, 0.1, 1),
-    outlineWidth: 0.2,
+    outlineColor: Color4.create(0.16, 0.07, 0.3, 1),
+    outlineWidth: 0.28,
+    shadowColor: Color4.create(0, 0, 0, 1),
+    shadowBlur: 0.4,
+    shadowOffsetX: 0.08,
+    shadowOffsetY: -0.08,
     textAlign: TextAlignMode.TAM_MIDDLE_CENTER
   })
   Billboard.create(e, { billboardMode: BillboardMode.BM_Y })
   return e
+}
+
+function withPlate(text: Entity): Entity {
+  addPlate(text)
+  return text
+}
+
+// The white plate behind the status line (assets/images/sign_plate.png): a plane child of the text, just behind it, so it
+// turns to the camera and shows / hides with it. A little self-lit (PAD_PLATE_GLOW) so it does not go dark at night.
+function addPlate(text: Entity) {
+  const plate = engine.addEntity()
+  Transform.create(plate, {
+    parent: text,
+    position: Vector3.create(0, 0, C.PAD_PLATE_DEPTH), // behind the text, seen from the camera
+    scale: Vector3.create(C.PAD_PLATE_WIDTH, C.PAD_PLATE_WIDTH / 4, 1) // the image is 4:1
+  })
+  MeshRenderer.setPlane(plate)
+  const texture = Material.Texture.Common({ src: C.PAD_PLATE_IMAGE })
+  Material.setPbrMaterial(plate, {
+    texture,
+    emissiveTexture: texture,
+    emissiveColor: Color3.White(),
+    emissiveIntensity: C.PAD_PLATE_GLOW,
+    transparencyMode: MaterialTransparencyMode.MTM_ALPHA_BLEND,
+    metallic: 0,
+    roughness: 1,
+    castShadows: false
+  })
+}
+
+// The big number cube floating over a pad (assets/models/Cube<n>.glb, one per game): a root that spins about Y, with the
+// cube as its child turned so the number stands upright on its side faces.
+function makeNumberCube(game: number): Entity {
+  const root = engine.addEntity()
+  Transform.create(root, { position: Vector3.Zero(), scale: Vector3.Zero() })
+  const cube = engine.addEntity()
+  Transform.create(cube, {
+    parent: root,
+    rotation: Quaternion.fromEulerDegrees(0, C.PAD_TITLE_YAW, C.PAD_TITLE_ROLL),
+    scale: Vector3.scale(Vector3.One(), C.PAD_NUMBER_CUBE_SCALE)
+  })
+  GltfContainer.create(cube, { src: C.padNumberModel(game), visibleMeshesCollisionMask: 0, invisibleMeshesCollisionMask: 0 })
+  return root
+}
+
+/** The status line's colour: green to start, yellow while counting down, blue while it runs, red when full. */
+function padColor(game: number): Color4 {
+  const s = padState(game)
+  if (s.kind === 'idle') return BLOCK.green
+  if (s.kind === 'counting') return Color4.create(1, 0.85, 0.25, 1)
+  if (s.kind === 'full') return BLOCK.red
+  return BLOCK.blue
 }
 
 type PadState = { kind: 'idle' } | { kind: 'counting'; left: number } | { kind: 'running' } | { kind: 'full' }
@@ -218,10 +279,10 @@ export function setupLobby() {
       pos: Vector3.Zero(),
       lights: undefined,
       baseScale: Vector3.One(),
-      // Floating "Join game" text over the pad, always facing the player, bobbing gently
-      label: makeText(`GAME ${game + 1}`, 6, Color4.White()),
+      // The game's number cube over the pad, spinning and bobbing gently
+      label: makeNumberCube(game),
       // Smaller line under it: the game's level and how many are playing
-      info: makeText('', 3, Color4.create(1, 0.95, 0.6, 1)),
+      info: withPlate(makeText('', 3.5, BLOCK.green)),
       labelShown: 0,
       size: 0,
       sizeV: 0,
@@ -386,12 +447,16 @@ export function setupLobby() {
       const ls = pad.labelShown < 0.02 ? 0 : pad.labelShown
       lt.position = Vector3.create(pad.pos.x, pad.pos.y + C.PAD_LABEL_HEIGHT + Math.sin(time * 2 + pad.game) * 0.2, pad.pos.z)
       lt.scale = Vector3.create(ls, ls, ls)
+      if (ls > 0) lt.rotation = Quaternion.fromEulerDegrees(0, (time * C.PAD_NUMBER_SPIN + pad.game * 50) % 360, 0)
 
       const roomText = padInfo(pad.game)
       const ts = TextShape.getMutable(pad.info)
       if (ts.text !== roomText) ts.text = roomText
+      const color = padColor(pad.game)
+      const tc = ts.textColor
+      if (!tc || tc.r !== color.r || tc.g !== color.g || tc.b !== color.b) ts.textColor = color
       const it = Transform.getMutable(pad.info)
-      it.position = Vector3.create(pad.pos.x, lt.position.y - 1.6, pad.pos.z)
+      it.position = Vector3.create(pad.pos.x, lt.position.y - C.PAD_INFO_GAP, pad.pos.z)
       it.scale = Vector3.create(ls, ls, ls)
 
       // Lights
