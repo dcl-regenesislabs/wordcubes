@@ -38,6 +38,7 @@ import { createWorld, addBody, removeBody, setPushers, step } from '../sim/physi
 import type { Body, Pusher } from '../sim/physics'
 import { cs } from './state'
 import { dropAge } from './gamestate'
+import { setCubeHidden } from './cubemodel'
 
 const POOL_Y = -40 // pooled copies wait hidden, underground
 const SETTLED_SPEED = 0.5 // m/s: below this a cube counts as settled for the handoff
@@ -182,7 +183,7 @@ function startPredicting(l: Local): boolean {
   VisibilityComponent.getMutable(copy.entity).visible = true
   l.copy = copy
   l.age = 0
-  VisibilityComponent.createOrReplace(l.entity, { visible: false })
+  setCubeHidden(l.entity, true)
   draw(l)
   return true
 }
@@ -191,7 +192,7 @@ function stopPredicting(l: Local) {
   if (!l.copy) return
   returnCopy(l.copy)
   l.copy = null
-  VisibilityComponent.deleteFrom(l.entity)
+  setCubeHidden(l.entity, false)
 }
 
 function draw(l: Local) {
