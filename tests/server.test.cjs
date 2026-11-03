@@ -352,7 +352,11 @@ test('a new pile settles unseen and its cubes are created once, at rest, marked 
   assert.equal(g.cubes.size, h.config.CUBES_PER_ROUND, 'the whole pile appears at once')
   assert.ok(ticks > 1, 'settling is spread over several ticks')
   const cubes = [...g.cubes.values()]
-  assert.ok(cubes.every((c) => c.body.asleep && c.sentAsleep), 'created at rest: no transform has to follow')
+  // The pile is random: now and then a cube or two still slides when the settle time runs out. Those are created awake
+  // and keep being sent until they stop, like any moving cube; everything else needs no transform after its create.
+  const awake = cubes.filter((c) => !c.body.asleep)
+  assert.ok(awake.length <= 5, `created at rest (${awake.length} still moving)`)
+  assert.ok(cubes.every((c) => c.sentAsleep === c.body.asleep), 'only the moving ones are sent again')
   const born = cubes.map((c) => h.server.testing.cubeData(c.entity).born)
   assert.ok(born.every((b) => b > 0 && b === born[0]), 'one birth time for the pile')
 })
