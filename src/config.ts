@@ -231,6 +231,18 @@ export const PAD_NUMBER_SPIN = 40 // degrees per second the number cube turns
 export const padNumberModel = (game: number) => `assets/models/Cube${game + 1}.glb`
 export const PAD_INFO_GAP = 2.9 // m from the number cube's centre down to the status line under it
 // The plate behind the status line: a 4:1 image, as wide as the longest line ("In progress - Level 7 - 5/5") needs.
+// The top players written on the lobby's Leaderboard sign (src/client/leaderboard.ts). Positions are in the sign
+// model's own units (it is placed at scale 2.3); sizes are in metres.
+export const LEADERBOARD_ROWS = 5 // the server keeps the top 5
+export const LEADERBOARD_TOP_Y = 4.35 // top of the planks, just under the LEADERBOARD title
+export const LEADERBOARD_FRONT_Z = 0.3 // just in front of the planks and the frame's rim (the sign faces +Z)
+export const LEADERBOARD_TEXT_YAW: number = 180 // text reads from its -Z side, so turn it to face the way the sign faces
+export const LEADERBOARD_WIDTH = 7.6 // m between the place number's left edge and the rank's right edge
+export const LEADERBOARD_ROW_HEIGHT = 1.65 // m
+export const LEADERBOARD_FONT = 5.5
+export const LEADERBOARD_NAME_X = 1 // m from the place number to the name
+export const LEADERBOARD_NAME_CHARS = 12 // longer names are cut with "…"
+
 export const PAD_PLATE_IMAGE = 'assets/images/sign_plate.png'
 export const PAD_PLATE_WIDTH = 5.6 // m
 export const PAD_PLATE_GLOW = 0.3 // how much the plate lights itself (1 = full glow, 0 = only the scene's light)
