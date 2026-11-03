@@ -4,12 +4,15 @@ import {
   engine,
   Entity,
   GltfContainer,
+  Material,
+  MaterialTransparencyMode,
+  MeshRenderer,
   PlayerIdentityData,
   TextAlignMode,
   TextShape,
   Transform
 } from '@dcl/sdk/ecs'
-import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
+import { Color3, Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
 import { movePlayerTo } from '~system/RestrictedActions'
 import * as C from '../config'
 import { envOrigin, arenaAt } from '../shared/env'
@@ -161,6 +164,34 @@ function makeText(text: string, fontSize: number, color: Color4): Entity {
   return e
 }
 
+function withPlate(text: Entity): Entity {
+  addPlate(text)
+  return text
+}
+
+// The white plate behind the status line (assets/images/sign_plate.png): a plane child of the text, just behind it, so it
+// turns to the camera and shows / hides with it. Lit by its own texture (emissive), so it stays bright in any light.
+function addPlate(text: Entity) {
+  const plate = engine.addEntity()
+  Transform.create(plate, {
+    parent: text,
+    position: Vector3.create(0, 0, C.PAD_PLATE_DEPTH), // behind the text, seen from the camera
+    scale: Vector3.create(C.PAD_PLATE_WIDTH, C.PAD_PLATE_WIDTH / 4, 1) // the image is 4:1
+  })
+  MeshRenderer.setPlane(plate)
+  const texture = Material.Texture.Common({ src: C.PAD_PLATE_IMAGE })
+  Material.setPbrMaterial(plate, {
+    texture,
+    emissiveTexture: texture,
+    emissiveColor: Color3.White(),
+    emissiveIntensity: 1,
+    transparencyMode: MaterialTransparencyMode.MTM_ALPHA_BLEND,
+    metallic: 0,
+    roughness: 1,
+    castShadows: false
+  })
+}
+
 const NUMBER_WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN']
 
 // A pad's title spelled with small letter cubes, the game's own blocks: "GAME THREE". The parent faces the camera
@@ -266,7 +297,7 @@ export function setupLobby() {
       label: title.root,
       titleCubes: title.cubes,
       // Smaller line under it: the game's level and how many are playing
-      info: makeText('', 3.5, BLOCK.green),
+      info: withPlate(makeText('', 3.5, BLOCK.green)),
       labelShown: 0,
       size: 0,
       sizeV: 0,

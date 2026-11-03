@@ -229,6 +229,10 @@ export const PAD_LABEL_HEIGHT = 5 // m above the pad centre to the "Join game" t
 export const PAD_TITLE_CUBE_SCALE = 1.4 // the letter GLB is ~0.51 m, so ~0.71 m cubes
 export const PAD_TITLE_SPACING = 0.8 // m between cube centres
 export const PAD_INFO_GAP = 1.1 // m from the cube title down to the status line under it
+// The plate behind the status line: a 4:1 image, as wide as the longest line ("In progress - Level 7 - 5/5") needs.
+export const PAD_PLATE_IMAGE = 'assets/images/sign_plate.png'
+export const PAD_PLATE_WIDTH = 5.6 // m
+export const PAD_PLATE_DEPTH = 0.05 // m behind the text (towards +Z: the title faces the camera with its -Z side)
 export const PAD_TITLE_YAW: number = 180 // turns the letter faces to the viewer (the title faces the camera); 0 shows their backs, mirrored
 export const PAD_TITLE_ROLL = -90 // stands each letter upright on its face under that yaw (the frames' PLACED_ROLL comes out upside down here)
 
