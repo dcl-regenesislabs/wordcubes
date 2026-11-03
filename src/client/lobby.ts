@@ -108,7 +108,7 @@ export function onEntered(game: number, ok: boolean) {
   cs.game = game
   requestArena(game)
   pendingTeleport = { game, left: C.ARENA_LOAD_TIMEOUT }
-  showMessage(`Preparing game ${game + 1}...`, 4)
+  showMessage(`Starting game #${game + 1}`, 4)
 }
 
 let pendingTeleport: { game: number; left: number } | undefined
@@ -392,7 +392,7 @@ export function setupLobby() {
       waitingFor = game
       waitTimer = 4
       lockout = TELEPORT_LOCKOUT
-      showMessage(`Joining game ${game + 1}...`, 4)
+      showMessage(`Starting game #${game + 1}`, 4)
       room.send('enter', { game })
     }
 

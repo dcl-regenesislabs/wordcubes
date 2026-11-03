@@ -31,6 +31,7 @@ export const letterColor = (letter: string): Color4 => LETTER_COLOR[letter] ?? B
 export const PAL = {
   // violet panels (the colour of the start pads)
   violetDark: c(0.24, 0.12, 0.45, 0.95),
+  violetGlass: c(0.24, 0.12, 0.45, 0.8), // the phone top bar: a little see-through
   violet: c(0.46, 0.26, 0.8, 1),
   violetLight: c(0.72, 0.55, 0.97, 1),
   slot: c(0.2, 0.1, 0.4, 0.55), // empty letter slot, translucent so the world shows through
@@ -147,6 +148,25 @@ const OFF = () => {
     { left: 0, top: d }
   ]
 }
+// soft: a smoother outline for text over the world. 8 directions instead of 4 (no jagged corners), thinner, in the top bar's
+// violet, with a faint shadow underneath. UiText has no native outline or shadow, so both are copies of the text.
+const SOFT_OFF = () => {
+  const d = Math.max(1, Math.round(S(1.5)))
+  const k = Math.max(1, Math.round(d * 0.7))
+  return [
+    { left: -d, top: 0 },
+    { left: d, top: 0 },
+    { left: 0, top: -d },
+    { left: 0, top: d },
+    { left: -k, top: -k },
+    { left: k, top: -k },
+    { left: -k, top: k },
+    { left: k, top: k }
+  ]
+}
+const SOFT_SHADOW = () => [{ left: S(1), top: S(4) }]
+const SHADOW = c(0.08, 0.02, 0.16, 0.45)
+
 export const OutlineLabel = (props: {
   value: string
   fontSize: number
@@ -155,18 +175,22 @@ export const OutlineLabel = (props: {
   height: number
   align?: 'middle-left' | 'middle-center' | 'middle-right'
   wrap?: boolean
+  soft?: boolean
   key?: string
 }) => {
   const align = props.align ?? 'middle-center'
   const wrap = props.wrap ? 'wrap' : 'nowrap'
+  const copies = props.soft
+    ? [...SOFT_SHADOW().map((o) => ({ o, color: SHADOW })), ...SOFT_OFF().map((o) => ({ o, color: PAL.violetDark }))]
+    : OFF().map((o) => ({ o, color: PAL.outline }))
   return (
     <UiEntity uiTransform={{ width: props.width, height: props.height, pointerFilter: 'none' }}>
-      {OFF().map((o, i) => (
+      {copies.map(({ o, color }, i) => (
         <Label
           key={`o${i}`}
           value={props.value}
           fontSize={props.fontSize}
-          color={PAL.outline}
+          color={color}
           font="sans-serif"
           textAlign={align}
           textWrap={wrap}

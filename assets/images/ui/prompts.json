@@ -1,0 +1,30 @@
+{
+  "tool": "image_gen.imagegen (built-in)",
+  "transparent_background": true,
+  "assets": [
+    {
+      "file": "cartoon-panel.png",
+      "prompt": "Use case: stylized-concept. Asset type: production-ready cartoon mobile game HUD panel background PNG. Create ONE standalone blank HUD card texture for Word Cubes, a colorful word puzzle game whose world has pastel alphabet blocks, lilac-purple arena walls, warm sandy floors and mint accents. A front-facing flat wide rectangular card, aspect ratio about 2:1, filling almost the whole image with a tiny transparent outer margin. Warm cream ivory interior, clean and almost flat, surrounded by a thick playful plum-purple cartoon outline, soft lavender rim, subtle bevel highlights and restrained hand-painted shading. Very small candy-colored alphabet block ornaments ONLY at outer corners, never in the central area; no letters on the blocks. The inside 85% must be clean empty cream space for runtime text and buttons. Friendly polished casual puzzle-game cartoon art, readable at small phone sizes, confident smooth outlines. Crisp silhouette. No text, no words, no numbers, no icons in the interior, no watermark, no full interface, no environment or mockup. The entire exterior background must be genuinely transparent. Avoid dark UI, wood planks, ornate fantasy details and heavy drop shadows."
+    },
+    {
+      "file": "cartoon-button.png",
+      "prompt": "Use case: stylized-concept. Asset type: production PNG game UI sprite for Word Cubes. ONE blank chunky cartoon game button background, front-facing horizontal rectangular rounded pill aspect ratio 1.6:1, filling image with tiny transparent outer margin. Lavender face with thick plum-purple contour, subtle lighter lilac top bevel and small darker purple lower bevel, friendly soft casual puzzle-game illustration. Empty solid center for a readable runtime text label, no text and no symbols. Small-radius corner curves, no surrounding UI. Entire exterior genuinely transparent. Match pastel alphabet cube game warm ivory and lilac HUD."
+    },
+    {
+      "file": "cartoon-coin.png",
+      "prompt": "Use case: stylized-concept. Asset type: production PNG game UI sprite for Word Cubes. ONE isolated cartoon game coin icon: chunky golden coin tilted very slightly, warm honey-gold face with a simple embossed star symbol, thick plum-purple contour, pale yellow top highlights. Face on and centered, occupying 85% of a square frame. Friendly polished casual puzzle game illustration, legible at 24 pixels. No words or numbers, no extra objects, no sparkles outside silhouette. Entire background genuinely transparent."
+    },
+    {
+      "file": "cartoon-hint.png",
+      "prompt": "Use case: stylized-concept. Asset type: production PNG game UI sprite for Word Cubes. ONE isolated cartoon game hint icon: a friendly squat glowing light bulb, warm butter-yellow bulb with cream highlight and lilac socket, thick plum-purple contour, two small short glow rays close to bulb. Centered, occupying 85% of square frame. Polished casual pastel puzzle game illustration, clear silhouette readable at 24 pixels. No text, no words, no numbers, no UI. Entire background genuinely transparent."
+    },
+    {
+      "file": "cartoon-break.png",
+      "prompt": "Use case: stylized-concept. Asset type: production PNG game UI sprite for Word Cubes. ONE isolated cartoon game break-cube action icon: chunky pastel coral-pink toy cube, split by a large clean zigzag crack with its two halves slightly separating, 3/4 view, thick plum-purple outline and cream highlight. Three small fragments kept tight to the cube. No hammer. Friendly polished casual alphabet puzzle game illustration, simple silhouette readable at 24 pixels. Centered at 85% of square frame. No letters, text, numbers or surrounding UI. Entire background genuinely transparent."
+    },
+    {
+      "file": "cartoon-toss.png",
+      "prompt": "Use case: stylized-concept. Asset type: production PNG game UI sprite for Word Cubes. ONE isolated cartoon game toss-cube action icon: a chunky mint-turquoise toy cube in 3/4 view with a simple curved lavender arrow sweeping behind it toward upper right, thick plum-purple outline, cream highlights. Clear simple playful silhouette readable at 24 pixels. Centered and occupying 85% of square frame. Polished casual pastel alphabet puzzle game illustration. No letters, words or numbers, no surrounding UI. Entire background genuinely transparent."
+    }
+  ]
+}

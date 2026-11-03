@@ -250,6 +250,16 @@ export const PAD_PLATE_DEPTH = 0.05 // m behind the text (towards +Z: the title 
 export const PAD_TITLE_YAW: number = 180 // with PAD_TITLE_ROLL, stands the number upright on the cube's side faces
 export const PAD_TITLE_ROLL = -90 // (the frames' PLACED_ROLL comes out upside down here)
 
-// DEV ONLY: shows the game HUD with a fake looping round, no server or game needed (stand anywhere in the scene).
+// DEV ONLY: UI debug mode. A picker on the left (client/ui/debug.tsx) switches between every UI (game HUD, vote, round
+// result, lobby, pads, countdown, panels) with fake data, no server or game needed. Starts on the game HUD.
 // Set to false before merging.
 export const UI_PREVIEW = false
+
+// Phones: where the app's own buttons at the top left (profile, console, reload) sit, as a share of the screen. The game's
+// top bar starts just right of them (RIGHT = where the reload button ends) and is centred on their line (Y).
+export const MOBILE_APP_BUTTONS_RIGHT = 0.295
+export const MOBILE_APP_BUTTONS_Y = 0.105
+
+// DEV ONLY: on phones, show every custom native button at once (break, toss, hint, how to play, settings, back to
+// lobby), whatever you are doing, to check their icons and layout. Set to false before merging.
+export const TOUCH_CONTROLS_DEBUG = false
