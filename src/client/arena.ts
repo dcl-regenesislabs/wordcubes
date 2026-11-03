@@ -22,6 +22,33 @@ export function disableArenaPassports() {
   const arena = engine.getEntityOrNullByName(C.ARENA_TEMPLATE)
   if (!arena || !Transform.has(arena) || AvatarModifierArea.has(arena)) return
   addPassportBlocker(arena)
+  addArenaFence(arena)
+}
+
+/** An invisible wall all the way round a game's island, too tall to jump: you can walk anywhere on it (the shop
+ *  included) but not jump to another island or fall off, and the only way back to the lobby is the HUD button. A ring
+ *  of FENCE_SEGMENTS physics-only boxes, children of the arena root (so they follow it and go with it), at the island's
+ *  edge. Players only: cubes live in our own sim, and clicks (pointer layer) and teleports pass through. Returns the
+ *  boxes (for teardown). */
+export function addArenaFence(arena: Entity): Entity[] {
+  const n = C.FENCE_SEGMENTS
+  const r = C.FENCE_RADIUS + C.FENCE_THICKNESS / 2 // centre line of the boxes: their inner face sits at FENCE_RADIUS
+  const width = 2 * r * Math.tan(Math.PI / n) + C.FENCE_THICKNESS // a little overlap at the corners, so no gaps
+  const parts: Entity[] = []
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2
+    const box = engine.addEntity()
+    Transform.create(box, {
+      parent: arena,
+      position: Vector3.create(Math.cos(a) * r, C.FLOOR_Y + C.FENCE_HEIGHT / 2 - 1, Math.sin(a) * r),
+      // the box's local x runs along the ring: turn it to the tangent (yaw -a in this left-handed frame)
+      rotation: Quaternion.fromEulerDegrees(0, 90 - (a * 180) / Math.PI, 0),
+      scale: Vector3.create(width, C.FENCE_HEIGHT, C.FENCE_THICKNESS)
+    })
+    MeshCollider.setBox(box, ColliderLayer.CL_PHYSICS)
+    parts.push(box)
+  }
+  return parts
 }
 
 /** No avatar passports inside an arena (the dynamic arenas call this for their own root, too). */

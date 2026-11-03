@@ -2,6 +2,15 @@
 // x/z = 0 is the centre of the arena, y = 0 is the top of GameFloor.glb.
 // Keep these in step with the environment models (GameFloor / GameWalls / MidPlatform).
 export const ARENA_RADIUS = 14 // inner face of GameWalls (collider ~14.0)
+// Each game's island (EnvFloor, ~44 m round the arena centre): the arena, the vendor (~31 m out) and the scenery around.
+// The whole island counts as being in the game (arenaAt), so walking to the shop keeps your seat.
+export const ISLAND_RADIUS = 44
+// Invisible fence round each island's edge (client/arena.ts): you can walk anywhere on it, but not jump to another
+// island or fall off during a game; only the HUD button takes you back to the lobby.
+export const FENCE_RADIUS = 43.8 // m: inner face, just inside where the island floor ends (~44), outside the scenery (~42.7)
+export const FENCE_HEIGHT = 30 // m: far above any jump
+export const FENCE_THICKNESS = 0.6
+export const FENCE_SEGMENTS = 48
 export const FLOOR_Y = 0 // top of GameFloor
 
 // MidPlatform (cubes are kept out of it, slots float above it). Single cylinder, solid for the sim.
