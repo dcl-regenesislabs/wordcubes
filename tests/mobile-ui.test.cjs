@@ -13,7 +13,8 @@ function sdkStubs(canvasInfo, rendererCalls = []) {
 
 // phone: true/false; canvas: the screen the explorer reports (pixels), defaults to the virtual canvas at pixel ratio 1
 function harness(phone, canvas) {
-  const config = loadTs('src/config.ts')
+  // the HUD under test is the real one, whatever the dev-only UI preview flag is set to
+  const config = { ...loadTs('src/config.ts'), UI_PREVIEW: false }
   const state = loadTs('src/client/state.ts', { '../config': config })
   const info = canvas ?? (phone ? { width: 1600, height: 720, devicePixelRatio: 1 } : { width: 1920, height: 1080, devicePixelRatio: 1 })
   const platform = loadTs('src/client/ui/platform.ts', sdkStubs(info))
@@ -30,37 +31,70 @@ function harness(phone, canvas) {
     '../../shared/schemas': {}, '../gamestate': { myState: () => currentGame || undefined, boardText: () => '' }, '../state': state, '../cubes': { heldLetter: () => '' },
     '../../config': config, '../../shared/messages': { room: { send: noop } },
     '../lobby': { returnToLobby: noop }, '../arena': {}, './platform': platform,
-    './theme': theme, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
+    './theme': theme, './debug': { dbg: { screen: 'game' }, debugWord: () => ({ answer: 'PARIS', question: 'Capital of France?' }) }, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
     '../../../assets/scene/entity-names': {}
   }, 'exports.testing = { WordPanel, SidePanel, ItemBar, VoteScreen, BottomArea, snapshot: () => ({ seenRound, prev, prevPhase, failAt, winAt, lastDifficulty, levelAt, myVote, votedRound }) }')
-  return { hud: hud.testing, module: hud, state, platform, react, setGame: g => { currentGame = g } }
+  return { hud: hud.testing, module: hud, config, state, platform, react, setGame: g => { currentGame = g } }
 }
 
 const longGame = { phase: 'playing', length: 14, masked: '_'.repeat(14), question: 'A long question '.repeat(10), hint: '', frozen: 0, difficulty: 1 }
 
 // Every mobile case: a 14-letter word and all four items, at pixel ratio 1 (the tightest canvas) and on a real phone.
 for (const [name, canvas] of [['pixel ratio 1', undefined], ['a 2400x1080 phone at pixel ratio 3', { width: 2400, height: 1080, devicePixelRatio: 3 }]]) {
-  test(`mobile HUD fits on ${name}: word clear of the side column, column and items on screen, below the top bar`, () => {
+  test(`mobile HUD fits on ${name}: one slim top bar, clear of the app buttons and native controls`, () => {
     const h = harness(true, canvas)
     Object.assign(h.state.cs.items, { wildcard: 1, freeze: 1, reroll: 1, bomb: 1 })
     const { w, h: height } = h.platform.view()
-    const L = h.module.hudLayout(longGame)
-    const sideLeft = w - L.reserve
-    assert.ok(L.rowW <= L.panelW && L.left + L.panelW <= sideLeft, 'tiles must not run under the side column')
-    assert.ok(w - L.right <= w - h.platform.RIGHT_RESERVE(), 'side column stays left of the native control band')
-    const stack = L.itemsBeside ? Math.max(L.columnH, L.itemsH) : L.columnH + L.itemsH
-    assert.ok(L.top + stack <= height, 'side column and items stay on screen')
-    assert.ok(L.top >= Math.round(height * 0.08), 'top-anchored pieces start below the app top bar')
+    for (const g of [longGame, { ...longGame, length: 3, masked: '___', question: 'A pet?' }]) {
+      const L = h.module.hudLayout(g)
+      assert.ok(L.rowW <= L.panelW, 'the tiles fit in the bar')
+      assert.ok(L.left + L.panelW <= w, 'the bar stays on screen')
+      assert.ok(L.left >= Math.round(w * h.config.MOBILE_APP_BUTTONS_RIGHT), 'the bar starts right of the app buttons at the top left')
+      assert.ok(L.barH <= Math.round(height * 0.12), 'the bar is one slim row')
+      const middle = L.top + L.barH / 2
+      assert.ok(Math.abs(middle - height * h.config.MOBILE_APP_BUTTONS_Y) <= L.barH / 2, 'the bar is on the same line as the app buttons')
+      const word = h.hud.WordPanel({ g })
+      assert.equal(word.props.pad.left, L.left)
+      assert.equal(word.props.pad.right, L.reserve)
+      const bar = word.children[0]
+      assert.equal(bar.props.dir, 'row', 'time and level | tiles | coins on one row')
+      assert.equal(bar.props.width, L.panelW)
+      assert.equal(word.children[1].type, 'OutlineLabel', 'the question is bare outlined text under the bar')
+    }
+    assert.equal(h.hud.SidePanel({ g: longGame }), null, 'no side column on phones: the stats are in the bar')
+    assert.equal(h.hud.ItemBar({ g: longGame }), null, 'phones open the items from a native button')
     const bottom = h.hud.BottomArea()
-    assert.ok(bottom.props.pad.bottom >= Math.round(height * 0.08), 'help line and messages start above the app bottom controls')
-    h.state.cs.dialog = { name: 'Cubby', pages: ['Hi'], page: 0 }
-    assert.ok(h.module.NpcDialog().props.pad.bottom >= Math.round(height * 0.08), 'NPC dialog starts above the app bottom controls')
-    const word = h.hud.WordPanel({ g: longGame })
-    assert.equal(word.props.pad.right, L.reserve)
-    assert.equal(word.props.pad.left, L.left)
-    const side = h.hud.SidePanel({ g: longGame })
-    assert.equal(side.props.pad.top, L.top)
-    assert.equal(side.props.pad.right, L.right)
+    assert.ok(bottom.props.pad.bottom >= Math.round(height * 0.08), 'help line starts above the app bottom controls')
+    // messages are toasts at the top left: under the app buttons and left of the top bar
+    const toast = h.module.Toast({ text: 'Wrong cube! The whole word collapsed.' })
+    const L = h.module.hudLayout(longGame)
+    assert.ok(toast.props.pad.top > Math.round(height * h.config.MOBILE_APP_BUTTONS_Y), 'toast sits under the app buttons')
+    assert.ok(toast.props.pad.left + toast.children[0].props.width <= L.left, 'toast stays left of the top bar and its question')
+    assert.equal(h.module.Toast({ text: '' }), null)
+    // How to play: centred in the free middle, clear of the native buttons on the right and of the top bar
+    const card = h.module.HowToPlay().children[0]
+    assert.ok(card.props.width <= Math.round(w * 0.52) + 1, 'how to play leaves the native buttons free')
+    assert.ok(card.props.height <= Math.round(height * 0.64) + 1, 'how to play stays under the top bar')
+    h.state.cs.dialog = { name: 'Lexi', pages: ['Ranks go from Letter to Author.'], page: 0 }
+    for (const [name, panel] of [['shop', h.module.ShopPanel()], ['NPC dialog', h.module.NpcDialog()]]) {
+      const frame = panel.children[0]
+      assert.ok(frame.props.width <= Math.round(w * 0.52) + 1, `${name} leaves the native buttons free`)
+      assert.ok(frame.props.height <= Math.round(height * 0.64) + 1, `${name} stays under the top bar`)
+    }
+    // the lobby's coins and rank: the same slim bar, in the same place as the game's
+    const bar = h.module.LobbyHud() // on phones: <LobbyBar />
+    const lobby = bar.type(bar.props)
+    assert.equal(lobby.props.pad.left, L.left)
+    assert.equal(lobby.props.pad.top, L.top)
+    assert.equal(lobby.children[0].props.dir, 'row')
+    // the desktop keys in server texts become the native buttons' icons; the letter in your hand stays a letter
+    const pieces = h.module.toastPieces('That letter is needed. Place it or throw it back with F.')
+    assert.ok(pieces.at(-1).icon.endsWith('cartoon-toss.png') && pieces.at(-1).after === '.')
+    const held = h.module.toastPieces('Holding E. Click a frame to throw it, E to break, F to throw away.')
+    assert.equal(held[1].text, 'E.', 'Holding E. is the letter, not the break key')
+    assert.equal(held[2].text, 'Tap')
+    assert.equal(held.filter((p) => p.icon).length, 2)
+    assert.equal(h.module.NpcDialog().props.justify, 'center', 'phones: the NPC dialog is a centred card, clear of the app bottom controls')
   })
 }
 

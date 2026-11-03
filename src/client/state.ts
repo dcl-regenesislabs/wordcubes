@@ -22,7 +22,10 @@ export const cs = {
   lobbyCountdown: 0, // seconds left on the lobby start pad, 0 when not counting
   countdownTitle: '', // what the countdown leads to: "Game starts in" (shared start) or "Joining in" (your join)
   padAction: '' as '' | 'start' | 'join' | 'full', // the button the pad you stand on offers ('' off the pad or counting)
-  padGame: -1 // the game of that pad
+  padGame: -1, // the game of that pad
+  itemsOpen: false, // phones: the row of power-ups opened from the native items button
+  confirmLeave: false, // phones: the "leave this game?" card opened by the native back-to-lobby button
+  messageSticky: false // the message stays until you let go of the cube you grabbed (the first HOLD_TIPS_STICKY grabs)
 }
 
 export function showMessage(text: string, seconds = 3) {
