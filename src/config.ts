@@ -2,6 +2,11 @@
 // x/z = 0 is the centre of the arena, y = 0 is the top of GameFloor.glb.
 // Keep these in step with the environment models (GameFloor / GameWalls / MidPlatform).
 export const ARENA_RADIUS = 14 // inner face of GameWalls (collider ~14.0)
+// Invisible fence round each arena (client/arena.ts): players cannot jump out, only the HUD button takes them back.
+export const FENCE_RADIUS = 14.3 // m: inner face, just outside the floor the game uses (GameFloor ~14.6, walls ~14.0)
+export const FENCE_HEIGHT = 30 // m: far above any jump
+export const FENCE_THICKNESS = 0.6
+export const FENCE_SEGMENTS = 32
 export const FLOOR_Y = 0 // top of GameFloor
 
 // MidPlatform (cubes are kept out of it, slots float above it). Single cylinder, solid for the sim.

@@ -5,7 +5,7 @@ import { engine, Transform, GltfContainer, GltfContainerLoadingState, LoadingSta
 import type { Entity } from '@dcl/sdk/ecs'
 import * as C from '../config'
 import { envOrigin } from '../shared/env'
-import { addPassportBlocker } from './arena'
+import { addPassportBlocker, addArenaFence } from './arena'
 import { cs } from './state'
 
 interface BuiltArena {
@@ -36,10 +36,10 @@ function build(game: number): BuiltArena | undefined {
   const root = engine.addEntity()
   Transform.create(root, { position: envOrigin(game) })
   addPassportBlocker(root)
-  const parts: Entity[] = []
+  const parts: Entity[] = addArenaFence(root)
   const required: Entity[] = []
   // Copy the template's whole subtree: models hang off GameEnv directly or off plain containers (the "Grass" entity
-  // holds its tufts), so every entity with a Transform is copied and the models are put back on the copies.
+  // holds its tufts), so every model and every container is copied, with the models put back on the copies.
   const children = new Map<Entity, Entity[]>()
   for (const [entity, t] of engine.getEntitiesWith(Transform)) {
     if (t.parent === undefined) continue
@@ -49,6 +49,8 @@ function build(game: number): BuiltArena | undefined {
   }
   const copy = (source: Entity, parent: Entity) => {
     for (const child of children.get(source) ?? []) {
+      // nothing to show and nothing under it (e.g. the template's own fence, which is added again below): skip
+      if (!GltfContainer.has(child) && !children.has(child)) continue
       const t = Transform.get(child)
       const part = engine.addEntity()
       Transform.create(part, { parent, position: t.position, rotation: t.rotation, scale: t.scale })
