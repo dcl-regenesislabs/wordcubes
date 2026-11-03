@@ -170,7 +170,7 @@ function withPlate(text: Entity): Entity {
 }
 
 // The white plate behind the status line (assets/images/sign_plate.png): a plane child of the text, just behind it, so it
-// turns to the camera and shows / hides with it. Lit by its own texture (emissive), so it stays bright in any light.
+// turns to the camera and shows / hides with it. A little self-lit (PAD_PLATE_GLOW) so it does not go dark at night.
 function addPlate(text: Entity) {
   const plate = engine.addEntity()
   Transform.create(plate, {
@@ -184,7 +184,7 @@ function addPlate(text: Entity) {
     texture,
     emissiveTexture: texture,
     emissiveColor: Color3.White(),
-    emissiveIntensity: 1,
+    emissiveIntensity: C.PAD_PLATE_GLOW,
     transparencyMode: MaterialTransparencyMode.MTM_ALPHA_BLEND,
     metallic: 0,
     roughness: 1,

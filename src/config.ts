@@ -232,6 +232,7 @@ export const PAD_INFO_GAP = 1.1 // m from the cube title down to the status line
 // The plate behind the status line: a 4:1 image, as wide as the longest line ("In progress - Level 7 - 5/5") needs.
 export const PAD_PLATE_IMAGE = 'assets/images/sign_plate.png'
 export const PAD_PLATE_WIDTH = 5.6 // m
+export const PAD_PLATE_GLOW = 0.3 // how much the plate lights itself (1 = full glow, 0 = only the scene's light)
 export const PAD_PLATE_DEPTH = 0.05 // m behind the text (towards +Z: the title faces the camera with its -Z side)
 export const PAD_TITLE_YAW: number = 180 // turns the letter faces to the viewer (the title faces the camera); 0 shows their backs, mirrored
 export const PAD_TITLE_ROLL = -90 // stands each letter upright on its face under that yaw (the frames' PLACED_ROLL comes out upside down here)
