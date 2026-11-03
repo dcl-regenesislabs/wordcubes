@@ -14,7 +14,7 @@ function env(template = TEMPLATE) {
   return { config, ...mod }
 }
 
-test('every arena centre and floor maps to its own game', () => {
+test('every arena centre, its floor and its island (the shop) map to its own game', () => {
   const { config, envOrigin, arenaAt } = env()
   assert.equal(config.GAME_OFFSETS.length, config.GAME_COUNT)
   for (let g = 0; g < config.GAME_COUNT; g++) {
@@ -22,17 +22,18 @@ test('every arena centre and floor maps to its own game', () => {
     const [dx, dy, dz] = config.GAME_OFFSETS[g]
     assert.deepEqual([o.x, o.y, o.z], [TEMPLATE.x + dx, TEMPLATE.y + dy, TEMPLATE.z + dz])
     assert.equal(arenaAt(o.x, o.y + config.FLOOR_Y, o.z), g, `centre of arena ${g}`)
-    // anywhere on the floor inside the walls
-    for (const [ax, az] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
-      const r = config.ARENA_RADIUS - 0.5
-      assert.equal(arenaAt(o.x + ax * r, o.y + 1, o.z + az * r), g, `inside the wall of arena ${g}`)
+    // anywhere inside the walls, and out on the island (the vendor stands ~31 m out) up to its fence
+    for (const r of [config.ARENA_RADIUS - 0.5, 31.5, config.FENCE_RADIUS - 0.5]) {
+      for (const [ax, az] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+        assert.equal(arenaAt(o.x + ax * r, o.y + 3, o.z + az * r), g, `${r} m out on island ${g}`)
+      }
     }
   }
 })
 
-test('the arenas do not overlap, and the space between them, below them and the lobby belong to no game', () => {
+test('the islands do not overlap, and the space between them, below them and the lobby belong to no game', () => {
   const { config, envOrigin, arenaAt } = env()
-  const reach = config.ARENA_RADIUS + 4 // arenaAt's margin around the wall
+  const reach = config.ISLAND_RADIUS + 2 // arenaAt's margin around the island's edge
   for (let a = 0; a < config.GAME_COUNT; a++) {
     for (let b = a + 1; b < config.GAME_COUNT; b++) {
       const oa = envOrigin(a)
@@ -44,7 +45,7 @@ test('the arenas do not overlap, and the space between them, below them and the 
   const o1 = envOrigin(1)
   assert.equal(arenaAt((o0.x + o1.x) / 2, o0.y + 1, (o0.z + o1.z) / 2), -1, 'halfway between two arenas')
   assert.equal(arenaAt(o0.x, o0.y - 10, o0.z), -1, 'fallen below the floor')
-  assert.equal(arenaAt(o0.x + reach + 1, o0.y + 1, o0.z), -1, 'just outside the walls')
+  assert.equal(arenaAt(o0.x + reach + 1, o0.y + 1, o0.z), -1, 'past the island edge')
   assert.equal(arenaAt(186, 160.75 + 2.8, 57), -1, 'the lobby island')
 })
 

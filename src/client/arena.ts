@@ -25,10 +25,11 @@ export function disableArenaPassports() {
   addArenaFence(arena)
 }
 
-/** An invisible wall all the way round an arena, too tall to jump: the walls of the models have a gap and can be
- *  jumped, and the only way back to the lobby is the HUD button. A ring of FENCE_SEGMENTS physics-only boxes, children
- *  of the arena root (so they follow it and go with it), just outside the floor the game uses. Players only: cubes
- *  live in our own sim, and clicks (pointer layer) and teleports pass through. Returns the boxes (for teardown). */
+/** An invisible wall all the way round a game's island, too tall to jump: you can walk anywhere on it (the shop
+ *  included) but not jump to another island or fall off, and the only way back to the lobby is the HUD button. A ring
+ *  of FENCE_SEGMENTS physics-only boxes, children of the arena root (so they follow it and go with it), at the island's
+ *  edge. Players only: cubes live in our own sim, and clicks (pointer layer) and teleports pass through. Returns the
+ *  boxes (for teardown). */
 export function addArenaFence(arena: Entity): Entity[] {
   const n = C.FENCE_SEGMENTS
   const r = C.FENCE_RADIUS + C.FENCE_THICKNESS / 2 // centre line of the boxes: their inner face sits at FENCE_RADIUS

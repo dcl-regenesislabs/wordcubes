@@ -19,13 +19,13 @@ export function envOrigin(game = 0): Vector3 {
   return Vector3.create(o.x + off[0], o.y + off[1], o.z + off[2])
 }
 
-/** Which game's arena a point is standing in (inside the walls and not far below the floor), or -1. */
+/** Which game's island a point is on (within its edge, plus a margin, and not far below the floor), or -1. */
 export function arenaAt(x: number, y: number, z: number): number {
   for (let g = 0; g < C.GAME_COUNT; g++) {
     const o = envOrigin(g)
     const dx = x - o.x
     const dz = z - o.z
-    if (dx * dx + dz * dz < (C.ARENA_RADIUS + 4) ** 2 && y > o.y - 2) return g
+    if (dx * dx + dz * dz < (C.ISLAND_RADIUS + 2) ** 2 && y > o.y - 2) return g
   }
   return -1
 }
