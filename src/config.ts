@@ -224,12 +224,12 @@ export const LOBBY_ENTITY_NAME = 'Lobby'
 export const LOBBY_RADIUS = 60 // m from the Lobby centre that counts as "in the lobby" (for choosing where to respawn)
 export const FALL_RESPAWN_DEPTH = 15 // m below the floor
 export const LOBBY_RESPAWN_HEIGHT = 2.8 // m above the Lobby origin (top of the island floor)
-export const PAD_LABEL_HEIGHT = 5.8 // m above the pad centre to the number cube's centre
+export const PAD_LABEL_HEIGHT = 6.8 // m above the pad centre to the number cube's centre
 // The title over each pad ("GAME THREE") is spelled with small letter cubes (client/lobby.ts).
-export const PAD_NUMBER_CUBE_SCALE = 3.6 // the number GLB is ~0.51 m like the letters, so a ~1.85 m cube
+export const PAD_NUMBER_CUBE_SCALE = 7.2 // the number GLB is ~0.51 m like the letters, so a ~3.7 m cube (seen from afar)
 export const PAD_NUMBER_SPIN = 40 // degrees per second the number cube turns
 export const padNumberModel = (game: number) => `assets/models/Cube${game + 1}.glb`
-export const PAD_INFO_GAP = 1.9 // m from the number cube's centre down to the status line under it
+export const PAD_INFO_GAP = 2.9 // m from the number cube's centre down to the status line under it
 // The plate behind the status line: a 4:1 image, as wide as the longest line ("In progress - Level 7 - 5/5") needs.
 export const PAD_PLATE_IMAGE = 'assets/images/sign_plate.png'
 export const PAD_PLATE_WIDTH = 5.6 // m
