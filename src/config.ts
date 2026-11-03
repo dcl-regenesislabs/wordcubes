@@ -229,7 +229,7 @@ export const PAD_LABEL_HEIGHT = 5 // m above the pad centre to the "Join game" t
 export const PAD_TITLE_CUBE_SCALE = 0.9 // the letter GLB is ~0.51 m, so ~0.46 m cubes
 export const PAD_TITLE_SPACING = 0.52 // m between cube centres
 export const PAD_INFO_GAP = 0.9 // m from the cube title down to the status line under it
-export const PAD_TITLE_YAW = 180 // turns the letter faces to the viewer (the title faces the camera); 0 if they face away
+export const PAD_TITLE_YAW: number = 0 // turns the letter faces to the viewer (the title faces the camera); 180 if they face away
 
 // DEV ONLY: shows the game HUD with a fake looping round, no server or game needed (stand anywhere in the scene).
 // Set to false before merging.
