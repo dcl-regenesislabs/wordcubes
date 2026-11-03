@@ -15,6 +15,8 @@ import * as C from '../config'
 import { envOrigin, arenaAt } from '../shared/env'
 import { room } from '../shared/messages'
 import { cs, showMessage } from './state'
+import { modelFor } from '../shared/schemas'
+import { BLOCK } from './ui/theme'
 import { stateOf, serverNow } from './gamestate'
 import { arenaReady, requestArena } from './arenas'
 
@@ -127,7 +129,8 @@ interface PadView {
   pos: Vector3
   lights: Entity | undefined
   baseScale: Vector3
-  label: Entity
+  label: Entity // the cube title's root (see makeCubeTitle)
+  titleCubes: Entity[]
   info: Entity
   labelShown: number
   size: number // spring: 0 hidden, 1 shown
@@ -138,6 +141,7 @@ interface PadView {
   angle: number
 }
 
+// The status line under a pad's title: outlined in the panels' dark violet, with a soft drop shadow.
 function makeText(text: string, fontSize: number, color: Color4): Entity {
   const e = engine.addEntity()
   Transform.create(e, { position: Vector3.Zero(), scale: Vector3.Zero() })
@@ -145,12 +149,51 @@ function makeText(text: string, fontSize: number, color: Color4): Entity {
     text,
     fontSize,
     textColor: color,
-    outlineColor: Color4.create(0.1, 0.1, 0.1, 1),
-    outlineWidth: 0.2,
+    outlineColor: Color4.create(0.16, 0.07, 0.3, 1),
+    outlineWidth: 0.28,
+    shadowColor: Color4.create(0, 0, 0, 1),
+    shadowBlur: 0.4,
+    shadowOffsetX: 0.08,
+    shadowOffsetY: -0.08,
     textAlign: TextAlignMode.TAM_MIDDLE_CENTER
   })
   Billboard.create(e, { billboardMode: BillboardMode.BM_Y })
   return e
+}
+
+const NUMBER_WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN']
+
+// A pad's title spelled with small letter cubes, the game's own blocks: "GAME THREE". The parent faces the camera
+// (Billboard), the cubes are its children in a row; returns the parent and the cubes (they bob in a wave).
+function makeCubeTitle(game: number): { root: Entity; cubes: Entity[] } {
+  const text = `GAME ${NUMBER_WORDS[game] ?? ''}`.trim()
+  const root = engine.addEntity()
+  Transform.create(root, { position: Vector3.Zero(), scale: Vector3.Zero() })
+  Billboard.create(root, { billboardMode: BillboardMode.BM_Y })
+  const cubes: Entity[] = []
+  const side = C.PAD_TITLE_YAW === 180 ? 1 : -1 // seen from the other side the row reads the other way
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === ' ') continue
+    const cube = engine.addEntity()
+    Transform.create(cube, {
+      parent: root,
+      position: Vector3.create(side * (i - (text.length - 1) / 2) * C.PAD_TITLE_SPACING, 0, 0),
+      rotation: Quaternion.fromEulerDegrees(0, C.PAD_TITLE_YAW, C.PLACED_ROLL), // letter upright, facing the viewer
+      scale: Vector3.scale(Vector3.One(), C.PAD_TITLE_CUBE_SCALE)
+    })
+    GltfContainer.create(cube, { src: modelFor(text[i]), visibleMeshesCollisionMask: 0, invisibleMeshesCollisionMask: 0 })
+    cubes.push(cube)
+  }
+  return { root, cubes }
+}
+
+/** The status line's colour: green to start, yellow while counting down, blue while it runs, red when full. */
+function padColor(game: number): Color4 {
+  const s = padState(game)
+  if (s.kind === 'idle') return BLOCK.green
+  if (s.kind === 'counting') return Color4.create(1, 0.85, 0.25, 1)
+  if (s.kind === 'full') return BLOCK.red
+  return BLOCK.blue
 }
 
 type PadState = { kind: 'idle' } | { kind: 'counting'; left: number } | { kind: 'running' } | { kind: 'full' }
@@ -212,6 +255,7 @@ export function pressJoin() {
 export function setupLobby() {
   const pads: PadView[] = []
   for (let game = 0; game < C.GAME_COUNT; game++) {
+    const title = makeCubeTitle(game)
     pads.push({
       game,
       entity: undefined,
@@ -219,9 +263,10 @@ export function setupLobby() {
       lights: undefined,
       baseScale: Vector3.One(),
       // Floating "Join game" text over the pad, always facing the player, bobbing gently
-      label: makeText(`GAME ${game + 1}`, 6, Color4.White()),
+      label: title.root,
+      titleCubes: title.cubes,
       // Smaller line under it: the game's level and how many are playing
-      info: makeText('', 3, Color4.create(1, 0.95, 0.6, 1)),
+      info: makeText('', 3.5, BLOCK.green),
       labelShown: 0,
       size: 0,
       sizeV: 0,
@@ -386,12 +431,22 @@ export function setupLobby() {
       const ls = pad.labelShown < 0.02 ? 0 : pad.labelShown
       lt.position = Vector3.create(pad.pos.x, pad.pos.y + C.PAD_LABEL_HEIGHT + Math.sin(time * 2 + pad.game) * 0.2, pad.pos.z)
       lt.scale = Vector3.create(ls, ls, ls)
+      // the title's cubes ripple in a slow wave along the word
+      if (ls > 0) {
+        for (let k = 0; k < pad.titleCubes.length; k++) {
+          const ct = Transform.getMutable(pad.titleCubes[k])
+          ct.position = Vector3.create(ct.position.x, Math.sin(time * 3 - k * 0.55) * 0.1, ct.position.z)
+        }
+      }
 
       const roomText = padInfo(pad.game)
       const ts = TextShape.getMutable(pad.info)
       if (ts.text !== roomText) ts.text = roomText
+      const color = padColor(pad.game)
+      const tc = ts.textColor
+      if (!tc || tc.r !== color.r || tc.g !== color.g || tc.b !== color.b) ts.textColor = color
       const it = Transform.getMutable(pad.info)
-      it.position = Vector3.create(pad.pos.x, lt.position.y - 1.6, pad.pos.z)
+      it.position = Vector3.create(pad.pos.x, lt.position.y - C.PAD_INFO_GAP, pad.pos.z)
       it.scale = Vector3.create(ls, ls, ls)
 
       // Lights
