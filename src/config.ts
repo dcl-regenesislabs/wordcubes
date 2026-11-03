@@ -224,18 +224,19 @@ export const LOBBY_ENTITY_NAME = 'Lobby'
 export const LOBBY_RADIUS = 60 // m from the Lobby centre that counts as "in the lobby" (for choosing where to respawn)
 export const FALL_RESPAWN_DEPTH = 15 // m below the floor
 export const LOBBY_RESPAWN_HEIGHT = 2.8 // m above the Lobby origin (top of the island floor)
-export const PAD_LABEL_HEIGHT = 5 // m above the pad centre to the "Join game" text
+export const PAD_LABEL_HEIGHT = 5.8 // m above the pad centre to the number cube's centre
 // The title over each pad ("GAME THREE") is spelled with small letter cubes (client/lobby.ts).
-export const PAD_TITLE_CUBE_SCALE = 1.4 // the letter GLB is ~0.51 m, so ~0.71 m cubes
-export const PAD_TITLE_SPACING = 0.8 // m between cube centres
-export const PAD_INFO_GAP = 1.1 // m from the cube title down to the status line under it
+export const PAD_NUMBER_CUBE_SCALE = 3.6 // the number GLB is ~0.51 m like the letters, so a ~1.85 m cube
+export const PAD_NUMBER_SPIN = 40 // degrees per second the number cube turns
+export const padNumberModel = (game: number) => `assets/models/Cube${game + 1}.glb`
+export const PAD_INFO_GAP = 1.9 // m from the number cube's centre down to the status line under it
 // The plate behind the status line: a 4:1 image, as wide as the longest line ("In progress - Level 7 - 5/5") needs.
 export const PAD_PLATE_IMAGE = 'assets/images/sign_plate.png'
 export const PAD_PLATE_WIDTH = 5.6 // m
 export const PAD_PLATE_GLOW = 0.3 // how much the plate lights itself (1 = full glow, 0 = only the scene's light)
 export const PAD_PLATE_DEPTH = 0.05 // m behind the text (towards +Z: the title faces the camera with its -Z side)
-export const PAD_TITLE_YAW: number = 180 // turns the letter faces to the viewer (the title faces the camera); 0 shows their backs, mirrored
-export const PAD_TITLE_ROLL = -90 // stands each letter upright on its face under that yaw (the frames' PLACED_ROLL comes out upside down here)
+export const PAD_TITLE_YAW: number = 180 // with PAD_TITLE_ROLL, stands the number upright on the cube's side faces
+export const PAD_TITLE_ROLL = -90 // (the frames' PLACED_ROLL comes out upside down here)
 
 // DEV ONLY: shows the game HUD with a fake looping round, no server or game needed (stand anywhere in the scene).
 // Set to false before merging.

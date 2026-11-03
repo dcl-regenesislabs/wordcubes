@@ -18,7 +18,6 @@ import * as C from '../config'
 import { envOrigin, arenaAt } from '../shared/env'
 import { room } from '../shared/messages'
 import { cs, showMessage } from './state'
-import { modelFor } from '../shared/schemas'
 import { BLOCK } from './ui/theme'
 import { stateOf, serverNow } from './gamestate'
 import { arenaReady, requestArena } from './arenas'
@@ -132,8 +131,7 @@ interface PadView {
   pos: Vector3
   lights: Entity | undefined
   baseScale: Vector3
-  label: Entity // the cube title's root (see makeCubeTitle)
-  titleCubes: Entity[]
+  label: Entity // the spinning number cube's root (see makeNumberCube)
   info: Entity
   labelShown: number
   size: number // spring: 0 hidden, 1 shown
@@ -192,30 +190,19 @@ function addPlate(text: Entity) {
   })
 }
 
-const NUMBER_WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN']
-
-// A pad's title spelled with small letter cubes, the game's own blocks: "GAME THREE". The parent faces the camera
-// (Billboard), the cubes are its children in a row; returns the parent and the cubes (they bob in a wave).
-function makeCubeTitle(game: number): { root: Entity; cubes: Entity[] } {
-  const text = `GAME ${NUMBER_WORDS[game] ?? ''}`.trim()
+// The big number cube floating over a pad (assets/models/Cube<n>.glb, one per game): a root that spins about Y, with the
+// cube as its child turned so the number stands upright on its side faces.
+function makeNumberCube(game: number): Entity {
   const root = engine.addEntity()
   Transform.create(root, { position: Vector3.Zero(), scale: Vector3.Zero() })
-  Billboard.create(root, { billboardMode: BillboardMode.BM_Y })
-  const cubes: Entity[] = []
-  const side = C.PAD_TITLE_YAW === 180 ? 1 : -1 // seen from the other side the row reads the other way
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === ' ') continue
-    const cube = engine.addEntity()
-    Transform.create(cube, {
-      parent: root,
-      position: Vector3.create(side * (i - (text.length - 1) / 2) * C.PAD_TITLE_SPACING, 0, 0),
-      rotation: Quaternion.fromEulerDegrees(0, C.PAD_TITLE_YAW, C.PAD_TITLE_ROLL), // letter upright, facing the viewer
-      scale: Vector3.scale(Vector3.One(), C.PAD_TITLE_CUBE_SCALE)
-    })
-    GltfContainer.create(cube, { src: modelFor(text[i]), visibleMeshesCollisionMask: 0, invisibleMeshesCollisionMask: 0 })
-    cubes.push(cube)
-  }
-  return { root, cubes }
+  const cube = engine.addEntity()
+  Transform.create(cube, {
+    parent: root,
+    rotation: Quaternion.fromEulerDegrees(0, C.PAD_TITLE_YAW, C.PAD_TITLE_ROLL),
+    scale: Vector3.scale(Vector3.One(), C.PAD_NUMBER_CUBE_SCALE)
+  })
+  GltfContainer.create(cube, { src: C.padNumberModel(game), visibleMeshesCollisionMask: 0, invisibleMeshesCollisionMask: 0 })
+  return root
 }
 
 /** The status line's colour: green to start, yellow while counting down, blue while it runs, red when full. */
@@ -286,16 +273,14 @@ export function pressJoin() {
 export function setupLobby() {
   const pads: PadView[] = []
   for (let game = 0; game < C.GAME_COUNT; game++) {
-    const title = makeCubeTitle(game)
     pads.push({
       game,
       entity: undefined,
       pos: Vector3.Zero(),
       lights: undefined,
       baseScale: Vector3.One(),
-      // Floating "Join game" text over the pad, always facing the player, bobbing gently
-      label: title.root,
-      titleCubes: title.cubes,
+      // The game's number cube over the pad, spinning and bobbing gently
+      label: makeNumberCube(game),
       // Smaller line under it: the game's level and how many are playing
       info: withPlate(makeText('', 3.5, BLOCK.green)),
       labelShown: 0,
@@ -462,13 +447,7 @@ export function setupLobby() {
       const ls = pad.labelShown < 0.02 ? 0 : pad.labelShown
       lt.position = Vector3.create(pad.pos.x, pad.pos.y + C.PAD_LABEL_HEIGHT + Math.sin(time * 2 + pad.game) * 0.2, pad.pos.z)
       lt.scale = Vector3.create(ls, ls, ls)
-      // the title's cubes ripple in a slow wave along the word
-      if (ls > 0) {
-        for (let k = 0; k < pad.titleCubes.length; k++) {
-          const ct = Transform.getMutable(pad.titleCubes[k])
-          ct.position = Vector3.create(ct.position.x, Math.sin(time * 3 - k * 0.55) * 0.1, ct.position.z)
-        }
-      }
+      if (ls > 0) lt.rotation = Quaternion.fromEulerDegrees(0, (time * C.PAD_NUMBER_SPIN + pad.game * 50) % 360, 0)
 
       const roomText = padInfo(pad.game)
       const ts = TextShape.getMutable(pad.info)
