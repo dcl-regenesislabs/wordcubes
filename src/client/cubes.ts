@@ -5,7 +5,6 @@ import {
   engine,
   Transform,
   GltfContainer,
-  VisibilityComponent,
   AvatarAttach,
   AvatarAnchorPointType,
   PlayerIdentityData,
@@ -25,6 +24,7 @@ import { playHoldEmote, stopHoldEmote } from './emotes'
 import { cs } from './state'
 import { isPredicted } from './predict'
 import { trackServerClock, dropAge, dropPlan } from './gamestate'
+import { addCubeModel, removeCubeModel, setCubeHidden } from './cubemodel'
 
 interface ClientCube {
   mode: string
@@ -118,7 +118,7 @@ function removeSmooth(entity: Entity, c: ClientCube) {
   if (c.smooth) {
     engine.removeEntity(c.smooth)
     c.smooth = null
-    VisibilityComponent.deleteFrom(entity)
+    setCubeHidden(entity, false)
   }
 }
 
@@ -182,7 +182,7 @@ function smoothFree(entity: Entity, c: ClientCube, dt: number) {
       const t = Transform.getMutable(c.smooth)
       t.position = Vector3.create(p.x - dx, p.y - dy, p.z - dz) // where the cube was a moment ago
       t.rotation = tr.rotation
-      VisibilityComponent.createOrReplace(entity, { visible: false })
+      setCubeHidden(entity, true)
     } else if (moved > 3) {
       Transform.getMutable(c.smooth).position = Vector3.create(p.x, p.y, p.z) // teleport: no gliding
     }
@@ -205,9 +205,10 @@ function smoothFree(entity: Entity, c: ClientCube, dt: number) {
   t.rotation = Quaternion.slerp(t.rotation, tr.rotation, k)
 }
 
-// A cube of the game you play in: give the synced entity its model (the server sends none) and a click target.
+// A cube of the game you play in: give the synced entity its model (the server sends none, see cubemodel.ts) and a
+// click target.
 function adopt(entity: Entity, letter: string, id: number): ClientCube {
-  GltfContainer.createOrReplace(entity, { src: modelFor(letter), invisibleMeshesCollisionMask: 0, visibleMeshesCollisionMask: 0 })
+  addCubeModel(entity, letter)
   const hit = engine.addEntity()
   // Child of the cube: the GLB's collider is a 0.5 m box, the parent already carries CUBE_SCALE.
   Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
@@ -224,7 +225,7 @@ function adopt(entity: Entity, letter: string, id: number): ClientCube {
 function drawFall(entity: Entity, c: ClientCube, id: number, age: number) {
   if (!c.fall) {
     c.fall = makeProxy(c.letter)
-    VisibilityComponent.createOrReplace(entity, { visible: false })
+    setCubeHidden(entity, true)
   }
   const rest = Transform.get(entity)
   const plan = dropPlan(id)
@@ -244,11 +245,11 @@ function endFall(entity: Entity, c: ClientCube, alive: boolean) {
   if (!c.fall) return
   engine.removeEntity(c.fall)
   c.fall = null
-  if (alive) VisibilityComponent.deleteFrom(entity)
+  if (alive) setCubeHidden(entity, false)
 }
 
 // Drop everything this client added for a cube: it was removed, or it belongs to a game you are not in (any more).
-// `alive` = the synced entity still exists, so its local model and visibility are taken off too.
+// `alive` = the synced entity still exists.
 function forgetCube(entity: Entity, c: ClientCube, alive: boolean) {
   if (c.mode === 'held' && c.holder === cs.myAddress) stopHoldEmote()
   if (c.smooth) engine.removeEntity(c.smooth)
@@ -256,10 +257,7 @@ function forgetCube(entity: Entity, c: ClientCube, alive: boolean) {
   endFall(entity, c, alive)
   pointerEventsSystem.removeOnPointerDown(c.hit)
   engine.removeEntity(c.hit)
-  if (alive) {
-    GltfContainer.deleteFrom(entity)
-    VisibilityComponent.deleteFrom(entity)
-  }
+  removeCubeModel(entity)
   known.delete(entity)
 }
 
