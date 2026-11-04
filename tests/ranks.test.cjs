@@ -7,7 +7,7 @@ test('rank labels merge every synced page, update later pages, and clear departe
   const ranks = loadTs('src/client/ranktags.ts', {
     '@dcl/sdk/ecs': { engine: { getEntitiesWith: () => pages.entries() } },
     '@dcl/sdk/math': { Color4: { create() {} } },
-    '../shared/schemas': {}, './ui/rank': {}, './state': {}
+    '../shared/schemas': {}, './ui/rank': {}, './state': {}, '../config': {}
   }, 'exports.readRatings = readRatings')
   ranks.readRatings()
   assert.equal(ranks.ratingOf('ALICE'), 200)

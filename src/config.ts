@@ -231,6 +231,13 @@ export const PAD_NUMBER_SPIN = 40 // degrees per second the number cube turns
 export const padNumberModel = (game: number) => `assets/models/Cube${game + 1}.glb`
 export const PAD_INFO_GAP = 2.9 // m from the number cube's centre down to the status line under it
 // The plate behind the status line: a 4:1 image, as wide as the longest line ("In progress - Level 7 - 5/5") needs.
+// The rank badge over every player's head (src/client/ranktags.ts): one picture per rank, rank 0 = Letter.
+const RANK_BADGE_FILES = ['rank1_letter', 'rank2_syllable', 'rank3_word', 'rank4_phrase', 'rank5_sentence', 'rank6_paragraph', 'rank7_author']
+export const rankBadgeImage = (rank: number) => `assets/images/sign_plates/${RANK_BADGE_FILES[rank]}.png`
+export const RANK_BADGE_SIZE = 0.6 // m across
+export const RANK_BADGE_HEIGHT = 0.55 // m from the name tag up to the badge's centre
+export const RANK_BADGE_GLOW = 0.5 // how much the badge lights itself (1 = full glow, 0 = only the scene's light)
+
 // The top players written on the lobby's Leaderboard sign (src/client/leaderboard.ts). Positions are in the sign
 // model's own units (it is placed at scale 2.3); sizes are in metres.
 export const LEADERBOARD_ROWS = 5 // the server keeps the top 5
