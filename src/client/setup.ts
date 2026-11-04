@@ -23,6 +23,7 @@ import { arenaSystem, setArenaVendorFactory } from './arenas'
 import { rankTagSystem } from './ranktags'
 import { leaderboardSystem } from './leaderboard'
 import { setupCheats } from './cheats'
+import { SFX, playSfx, preloadSfx, audioSystem, onCoins } from './audio'
 
 let joined = false
 const HOLD_TIPS_STICKY = 3
@@ -81,6 +82,7 @@ function clientSystem(dt: number) {
   if (!inGame || !hasItems) cs.itemsOpen = false
   if (!inGame) cs.confirmLeave = false
   syncTouchButtons(inGame && (isHolding() || (UI_PREVIEW && dbg.screen === 'holding')), inGame, inGame && hasItems)
+  audioSystem(dt)
   cubesSystem(dt)
   predictSystem(dt) // your own pushes move cubes right away, before the server confirms them
   framesSystem(dt)
@@ -168,6 +170,7 @@ function syncTouchButtons(holding: boolean, inGame: boolean, items: boolean) {
 
 export function initClient() {
   syncTouchButtons(false, false, false)
+  preloadSfx()
   setupUi()
   setupLobby()
   setupFx()
@@ -179,6 +182,7 @@ export function initClient() {
     if (!isHolding()) return showMessage('Grab a cube first (click it), then click a frame.', 2)
     if (lockoutLeft() > 0) return showMessage(`Locked out: ${lockoutLeft()}s left before you can place again.`, 2)
     playThrowEmote()
+    playSfx(SFX.throw)
     room.send('place', { slot })
   })
 
@@ -199,12 +203,20 @@ export function initClient() {
   room.onMessage('entered', (d) => onEntered(d.game, d.ok === 1))
   room.onMessage('eject', () => onEjected())
   room.onMessage('coins', (d) => {
+    onCoins(d.value)
     cs.coins = d.value
   })
   room.onMessage('fx', (d) => {
-    if (d.kind === 'lock') lockFrame(d.slot)
-    else if (d.kind === 'fail') failFrames()
-    else if (d.kind === 'win') winFrames()
+    if (d.kind === 'lock') {
+      lockFrame(d.slot)
+      playSfx(SFX.lock)
+    } else if (d.kind === 'fail') {
+      failFrames()
+      playSfx(SFX.fail)
+    } else if (d.kind === 'win') {
+      winFrames()
+      playSfx(SFX.win)
+    }
   })
 
   engine.addSystem(clientSystem, 1, 'word-cubes-client')

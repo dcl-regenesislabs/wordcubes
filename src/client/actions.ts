@@ -1,6 +1,7 @@
 // The two cube actions that also exist as keys (E / F) and, on phones, as HUD buttons.
 import { room } from '../shared/messages'
 import { isHolding } from './cubes'
+import { SFX, playSfx } from './audio'
 import { playThrowEmote } from './emotes'
 import { lockoutLeft, showMessage } from './state'
 
@@ -15,5 +16,6 @@ export function breakHeld() {
 export function tossHeld() {
   if (!isHolding()) return
   playThrowEmote()
+  playSfx(SFX.drop)
   room.send('toss', { n: 0 })
 }

@@ -151,8 +151,10 @@ function init() {
     if (!ctx) return
     const addr = ctx.from.toLowerCase()
     const p = profileOf(addr)
-    if (!p || !C.SETTINGS.some((s) => s.id === data.key)) return // only switches listed in config
-    p.settings[data.key] = data.value === 1
+    if (!p) return
+    if (C.VOLUMES.some((v) => v.id === data.key)) p.settings[data.key] = Math.max(0, Math.min(C.VOLUME_MAX, Math.round(data.value)))
+    else if (C.SETTINGS.some((s) => s.id === data.key)) p.settings[data.key] = data.value === 1 // only entries listed in config
+    else return
     touch(addr)
   })
 

@@ -1,6 +1,7 @@
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { Color4 } from '@dcl/sdk/math'
 import { S } from './platform'
+import { SFX, playSfx } from '../audio'
 
 // Word Cubes look: a candy toy-block world. Cream alphabet-block faces, bright violet panels, rainbow accents.
 // Every colour lives here so the whole UI can be re-skinned from one place.
@@ -269,6 +270,7 @@ export const PillButton = (props: {
       uiBackground={{ color: props.active ? PAL.yellow : hov ? lighten(rim, 0.12) : rim }}
       onMouseDown={() => {
         popPress(props.id)
+        playSfx(SFX.click, 0.5)
         props.onClick()
       }}
       {...hover(props.id)}

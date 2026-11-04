@@ -1,4 +1,4 @@
-import { SETTINGS } from '../config'
+import { SETTINGS, VOLUMES } from '../config'
 
 // Client-only UI state. Game state itself comes from the server's synced components.
 export const cs = {
@@ -9,7 +9,7 @@ export const cs = {
   delta: 0, // rating change after the last round you took part in
   shop: false, // the vendor's shop is open
   showSettings: false, // the Settings panel is open
-  settings: {} as Record<string, boolean>, // your saved switches (see SETTINGS in config); missing = the default
+  settings: {} as Record<string, boolean | number>, // your saved switches and volume levels (SETTINGS, VOLUMES in config); missing = the default
   message: '',
   messageTime: 0,
   game: -1, // the game (pad) you hold a seat in, -1 in the lobby
@@ -39,6 +39,13 @@ export const lockoutLeft = () => Math.max(0, Math.ceil((cs.lockoutUntil - Date.n
 /** Current value of a Settings switch (its default until the server has sent yours). */
 export function setting(id: string): boolean {
   const v = cs.settings[id]
-  if (v !== undefined) return v
+  if (typeof v === 'boolean') return v
   return SETTINGS.find((x) => x.id === id)?.default ?? false
+}
+
+/** Volume level 0..VOLUME_MAX of a Settings slider (its default until the server has sent yours). */
+export function volumeLevel(id: string): number {
+  const v = cs.settings[id]
+  if (typeof v === 'number') return v
+  return VOLUMES.find((x) => x.id === id)?.default ?? 0
 }

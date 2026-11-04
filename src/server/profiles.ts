@@ -9,7 +9,7 @@ export interface Profile {
   wins: number
   rewarded: boolean // the wearable reward (stub) was announced
   items: Record<string, number>
-  settings: Record<string, boolean>
+  settings: Record<string, boolean | number> // switches (true / false) and volume levels (0..VOLUME_MAX)
 }
 
 const KEY = 'wc:profile'
