@@ -42,13 +42,13 @@ function devicePixelRatio(): number {
   return UiCanvasInformation.getOrNull(engine.RootEntity)?.devicePixelRatio || 1
 }
 
-/** Desktop / Bevy: fixed 1920x1080. Mobile: 1600x720 expanded by the pixel ratio. Full screen, no safe-area inset. */
+/** Desktop / Bevy: fixed 1920x1080. Mobile: 1600x720 expanded by the pixel ratio. Mobile UI uses the device safe area. */
 export function getUiRendererConfig() {
   const density = mobile() ? Math.max(1, devicePixelRatio()) : 1
   return {
     virtualWidth: mobile() ? Math.max(1, Math.round(1600 * density)) : 1920,
     virtualHeight: mobile() ? Math.max(1, Math.round(720 * density)) : 1080,
-    screenInset: 'none' as const
+    screenInset: mobile() ? 'device' as const : 'none' as const
   }
 }
 
@@ -71,21 +71,25 @@ export function Sbtn(n: number): number {
   return Math.round(S(n) * (mobile() ? MOBILE_BTN_BOOST : 1))
 }
 
-/** The visible screen in virtual units. The SDK contain-fits the virtual canvas, so one side is usually larger than
+/** The available renderer area in virtual units (inside the device safe area on mobile). The SDK contain-fits the virtual canvas, so one side is usually larger than
  *  the canvas. Only a safety net for clamping (mobile under-reports its canvas): sizes come from S(). */
 export function view(): { w: number; h: number } {
   const cfg = getUiRendererConfig()
   const ci = UiCanvasInformation.getOrNull(engine.RootEntity)
   if (!ci || !ci.width || !ci.height) return { w: cfg.virtualWidth, h: cfg.virtualHeight }
   const scale = Math.min(ci.width / cfg.virtualWidth, ci.height / cfg.virtualHeight)
-  return { w: ci.width / scale, h: ci.height / scale }
+  const inset = mobile() ? ci.screenInsetArea : undefined
+  return {
+    w: Math.max(1, ci.width - (inset?.left ?? 0) - (inset?.right ?? 0)) / scale,
+    h: Math.max(1, ci.height - (inset?.top ?? 0) - (inset?.bottom ?? 0)) / scale
+  }
 }
 
 /** Gap kept from the screen edges: notches and rounded corners on phones. */
 export const EDGE = (): number => (mobile() ? Math.round(view().w * 0.035) : S(20))
 /** Extra room on the right of a phone for the app's own buttons. */
 export const RIGHT_RESERVE = (): number => (mobile() ? Math.round(view().w * 0.15) : 0)
-/** The phone app's own top bar: screenInset is 'none', so top-anchored pieces start below it themselves. */
+/** Room for the phone app's own top bar, which the device safe area does not exclude. */
 export const TOP_RESERVE = (): number => (mobile() ? Math.round(view().h * 0.09) : 0)
 /** The phone app's own bottom controls (about 8% of the height): bottom-anchored pieces start above them. */
 export const BOTTOM_RESERVE = (): number => (mobile() ? Math.round(view().h * 0.09) : 0)

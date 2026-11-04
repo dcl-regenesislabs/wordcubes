@@ -149,27 +149,28 @@ const ITEM_GAP = () => S(6)
 function ownedItems() {
   return ITEMS.filter((i) => (cs.items[i.id] ?? 0) > 0)
 }
-// Phones: one slim bar at the top centre: time and level | the letter tiles | coins. The question sits under it as
+// Phones: one slim bar at the top right: time and level | the letter tiles | coins. The question sits under it as
 // bare text. Everything you look at while playing is in one place, and the rest of the screen stays free.
 const BAR_TIME_W = () => S(150)
-const BAR_COINS_W = () => S(130)
-const BAR_PAD = () => S(10)
+const BAR_COINS_W = () => S(110)
+const BAR_PAD = () => S(8)
 const BAR_DIVIDER = () => S(3)
 function mobileLayout(g: Game | null) {
   const v = view()
-  const right = EDGE() + RIGHT_RESERVE()
+  const right = 0 // the renderer already applies the device safe area
   const n = Math.max(g?.length ?? 1, 1)
   const gap = S(TILE_GAP)
-  // right next to the app's buttons at the top left (profile, console, reload), centred on the same line
-  const left = Math.round(v.w * C.MOBILE_APP_BUTTONS_RIGHT) + S(12)
-  const room = v.w - EDGE() - left
-  const maxW = Math.min(Math.round(v.w * 0.62), room) // the native buttons only start lower down on the right
+  // Right aligned, clear of the app's top-left buttons; long words can expand towards the centre.
+  const minLeft = Math.round(v.w * C.MOBILE_APP_BUTTONS_RIGHT) + S(12)
+  const room = v.w - right - minLeft
   const fixed = BAR_TIME_W() + BAR_COINS_W() + 2 * BAR_DIVIDER() + 4 * BAR_PAD()
-  const tile = Math.min(S(44), Math.max(S(16), Math.floor((maxW - fixed) / n) - gap))
+  const maxW = Math.min(room, Math.max(Math.round(v.w * 0.43), fixed + n * (S(16) + gap)))
+  const tile = Math.min(S(40), Math.max(S(16), Math.floor((maxW - fixed) / n) - gap))
   const rowW = n * (tile + gap)
   const panelW = fixed + rowW
-  const barH = Math.max(tile, S(44)) + 2 * BAR_PAD()
-  const top = Math.max(S(4), Math.round(v.h * C.MOBILE_APP_BUTTONS_Y) - Math.round(barH / 2))
+  const left = v.w - right - panelW
+  const barH = Math.round(v.h * C.MOBILE_TOP_BAR_HEIGHT)
+  const top = Math.round(v.h * C.MOBILE_TOP_BAR_TOP)
   return { top, right, left, reserve: Math.max(0, v.w - left - panelW), panelW, tile, gap, rowW, barH, sideW: 0, columnH: 0, itemsH: 0, itemsBeside: false }
 }
 
@@ -257,7 +258,7 @@ function WordPanel(props: { g: Game }) {
             <OutlineLabel value={text} fontSize={S(24)} color={PAL.yellow} width={Math.max(S(30), Math.round(text.length * S(24) * 0.62))} height={S(32)} align="middle-left" />
           </UiEntity>
         </Frame>
-        <OutlineLabel value={g.question || 'Connecting...'} fontSize={font} color={PAL.text} width={panelW} height={Math.round(font * 1.4 * lines) + S(8)} align="middle-left" wrap soft />
+        <OutlineLabel value={g.question || 'Connecting...'} fontSize={font} color={PAL.text} width={panelW} height={Math.round(font * 1.4 * lines) + S(8)} align="middle-right" wrap soft />
       </Layer>
     )
   }
@@ -372,11 +373,10 @@ export function MobileToast() {
 
 export function Toast(props: { text: string; shift?: number }) {
   if (props.text === '') return null
-  const v = view()
   const font = S(20)
   const icon = Math.round(font * 1.5)
-  const left = EDGE() + S(40) // clear of the phone's rounded corner / notch on the left
-  const w = Math.max(S(200), mobileLayout(null).left - S(16) - left) // ends before the top bar (and its question) starts
+  const left = mobile() ? 0 : EDGE() + S(40) // mobile renderer already applies the device safe area
+  const w = Math.min(S(360), Math.max(S(200), mobileLayout(null).left - S(16) - left)) // ends before the top bar (and its question) starts
   const inner = w - S(28)
   const pieces = toastPieces(props.text)
   const withIcons = pieces.some((p) => 'icon' in p)
@@ -398,7 +398,9 @@ export function Toast(props: { text: string; shift?: number }) {
   }
   const lineH = Math.max(icon, Math.round(font * 1.35))
   const h = Math.min(4, lines) * lineH + S(22)
-  const top = Math.round(v.h * (C.MOBILE_APP_BUTTONS_Y + 0.08))
+  const top = mobile()
+    ? mobileLayout(null).top + mobileLayout(null).barH + S(24)
+    : Math.round(view().h * (C.MOBILE_APP_BUTTONS_Y + 0.08))
   return (
     <Layer justify="flex-start" align="flex-start" pad={{ top, left: left + (props.shift ?? 0) }}>
       <Frame width={w} height={h} edge={PAL.violetLight} fill={PAL.violetGlass} radius={S(18)} border={S(3)} align="center" justify="center">
@@ -998,15 +1000,15 @@ export function LobbyHud() {
   )
 }
 
-// Phones: the lobby's coins and rank in the same slim bar as the game's, in the same place (next to the app's buttons).
+// Phones: the lobby's coins and rank share the game's top-right alignment.
 const LOBBY_RANK_W = () => S(200)
 function LobbyBar() {
   const L = mobileLayout(null)
   const w = BAR_COINS_W() + BAR_DIVIDER() + LOBBY_RANK_W() + 2 * BAR_PAD()
-  const h = S(44) + 2 * BAR_PAD()
+  const h = L.barH
   const text = `${coins()}`
   return (
-    <Layer justify="flex-start" align="flex-start" pad={{ top: L.top, left: L.left }}>
+    <Layer justify="flex-start" align="flex-start" pad={{ top: L.top, left: view().w - L.right - w, right: L.right }}>
       <Frame width={w} height={h} edge={PAL.violetLight} fill={PAL.violetGlass} radius={h / 2} border={S(3)} dir="row" align="center" justify="center">
         <UiEntity uiTransform={{ width: BAR_COINS_W(), height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
           <CoinIcon size={S(26)} margin={{ right: S(6) }} />

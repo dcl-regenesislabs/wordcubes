@@ -242,7 +242,7 @@ export const PAD_INFO_GAP = 2.9 // m from the number cube's centre down to the s
 const RANK_BADGE_FILES = ['rank1_letter', 'rank2_syllable', 'rank3_word', 'rank4_phrase', 'rank5_sentence', 'rank6_paragraph', 'rank7_author']
 export const rankBadgeImage = (rank: number) => `assets/images/sign_plates/${RANK_BADGE_FILES[rank]}.png`
 export const RANK_BADGE_SIZE = 0.6 // m across
-export const RANK_BADGE_HEIGHT = 0.55 // m from the name tag up to the badge's centre
+export const RANK_BADGE_HEIGHT = 0.35 // m from the name tag up to the badge's centre
 export const RANK_BADGE_GLOW = 0.5 // how much the badge lights itself (1 = full glow, 0 = only the scene's light)
 
 // The top players written on the lobby's Leaderboard sign (src/client/leaderboard.ts). Positions are in the sign
@@ -273,6 +273,9 @@ export const UI_PREVIEW = false
 // top bar starts just right of them (RIGHT = where the reload button ends) and is centred on their line (Y).
 export const MOBILE_APP_BUTTONS_RIGHT = 0.295
 export const MOBILE_APP_BUTTONS_Y = 0.105
+// Top-row dimensions relative to the device-safe height, estimated from the mobile reference capture.
+export const MOBILE_TOP_BAR_TOP = 0.02
+export const MOBILE_TOP_BAR_HEIGHT = 0.09
 
 // DEV ONLY: on phones, show every custom native button at once (break, toss, hint, how to play, settings, back to
 // lobby), whatever you are doing, to check their icons and layout. Set to false before merging.
