@@ -22,6 +22,7 @@ import { slotPosition } from './arena'
 import { envOrigin } from '../shared/env'
 import { playHoldEmote, stopHoldEmote } from './emotes'
 import { cs } from './state'
+import { SFX, playSfx } from './audio'
 import { isPredicted } from './predict'
 import { trackServerClock, dropAge, dropPlan } from './gamestate'
 import { addCubeModel, removeCubeModel, setCubeHidden } from './cubemodel'
@@ -137,7 +138,10 @@ function enterMode(entity: Entity, c: ClientCube, mode: string, holder: string, 
     t.parent = anchorFor(holder)
     t.position = Vector3.create(C.CARRY_OFFSET.x, C.CARRY_OFFSET.y, C.CARRY_OFFSET.z)
     t.scale = Vector3.scale(Vector3.One(), C.HOLD_SCALE)
-    if (holder === cs.myAddress) playHoldEmote()
+    if (holder === cs.myAddress) {
+      playHoldEmote()
+      playSfx(SFX.grab)
+    }
   } else if (mode === 'flying') {
     c.proxy = makeProxy(c.letter)
     c.from = handPos(holder)

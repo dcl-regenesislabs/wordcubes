@@ -7,6 +7,7 @@ import { Color3, Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { envOrigin } from '../shared/env'
 import { cs } from './state'
+import { talkSfx } from './audio'
 import { lobbyAnchors, worldPosition } from './lobby'
 import { RANK_NAMES } from './ui/rank'
 
@@ -113,6 +114,7 @@ function spawn(def: NpcDef, pos: Vector3): () => void {
   pointerEventsSystem.onPointerDown(
     { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Talk to ${def.name.split(',')[0]}`, maxDistance: TALK_DISTANCE } },
     () => {
+      talkSfx()
       if (def.shop) cs.shop = true
       else cs.dialog = { name: def.name, pages: def.pages, page: 0 }
     }

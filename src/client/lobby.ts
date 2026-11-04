@@ -18,6 +18,7 @@ import * as C from '../config'
 import { envOrigin, arenaAt } from '../shared/env'
 import { room } from '../shared/messages'
 import { cs, showMessage } from './state'
+import { SFX, playSfx } from './audio'
 import { BLOCK } from './ui/theme'
 import { stateOf, serverNow } from './gamestate'
 import { arenaReady, requestArena } from './arenas'
@@ -91,6 +92,7 @@ export function returnToLobby() {
   cs.game = -1
   cs.inGame = false
   teleportToLobby(origin, padPos)
+  playSfx(SFX.teleport)
 }
 
 let waitingFor = -1 // the game a seat was requested for, until the server answers
@@ -108,6 +110,7 @@ export function onEntered(game: number, ok: boolean) {
   cs.game = game
   requestArena(game)
   pendingTeleport = { game, left: C.ARENA_LOAD_TIMEOUT }
+  playSfx(SFX.teleport)
   showMessage(`Starting game #${game + 1}`, 4)
 }
 
@@ -434,7 +437,9 @@ export function setupLobby() {
         cs.padAction = 'start'
       }
     }
-    cs.lobbyCountdown = counting ? Math.max(1, Math.ceil(timer)) : 0
+    const shown = counting ? Math.max(1, Math.ceil(timer)) : 0
+    if (shown > 0 && shown !== cs.lobbyCountdown) playSfx(SFX.tick, 0.9, 2) // a tick for every number on the pad's countdown
+    cs.lobbyCountdown = shown
 
     time += dt
     for (const pad of pads) {

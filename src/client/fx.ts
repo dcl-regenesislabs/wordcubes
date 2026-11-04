@@ -4,6 +4,7 @@ import { engine, Transform, ParticleSystem, PBParticleSystem_BlendMode, PBPartic
 import type { Entity } from '@dcl/sdk/ecs'
 import { Color4, Vector3 } from '@dcl/sdk/math'
 import { room } from '../shared/messages'
+import { SFX, playSfx } from './audio'
 
 const LIFETIME = 2 // seconds an effect entity stays around (its particles live under 1.2 s)
 const live: { entity: Entity; left: number }[] = []
@@ -48,6 +49,9 @@ function fxSystem(dt: number) {
 }
 
 export function setupFx() {
-  room.onMessage('burst', (d) => breakBurst(d.x, d.y, d.z, d.gold))
+  room.onMessage('burst', (d) => {
+    breakBurst(d.x, d.y, d.z, d.gold)
+    playSfx(d.gold === 2 ? SFX.bomb : SFX.breakCube)
+  })
   engine.addSystem(fxSystem, 1, 'word-cubes-fx')
 }

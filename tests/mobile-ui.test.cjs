@@ -31,6 +31,7 @@ function harness(phone, canvas) {
     '../../shared/schemas': {}, '../gamestate': { myState: () => currentGame || undefined, boardText: () => '' }, '../state': state, '../cubes': { heldLetter: () => '' },
     '../../config': config, '../../shared/messages': { room: { send: noop } },
     '../lobby': { returnToLobby: noop }, '../arena': {}, './platform': platform,
+    '../audio': { SFX: {}, playSfx: noop, onItems: noop, onProfileLoaded: noop, talkSfx: noop },
     './theme': theme, './debug': { dbg: { screen: 'game' }, debugWord: () => ({ answer: 'PARIS', question: 'Capital of France?' }) }, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
     '../../../assets/scene/entity-names': {}
   }, 'exports.testing = { WordPanel, SidePanel, ItemBar, VoteScreen, BottomArea, snapshot: () => ({ seenRound, prev, prevPhase, failAt, winAt, lastDifficulty, levelAt, myVote, votedRound }) }')

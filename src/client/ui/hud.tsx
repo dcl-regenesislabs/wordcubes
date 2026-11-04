@@ -1,7 +1,8 @@
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
 import { myState } from '../gamestate'
-import { cs, lockoutLeft, showMessage, setting } from '../state'
+import { cs, lockoutLeft, showMessage, setting, volumeLevel } from '../state'
+import { SFX, playSfx, onItems, onProfileLoaded, talkSfx } from '../audio'
 import { heldLetter as realHeldLetter } from '../cubes'
 import * as C from '../../config'
 import { room } from '../../shared/messages'
@@ -594,7 +595,10 @@ export function NpcDialog() {
             height={z(52)}
             font={z(24)}
             tint={PAL.green}
-            onClick={() => (cs.dialog = last || !cs.dialog ? null : { ...cs.dialog, page: cs.dialog.page + 1 })}
+            onClick={() => {
+              if (!last) talkSfx()
+              cs.dialog = last || !cs.dialog ? null : { ...cs.dialog, page: cs.dialog.page + 1 }
+            }}
           />
         </UiEntity>
       </Frame>
@@ -703,11 +707,12 @@ export function ConfirmLeave() {
 export function SettingsPanel() {
   const w = fit(S(820))
   const rowH = S(96)
-  const h = S(110) + SETTINGS.length * rowH + S(90)
-  const toggle = (id: string, on: boolean) => {
-    cs.settings = { ...cs.settings, [id]: on }
-    if (!C.UI_PREVIEW) room.send('setSetting', { key: id, value: on ? 1 : 0 })
+  const h = S(110) + (SETTINGS.length + C.VOLUMES.length) * rowH + S(90)
+  const save = (id: string, value: boolean | number) => {
+    cs.settings = { ...cs.settings, [id]: value }
+    if (!C.UI_PREVIEW) room.send('setSetting', { key: id, value: typeof value === 'number' ? value : value ? 1 : 0 })
   }
+  const toggle = (id: string, on: boolean) => save(id, on)
   return (
     <Layer>
       <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={S(30)} border={S(6)} pad={S(22)} align="center" justify="flex-start" block>
@@ -721,6 +726,21 @@ export function SettingsPanel() {
                 <Label value={s.desc} fontSize={S(20)} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: S(44) }} />
               </UiEntity>
               <PillButton id={`set-btn-${s.id}`} label={on ? 'On' : 'Off'} width={S(150)} height={S(56)} font={S(26)} tint={on ? PAL.green : c(0.6, 0.55, 0.7, 0.8)} onClick={() => toggle(s.id, !on)} />
+            </UiEntity>
+          )
+        })}
+        {C.VOLUMES.map((v) => {
+          const level = volumeLevel(v.id)
+          const step = (d: number) => save(v.id, Math.max(0, Math.min(C.VOLUME_MAX, level + d)))
+          return (
+            <UiEntity key={`vol-${v.id}`} uiTransform={{ width: '100%', height: rowH, flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
+              <UiEntity uiTransform={{ width: w - S(400), height: rowH, flexDirection: 'column', justifyContent: 'center', pointerFilter: 'none' }}>
+                <Label value={v.label} fontSize={S(30)} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: '100%', height: S(42) }} />
+                <Label value={v.desc} fontSize={S(20)} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: S(44) }} />
+              </UiEntity>
+              <PillButton id={`vol-down-${v.id}`} label="-" width={S(70)} height={S(56)} font={S(30)} onClick={() => step(-1)} />
+              <Label value={level === 0 ? 'Off' : `${level * 10}%`} fontSize={S(26)} font="sans-serif" color={PAL.ink} uiTransform={{ width: S(110), height: S(56) }} />
+              <PillButton id={`vol-up-${v.id}`} label="+" width={S(70)} height={S(56)} font={S(30)} tint={PAL.green} onClick={() => step(1)} />
             </UiEntity>
           )
         })}
@@ -936,8 +956,13 @@ export function PadPrompt() {
 // Server messages that only the HUD cares about.
 export function setupHudMessages() {
   room.onMessage('profile', (d) => {
-    if (rankIndex(d.rating) > rankIndex(cs.rating) && cs.rating > 0) showMessage(`Rank up! You are now a ${rankName(d.rating)}`, 4)
+    if (rankIndex(d.rating) > rankIndex(cs.rating) && cs.rating > 0) {
+      showMessage(`Rank up! You are now a ${rankName(d.rating)}`, 4)
+      playSfx(SFX.rankUp)
+    }
+    onProfileLoaded()
     cs.rating = d.rating
+    onItems(cs.items, { wildcard: d.wildcard, reroll: d.reroll, freeze: d.freeze, bomb: d.bomb })
     cs.items = { wildcard: d.wildcard, reroll: d.reroll, freeze: d.freeze, bomb: d.bomb }
     try {
       cs.settings = JSON.parse(d.settings || '{}')

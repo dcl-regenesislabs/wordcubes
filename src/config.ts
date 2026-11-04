@@ -87,6 +87,13 @@ export const SETTINGS: { id: string; label: string; desc: string; default: boole
   { id: 'showRanks', label: 'Rank over heads', desc: 'Show the rank label floating over each player', default: true }
 ]
 
+// Volume sliders in the Settings panel (saved with the profile like the switches). Level 0..VOLUME_MAX, 0 = off.
+export const VOLUME_MAX = 10
+export const VOLUMES: { id: string; label: string; desc: string; default: number }[] = [
+  { id: 'musicVol', label: 'Music', desc: 'Background music volume', default: 3 },
+  { id: 'sfxVol', label: 'Sound effects', desc: 'Game sounds volume', default: 6 }
+]
+
 // TESTING ONLY: a hidden cheat. In the lobby, clicking the S cube of the "WORD CUBES" blocks gives CHEAT_COINS coins every time.
 // The server checks this flag too. Set CHEATS_ENABLED to false before a release.
 export const CHEATS_ENABLED = true
