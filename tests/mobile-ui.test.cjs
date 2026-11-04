@@ -48,11 +48,12 @@ for (const [name, canvas] of [['pixel ratio 1', undefined], ['a 2400x1080 phone 
     for (const g of [longGame, { ...longGame, length: 3, masked: '___', question: 'A pet?' }]) {
       const L = h.module.hudLayout(g)
       assert.ok(L.rowW <= L.panelW, 'the tiles fit in the bar')
-      assert.ok(L.left + L.panelW <= w, 'the bar stays on screen')
+      assert.equal(L.left + L.panelW, w, 'the bar reaches the device safe-area edge without an extra margin')
+      if (g.length === 3) assert.ok(L.left > w / 2, 'short words leave the centre clear')
       assert.ok(L.left >= Math.round(w * h.config.MOBILE_APP_BUTTONS_RIGHT), 'the bar starts right of the app buttons at the top left')
       assert.ok(L.barH <= Math.round(height * 0.12), 'the bar is one slim row')
-      const middle = L.top + L.barH / 2
-      assert.ok(Math.abs(middle - height * h.config.MOBILE_APP_BUTTONS_Y) <= L.barH / 2, 'the bar is on the same line as the app buttons')
+      assert.equal(L.top, Math.round(height * h.config.MOBILE_TOP_BAR_TOP), 'bar aligns with the native top row')
+      assert.equal(L.barH, Math.round(height * h.config.MOBILE_TOP_BAR_HEIGHT), 'bar matches the native button height')
       const word = h.hud.WordPanel({ g })
       assert.equal(word.props.pad.left, L.left)
       assert.equal(word.props.pad.right, L.reserve)
@@ -65,10 +66,11 @@ for (const [name, canvas] of [['pixel ratio 1', undefined], ['a 2400x1080 phone 
     assert.equal(h.hud.ItemBar({ g: longGame }), null, 'phones open the items from a native button')
     const bottom = h.hud.BottomArea()
     assert.ok(bottom.props.pad.bottom >= Math.round(height * 0.08), 'help line starts above the app bottom controls')
-    // messages are toasts at the top left: under the app buttons and left of the top bar
+    // messages are toasts at the safe-area top left, left of the top bar
     const toast = h.module.Toast({ text: 'Wrong cube! The whole word collapsed.' })
+    assert.equal(toast.props.pad.left, 0, 'toast starts at the device safe-area edge without an extra margin')
     const L = h.module.hudLayout(longGame)
-    assert.ok(toast.props.pad.top > Math.round(height * h.config.MOBILE_APP_BUTTONS_Y), 'toast sits under the app buttons')
+    assert.equal(toast.props.pad.top, L.top + L.barH + h.platform.S(24), 'toast sits below the native top row with a gap')
     assert.ok(toast.props.pad.left + toast.children[0].props.width <= L.left, 'toast stays left of the top bar and its question')
     assert.equal(h.module.Toast({ text: '' }), null)
     // How to play: centred in the free middle, clear of the native buttons on the right and of the top bar
@@ -84,8 +86,9 @@ for (const [name, canvas] of [['pixel ratio 1', undefined], ['a 2400x1080 phone 
     // the lobby's coins and rank: the same slim bar, in the same place as the game's
     const bar = h.module.LobbyHud() // on phones: <LobbyBar />
     const lobby = bar.type(bar.props)
-    assert.equal(lobby.props.pad.left, L.left)
+    assert.equal(lobby.props.pad.left + lobby.children[0].props.width, w, 'lobby bar reaches the device safe-area edge without an extra margin')
     assert.equal(lobby.props.pad.top, L.top)
+    assert.equal(lobby.children[0].props.height, L.barH, 'lobby and game bars have the same height')
     assert.equal(lobby.children[0].props.dir, 'row')
     // the desktop keys in server texts become the native buttons' icons; the letter in your hand stays a letter
     const pieces = h.module.toastPieces('That letter is needed. Place it or throw it back with F.')
@@ -122,7 +125,7 @@ test('renderer starts on the desktop canvas and switches to the phone canvas onc
   // the options come from the scene's own realm: compare as plain data
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
     { virtualWidth: 1920, virtualHeight: 1080, screenInset: 'none' },
-    { virtualWidth: 3200, virtualHeight: 1440, screenInset: 'none' }
+    { virtualWidth: 3200, virtualHeight: 1440, screenInset: 'device' }
   ])
 })
 
@@ -159,4 +162,20 @@ test('HUD renders do not mutate animation state or reset a vote; the system adva
   game.phase = 'playing'
   h.module.updateHud()
   assert.equal(h.hud.snapshot().myVote, null)
+})
+
+test('mobile layout uses device insets and follows safe-area changes', () => {
+  const canvas = { width: 2400, height: 1080, devicePixelRatio: 3, screenInsetArea: { left: 90, right: 60, top: 12, bottom: 24 } }
+  const h = harness(true, canvas)
+  assert.equal(h.platform.getUiRendererConfig().screenInset, 'device')
+  const scale = 0.5
+  assert.equal(h.platform.view().w, (2400 - 90 - 60) / scale)
+  assert.equal(h.platform.view().h, (1080 - 12 - 24) / scale)
+  const layout = h.module.hudLayout(longGame)
+  assert.equal(layout.left + layout.panelW, h.platform.view().w)
+  canvas.screenInsetArea.right = 120
+  assert.equal(h.platform.view().w, (2400 - 90 - 120) / scale)
+  const desktop = harness(false, canvas)
+  assert.equal(desktop.platform.getUiRendererConfig().screenInset, 'none')
+  assert.equal(desktop.platform.view().w, 2400)
 })

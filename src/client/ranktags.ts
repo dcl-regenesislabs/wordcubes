@@ -20,7 +20,7 @@ import {
 } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Color3, Vector3 } from '@dcl/sdk/math'
-import { PlayerRanks } from '../shared/schemas'
+import { CubeData, PlayerRanks } from '../shared/schemas'
 import { rankIndex, RANK_NAMES } from './ui/rank'
 import { cs, setting } from './state'
 import * as C from '../config'
@@ -96,6 +96,10 @@ export function rankTagSystem() {
   readRatings()
   const me = Transform.getOrNull(engine.PlayerEntity)?.position
   const enabled = setting('showRanks') // Settings panel switch
+  const holding = new Set<string>()
+  for (const [, cube] of engine.getEntitiesWith(CubeData)) {
+    if (cube.mode === 'held') holding.add(cube.holder.toLowerCase())
+  }
   const seen = new Set<string>()
   for (const [entity, identity] of engine.getEntitiesWith(PlayerIdentityData)) {
     const address = identity.address.toLowerCase()
@@ -120,7 +124,7 @@ export function rankTagSystem() {
       drawRank(tag.badge, rank)
     }
     const far = me !== undefined && Vector3.distance(me, t.position) > SHOW_DISTANCE
-    const size = far || !enabled ? 0 : C.RANK_BADGE_SIZE
+    const size = far || !enabled || holding.has(address) ? 0 : C.RANK_BADGE_SIZE
     const bt = Transform.get(tag.badge)
     if (bt.scale.x !== size) Transform.getMutable(tag.badge).scale = Vector3.create(size, size, 1)
   }
