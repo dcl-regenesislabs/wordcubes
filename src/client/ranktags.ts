@@ -1,26 +1,72 @@
-// A small rank label floating over every player's head (yours too, which you see in third person).
-// Ratings come from the server's synced PlayerRanks entity. The label is attached to the avatar's name tag (so it follows every
-// animation exactly) and the text is a child that always turns to face the camera: the attached entity's own rotation belongs to the avatar.
-import { engine, Transform, TextShape, TextAlignMode, Billboard, BillboardMode, PlayerIdentityData, AvatarAttach, AvatarAnchorPointType } from '@dcl/sdk/ecs'
+// A rank badge floating over every player's head (yours too, which you see in third person), seen by everyone.
+// Ratings come from the server's synced PlayerRanks entity. The badge is attached to the avatar's name tag (so it follows
+// every animation exactly) and the picture is a child that always turns to face the camera: the attached entity's own
+// rotation belongs to the avatar. Pointing at it shows the rank's name; clicking it does nothing.
+import {
+  engine,
+  Transform,
+  Billboard,
+  BillboardMode,
+  PlayerIdentityData,
+  AvatarAttach,
+  AvatarAnchorPointType,
+  MeshRenderer,
+  MeshCollider,
+  Material,
+  MaterialTransparencyMode,
+  ColliderLayer,
+  pointerEventsSystem,
+  InputAction
+} from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
-import { Color4, Vector3 } from '@dcl/sdk/math'
+import { Color3, Vector3 } from '@dcl/sdk/math'
 import { PlayerRanks } from '../shared/schemas'
-import { rankName, rankIndex } from './ui/rank'
+import { rankIndex, RANK_NAMES } from './ui/rank'
 import { cs, setting } from './state'
+import * as C from '../config'
 
-const ABOVE_NAME_TAG = 0.7 // metres above the name tag
 const SHOW_DISTANCE = 28
-const COLORS = [
-  Color4.create(0.85, 0.8, 0.95, 1),
-  Color4.create(0.4, 0.8, 0.95, 1),
-  Color4.create(0.5, 0.85, 0.4, 1),
-  Color4.create(1, 0.85, 0.3, 1),
-  Color4.create(1, 0.6, 0.2, 1),
-  Color4.create(1, 0.45, 0.6, 1),
-  Color4.create(0.8, 0.5, 1, 1)
-]
 
-const tags = new Map<string, { root: Entity; label: Entity }>()
+interface Tag {
+  root: Entity
+  badge: Entity
+  rank: number // the rank index drawn, -1 before the first
+}
+const tags = new Map<string, Tag>()
+
+function makeBadge(parent: Entity): Entity {
+  const badge = engine.addEntity()
+  Transform.create(badge, {
+    parent,
+    position: Vector3.create(0, C.RANK_BADGE_HEIGHT, 0),
+    scale: Vector3.create(C.RANK_BADGE_SIZE, C.RANK_BADGE_SIZE, 1)
+  })
+  MeshRenderer.setPlane(badge)
+  MeshCollider.setPlane(badge, ColliderLayer.CL_POINTER) // only for the hover text
+  Billboard.create(badge, { billboardMode: BillboardMode.BM_Y })
+  return badge
+}
+
+// The badge's picture and hover text for a rank.
+function drawRank(badge: Entity, rank: number) {
+  const texture = Material.Texture.Common({ src: C.rankBadgeImage(rank) })
+  Material.setPbrMaterial(badge, {
+    texture,
+    emissiveTexture: texture,
+    emissiveColor: Color3.White(),
+    emissiveIntensity: C.RANK_BADGE_GLOW,
+    transparencyMode: MaterialTransparencyMode.MTM_ALPHA_BLEND,
+    metallic: 0,
+    roughness: 1,
+    castShadows: false
+  })
+  pointerEventsSystem.removeOnPointerDown(badge)
+  pointerEventsSystem.onPointerDown(
+    { entity: badge, opts: { button: InputAction.IA_POINTER, hoverText: `Rank ${rank + 1}: ${RANK_NAMES[rank]}`, maxDistance: SHOW_DISTANCE } },
+    () => {} // nothing to do: the badge is there for its hover text
+  )
+}
+
 let lastData = ''
 let ratings = new Map<string, number>()
 
@@ -64,32 +110,24 @@ export function rankTagSystem() {
         avatarId: entity === engine.PlayerEntity ? undefined : address, // undefined = the local player
         anchorPointId: AvatarAnchorPointType.AAPT_NAME_TAG
       })
-      const label = engine.addEntity()
-      Transform.create(label, { parent: root, position: Vector3.create(0, ABOVE_NAME_TAG, 0) })
-      TextShape.create(label, {
-        text: '',
-        fontSize: 2,
-        outlineColor: Color4.create(0.12, 0.05, 0.22, 1),
-        outlineWidth: 0.25,
-        textAlign: TextAlignMode.TAM_MIDDLE_CENTER
-      })
-      Billboard.create(label, { billboardMode: BillboardMode.BM_Y })
-      tag = { root, label }
+      tag = { root, badge: makeBadge(root), rank: -1 }
       tags.set(address, tag)
     }
     const rating = entity === engine.PlayerEntity ? cs.rating : ratingOf(address) // your own is known right away from your profile
-    const text = rankName(rating)
-    const ts = TextShape.getMutable(tag.label)
-    if (ts.text !== text) {
-      ts.text = text
-      ts.textColor = COLORS[rankIndex(rating)]
+    const rank = rankIndex(rating)
+    if (rank !== tag.rank) {
+      tag.rank = rank
+      drawRank(tag.badge, rank)
     }
     const far = me !== undefined && Vector3.distance(me, t.position) > SHOW_DISTANCE
-    Transform.getMutable(tag.label).scale = far || !enabled ? Vector3.Zero() : Vector3.One()
+    const size = far || !enabled ? 0 : C.RANK_BADGE_SIZE
+    const bt = Transform.get(tag.badge)
+    if (bt.scale.x !== size) Transform.getMutable(tag.badge).scale = Vector3.create(size, size, 1)
   }
   for (const [address, tag] of Array.from(tags.entries())) {
     if (seen.has(address)) continue
-    engine.removeEntity(tag.label)
+    pointerEventsSystem.removeOnPointerDown(tag.badge)
+    engine.removeEntity(tag.badge)
     engine.removeEntity(tag.root)
     tags.delete(address)
   }
