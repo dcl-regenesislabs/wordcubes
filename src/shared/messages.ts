@@ -19,7 +19,28 @@ export const room = registerMessages({
   useItem: Schemas.Map({ item: Schemas.String }), // arena: use one from your inventory
   // where a cube you pushed came to rest in your local prediction (predict.ts); the server checks it and adopts it
   settle: Schemas.Map({ cubeId: Schemas.Int, x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, yaw: Schemas.Number }),
+  // the cubes of your game, all at once (on entering, or after a gap in cubeState): see shared/cubenet.ts
+  cubeSync: Schemas.Map({ game: Schemas.Int }),
+  netStats: Schemas.Map({ n: Schemas.Int }), // the live monitor asks for the server's numbers (NET_STATS)
   // server -> client
+  netStatsReply: Schemas.Map({ json: Schemas.String }), // answer to netStats (server/netstats.ts)
+  netAccess: Schemas.Map({ ok: Schemas.Int }), // 1: this wallet may open the live monitor (env NET_MONITOR_WALLETS)
+  // Cube state for one game, sent only to its seated players (shared/cubenet.ts has the record layout).
+  // s: sequence number of this game's state messages, so a client sees a gap and asks for cubeSync.
+  // full: 1 while answering cubeSync (end: 1 on its last part: cubes it did not list are gone).
+  cubeState: Schemas.Map({
+    g: Schemas.Int,
+    s: Schemas.Int,
+    full: Schemas.Int,
+    end: Schemas.Int,
+    o: Schemas.Vector3, // the game's origin: positions are relative to it
+    born: Schemas.Int64, // birth time of the records flagged FRESH
+    holders: Schemas.String, // comma-separated addresses, indexed by the records
+    d: Schemas.Array(Schemas.Short),
+    gone: Schemas.Array(Schemas.Short) // ids removed
+  }),
+  // positions of the cubes that moved (plus a few at rest, in turn); s = the latest cubeState sequence number
+  cubeMoves: Schemas.Map({ g: Schemas.Int, s: Schemas.Int, o: Schemas.Vector3, d: Schemas.Array(Schemas.Short) }),
   entered: Schemas.Map({ game: Schemas.Int, ok: Schemas.Int }), // answer to enter: 1 seat granted, 0 game full
   eject: Schemas.Map({ n: Schemas.Int }), // you stand in an arena without a seat: go back to the lobby
   toast: Schemas.Map({ text: Schemas.String, kind: Schemas.Optional(Schemas.String) }),

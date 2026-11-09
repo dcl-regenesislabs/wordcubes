@@ -140,12 +140,17 @@ export const PLACED_ROLL = 90
 export const PLAYER_RADIUS = 0.6 // m: how far around the avatar cubes are shoved
 export const PLAYER_HEIGHT = 1.2 // only legs/waist shove cubes, so stacks above you are left alone
 
-// Network feel (server -> clients)
-export const NEAR_RADIUS = 10 // cubes this close to any player are sent every server tick (30 Hz)
-export const FAR_SEND_INTERVAL = 0.1 // all other moving cubes: 10 Hz
+// Network feel (server -> clients). Cubes go only to the players of their game (server/cubesync.ts).
+export const NEAR_RADIUS = 10 // moving cubes this close to any player are written every server tick (30 Hz)...
+export const FAR_SEND_INTERVAL = 0.1 // ...the rest at 10 Hz
+export const MOVE_SEND_INTERVAL = 1 / 15 // s: the cubes written since the last send go out together, at most this often
+export const REFRESH_PER_SEND = 4 // resting cubes sent again with every moves message, in turn (300 cubes: every ~5 s)
+export const CUBE_SYNC_COOLDOWN = 1 // s: a player gets the full cube state at most this often
+export const CUBE_SMOOTH_RATE = 18 // 1/s: how fast a client's cube glides to the latest position it was sent
+export const CUBE_SNAP_DISTANCE = 3 // m: further than this and the cube jumps there instead of gliding
 export const PUSH_LOOKAHEAD = 0.05 // seconds: pushers are predicted ahead to hide the player-position latency
 // Client-side smoothing of moving free cubes (hides the real cube and shows a local copy). Off: a copy created on the
-// fly can take a moment to load, so cubes blink out and pop back in. Real cubes are sent at 30 Hz near players instead.
+// fly can take a moment to load, so cubes blink out and pop back in. client/cubenet.ts glides the real cubes instead.
 export const SMOOTH_FREE_CUBES = false
 
 // Local push prediction: cubes you walk into move on your screen right away (same sim as the server, run locally on
@@ -280,6 +285,13 @@ export const MOBILE_TOP_BAR_HEIGHT = 0.09
 // DEV ONLY: on phones, show every custom native button at once (break, toss, hint, how to play, settings, back to
 // lobby), whatever you are doing, to check their icons and layout. Set to false before merging.
 export const TOUCH_CONTROLS_DEBUG = false
+
+// Live network / game monitor (client/ui/netstats.tsx), opened by a small button on the left edge of the screen.
+// Only the wallets in the NET_MONITOR_WALLETS env var see it (everyone in the local preview):
+//   npx sdk-commands storage env set NET_MONITOR_WALLETS --value '["0xabc...","0xdef..."]'
+// false turns it off for everybody.
+export const NET_STATS = true
+export const NET_MONITOR_REFRESH_SECONDS = 60 // how often the server reads the allow-list again
 
 // DEV ONLY: skip the "Connecting to the server" gate (client/connection.ts): no freeze, HUD at once. Set to false before merging.
 export const SKIP_SERVER_GATE = false

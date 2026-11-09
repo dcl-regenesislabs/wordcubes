@@ -3,14 +3,16 @@
 import { engine, Transform } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
-import { syncEntity } from '@dcl/sdk/network'
 import * as C from '../config'
 import { playerLabel } from '../shared/player-label'
 import { pickWord } from './words'
 import { profileOf, touch, ratingDelta } from './profiles'
 import { room } from '../shared/messages'
 import { envOrigin, arenaAt } from '../shared/env'
-import { CubeData, GameState, protectServerEntity } from '../shared/schemas'
+import { CubeData, GameState } from '../shared/schemas'
+import { MAX_CUBE_ID } from '../shared/cubenet'
+import { createCubeSync } from './cubesync'
+import type { NetCube } from './cubesync'
 import { worldParams, syncEnvParams } from '../shared/world'
 import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, clearBodies, step, applyImpulse, wake, wakeNear, setPushers } from '../sim/physics'
@@ -41,8 +43,16 @@ const SETTLE_MAX_SECONDS = 20 // of sim time: whatever still moves after this is
 const PARK_Y = -30
 const IDLE_SHUTDOWN_SECONDS = 5 // an empty game stays set up this long, then clears its pile and goes idle
 
-// Cube ids are global so they stay unique across games (clients send them back in 'grab' and 'settle').
-let nextCubeId = 1
+// Cube ids are global so they stay unique across games (clients send them back in 'grab' and 'settle'). They travel
+// as Shorts (shared/cubenet.ts), so they wrap at MAX_CUBE_ID, skipping any id still in use.
+let nextCubeId = 0
+const liveIds = new Set<number>()
+function allocCubeId(): number {
+  do nextCubeId = nextCubeId >= MAX_CUBE_ID ? 1 : nextCubeId + 1
+  while (liveIds.has(nextCubeId))
+  liveIds.add(nextCubeId)
+  return nextCubeId
+}
 
 export interface GameHost {
   onRating(address: string, rating: number): void // a player's rating changed (leaderboard)
@@ -110,6 +120,40 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
   }
 
   const members = () => Array.from(seats.keys())
+
+  // The cubes go to this game's seated players only (cubesync.ts), not to the whole scene.
+  const netCubes = new WeakMap<SCube, NetCube>()
+  function netOf(cube: SCube): NetCube {
+    let n = netCubes.get(cube)
+    if (!n) {
+      n = {
+        id: cube.id,
+        letter: cube.letter,
+        get mode() {
+          return cube.mode
+        },
+        get slot() {
+          return cube.slot
+        },
+        get holder() {
+          return cube.holder
+        },
+        get born() {
+          return Number(CubeData.get(cube.entity).born)
+        },
+        pos: () => Transform.get(cube.entity).position,
+        yaw: () => cube.body.yaw
+      }
+      netCubes.set(cube, n)
+    }
+    return n
+  }
+  const net = createCubeSync(index, {
+    members,
+    cubes: () => Array.from(cubes.values()).map(netOf),
+    origin: () => envOrigin(index)
+  })
+  const lastFullSync = new Map<string, number>()
 
   // Messages for the game only reach its seated players.
   function bcast(name: 'fx' | 'burst' | 'toast', data: any, to: string[] = members()) {
@@ -179,16 +223,19 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     d.mode = cube.mode
     d.slot = cube.slot
     d.holder = cube.holder
+    net.changed(netOf(cube))
   }
 
   function park(cube: SCube) {
     Transform.getMutable(cube.entity).position = Vector3.create(cube.body.x, PARK_Y, cube.body.z)
+    net.moved(netOf(cube))
   }
 
   function writeTransform(cube: SCube) {
     const t = Transform.getMutable(cube.entity)
     t.position = Vector3.create(cube.body.x, cube.body.y, cube.body.z)
     t.rotation = Quaternion.fromEulerDegrees(0, (cube.body.yaw * 180) / Math.PI, 0)
+    net.moved(netOf(cube))
   }
 
   function updateGameState() {
@@ -215,22 +262,21 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     return createCube(letter, addBody(world, x, y, z), breakReward, 0)
   }
 
-  // The synced entity for a body already in the sim. born > 0: part of a settled pile, created at rest.
+  // The cube entity for a body already in the sim. born > 0: part of a settled pile, created at rest.
   function createCube(letter: string, body: Body, breakReward: boolean, born: number): SCube {
     const entity = engine.addEntity()
-    const id = nextCubeId++
+    const id = allocCubeId()
     Transform.create(entity, {
       position: Vector3.create(body.x, body.y, body.z),
       rotation: Quaternion.fromEulerDegrees(0, (body.yaw * 180) / Math.PI, 0),
       scale: Vector3.scale(Vector3.One(), C.CUBE_SCALE)
     })
-    // No model and no collider on the synced cube: each client adds the model and its own click target (cubes.ts),
-    // and only for cubes of the game it plays in, so nobody loads the other games' piles.
+    // Not a synced entity: cubesync.ts sends it to this game's players, and each client draws its own copy with the
+    // model and click target (client/cubenet.ts, cubes.ts).
     CubeData.create(entity, { game: index, id, letter, mode: 'free', slot: -1, holder: '', born })
-    protectServerEntity(entity, [Transform])
-    syncEntity(entity, [Transform.componentId, CubeData.componentId])
     const cube: SCube = { id, letter, entity, body, mode: 'free', slot: -1, holder: '', placer: '', sentAsleep: body.asleep, breakReward }
     cubes.set(id, cube)
+    net.added(netOf(cube))
     return cube
   }
 
@@ -268,6 +314,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     cubes.delete(cube.id)
     lastSettle.delete(cube.id)
     engine.removeEntity(cube.entity)
+    liveIds.delete(cube.id)
+    net.removed(cube.id)
   }
 
   // Put a cube back into the physics pile at a position with an impulse.
@@ -721,6 +769,13 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     toast(`Hint revealed! (-${cost} coins)`)
   }
 
+  // The client entered the game or missed a cubeState: all of this game's cubes, to that player only.
+  function on_cubeSync(addr: string) {
+    if (clock - (lastFullSync.get(addr) ?? -Infinity) < C.CUBE_SYNC_COOLDOWN) return
+    lastFullSync.set(addr, clock)
+    net.sendFull(addr)
+  }
+
   // ---------- seats ----------
 
   function activate() {
@@ -756,6 +811,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
 
   function leaveSeat(addr: string) {
     if (!seats.delete(addr)) return
+    lastFullSync.delete(addr)
     dropHeld(addr)
     votes.delete(addr)
     GameState.getMutable(stateEntity).players = seats.size
@@ -804,6 +860,11 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
   // ---------- main loop ----------
 
   function tick(dt: number) {
+    tickGame(dt)
+    net.flush(dt)
+  }
+
+  function tickGame(dt: number) {
     clock += dt
 
     // seats: an unclaimed seat expires; a player who stays out of the arena loses theirs
@@ -954,6 +1015,31 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     leaveSeat,
     intruders,
     isActive: () => active,
+    // DEV ONLY (NET_STATS): the live monitor's view of this game
+    stats: () => {
+      let awake = 0
+      const modes: Record<string, number> = {}
+      for (const c of cubes.values()) {
+        if (c.mode === 'free' && !c.body.asleep) awake++
+        modes[c.mode] = (modes[c.mode] ?? 0) + 1
+      }
+      return {
+        game: index,
+        active,
+        phase,
+        round,
+        level: difficulty,
+        timeLeft: Math.ceil(timeLeft),
+        seats: seats.size,
+        inArena: arenaPlayers().length,
+        cubes: cubes.size,
+        settling: settling.length,
+        awake,
+        modes,
+        seq: net.seq,
+        sent: net.sent()
+      }
+    },
     hasSeat: (addr: string) => seats.has(addr),
     handle(name: string, addr: string, data: any) {
       if (!active || !seats.has(addr)) return
@@ -966,12 +1052,13 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
         case 'vote': return on_vote(data, addr)
         case 'useItem': return on_useItem(data, addr)
         case 'hint': return on_hint(data, addr)
+        case 'cubeSync': return on_cubeSync(addr)
       }
     },
     broadcastToast: (text: string) => toast(text),
     // for tests
     // settlePile: finish the pile that is settling, at once
-    testing: { settlePile: () => settleSome(Infinity), cubeData: (e: Entity) => CubeData.get(e), startRound, startVote, endVote, collapse, land, timeUp, advance: (seconds: number) => { clock += seconds }, get clock() { return clock } }
+    testing: { net, settlePile: () => settleSome(Infinity), cubeData: (e: Entity) => CubeData.get(e), startRound, startVote, endVote, collapse, land, timeUp, advance: (seconds: number) => { clock += seconds }, get clock() { return clock } }
   }
 }
 

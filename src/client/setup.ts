@@ -24,6 +24,9 @@ import { leaderboardSystem } from './leaderboard'
 import { setupCheats } from './cheats'
 import { SFX, playSfx, preloadSfx, audioSystem, onCoins } from './audio'
 import { connectionSystem, serverReady, setupConnection } from './connection'
+import { cubeNetSystem, setupCubeNet } from './cubenet'
+import { netStatsSystem, setupNetStats } from './netstats'
+import { NET_STATS } from '../config'
 
 const HOLD_TIPS_STICKY = 3
 let holdTips = 0 // how many sticky "Holding" tips you have had this session
@@ -80,6 +83,7 @@ function clientSystem(dt: number) {
   if (!inGame) cs.confirmLeave = false
   syncTouchButtons(inGame && (isHolding() || (UI_PREVIEW && dbg.screen === 'holding')), inGame, inGame && hasItems)
   audioSystem(dt)
+  cubeNetSystem(dt) // your game's cubes from the server's messages, before anything reads them
   cubesSystem(dt)
   predictSystem(dt) // your own pushes move cubes right away, before the server confirms them
   framesSystem(dt)
@@ -169,6 +173,11 @@ export function initClient() {
   syncTouchButtons(false, false, false)
   preloadSfx()
   setupConnection()
+  setupCubeNet()
+  if (NET_STATS) {
+    setupNetStats()
+    engine.addSystem(netStatsSystem, 1, 'word-cubes-net-stats') // runs while connecting too
+  }
   setupUi()
   setupLobby()
   setupFx()

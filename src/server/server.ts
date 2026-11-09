@@ -8,6 +8,7 @@ import { CubeData, GameState, PlayerRanks } from '../shared/schemas'
 import { Storage } from '@dcl/sdk/server'
 import { players, giveCoins, sendProfile } from './common'
 import { createGame } from './game'
+import { setupNetStats, recordTick, netAccessTick, forgetNetAccess } from './netstats'
 import type { Game } from './game'
 
 // The server runs GAME_COUNT independent games (see game.ts). This module owns what they share: the player list,
@@ -87,6 +88,7 @@ function init() {
   room.onMessage('join', (_data, ctx) => {
     if (!ctx) return
     const addr = ctx.from.toLowerCase()
+    if (C.NET_STATS) forgetNetAccess(addr)
     void retain(addr).then(() => sendProfile(addr))
   })
 
@@ -132,7 +134,7 @@ function init() {
   })
 
   // Everything below belongs to the game the player sits in; a message from anyone else is ignored.
-  for (const name of ['grab', 'place', 'toss', 'breakCube', 'settle', 'vote', 'useItem', 'hint'] as const) {
+  for (const name of ['grab', 'place', 'toss', 'breakCube', 'settle', 'vote', 'useItem', 'hint', 'cubeSync'] as const) {
     room.onMessage(name, (data, ctx) => {
       if (!ctx) return
       const addr = ctx.from.toLowerCase()
@@ -178,7 +180,9 @@ function init() {
 
 function serverSystem(dt: number) {
   clock += dt
+  const t0 = Date.now()
   for (const g of games) g.tick(dt)
+  if (C.NET_STATS) recordTick(dt, Date.now() - t0)
 
   housekeepAcc += dt
   if (housekeepAcc >= 1) {
@@ -216,6 +220,7 @@ function serverSystem(dt: number) {
       } else absent.set(addr, (absent.get(addr) ?? 0) + 1)
     }
     publishRanks()
+    if (C.NET_STATS) netAccessTick(Array.from(present))
     saveAcc += 1
     if (saveAcc >= C.PROFILE_SAVE_SECONDS) {
       saveAcc = 0
@@ -297,6 +302,7 @@ export function initServer() {
     })
     .catch((e) => console.log('[SERVER] board read failed', e))
   init()
+  if (C.NET_STATS) setupNetStats(games)
   engine.addSystem(serverSystem, 1, 'word-cubes-server')
   console.log(`[SERVER] Word Cubes server started with ${C.GAME_COUNT} games`)
 }
