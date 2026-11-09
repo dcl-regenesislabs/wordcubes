@@ -352,14 +352,14 @@ export function toastPieces(text: string): ToastPiece[] {
 // The toast on screen, kept by the HUD system (updateHud) so it can slide out after the message is gone.
 const TOAST_IN_MS = 220
 const TOAST_OUT_MS = 380
-let toast = { text: '', at: 0, leaving: 0 }
+let toast = { text: '', kind: '', at: 0, leaving: 0 }
 function trackToast() {
   const text = message()
   const now = Date.now()
-  if (text !== '' && text !== toast.text) toast = { text, at: now, leaving: 0 }
-  else if (text !== '' && toast.leaving) toast = { text, at: now, leaving: 0 }
+  if (text !== '' && text !== toast.text) toast = { text, kind: cs.messageKind, at: now, leaving: 0 }
+  else if (text !== '' && toast.leaving) toast = { text, kind: cs.messageKind, at: now, leaving: 0 }
   else if (text === '' && toast.text !== '' && !toast.leaving) toast.leaving = now
-  else if (toast.leaving && now - toast.leaving > TOAST_OUT_MS) toast = { text: '', at: 0, leaving: 0 }
+  else if (toast.leaving && now - toast.leaving > TOAST_OUT_MS) toast = { text: '', kind: '', at: 0, leaving: 0 }
 }
 const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3)
 /** The toast now, and how far it has slid (px): from the right as it comes in, off to the left as it goes. */
@@ -368,17 +368,17 @@ export function HudToast() {
   const now = Date.now()
   const enter = 1 - ease((now - toast.at) / TOAST_IN_MS)
   const leave = toast.leaving ? ease((now - toast.leaving) / TOAST_OUT_MS) : 0
-  return <Toast text={toast.text} shift={Math.round(enter * S(60) - leave * view().w * 0.5)} />
+  return <Toast text={toast.text} plain={toast.kind === 'powerup'} shift={Math.round(enter * S(60) - leave * view().w * 0.5)} />
 }
 
-export function Toast(props: { text: string; shift?: number }) {
+export function Toast(props: { text: string; plain?: boolean; shift?: number }) {
   if (props.text === '') return null
   const font = S(20)
   const icon = Math.round(font * 1.5)
   const left = mobile() ? 0 : EDGE() + S(40) // mobile renderer already applies the device safe area
-  const w = Math.min(S(360), Math.max(S(200), mobileLayout(null).left - S(16) - left)) // ends before the top bar (and its question) starts
+  const w = mobile() ? Math.min(S(360), Math.max(S(200), mobileLayout(null).left - S(16) - left)) : S(360) // ends before the top bar (and its question) starts
   const inner = w - S(28)
-  const pieces: ToastPiece[] = mobile() ? toastPieces(props.text) : [{ text: props.text }]
+  const pieces: ToastPiece[] = mobile() && !props.plain ? toastPieces(props.text) : [{ text: props.text }]
   const withIcons = pieces.some((p) => 'icon' in p)
   // Word by word (only needed for the icons): each word gets a generous width of its own, since glyphs run wider than
   // the usual estimate, and a full space after it. Without icons the text is one Label with real spaces.
@@ -400,7 +400,7 @@ export function Toast(props: { text: string; shift?: number }) {
   const h = Math.min(4, lines) * lineH + S(22)
   const top = mobile()
     ? mobileLayout(null).top + mobileLayout(null).barH + S(24)
-    : Math.round(view().h * (C.MOBILE_APP_BUTTONS_Y + 0.08))
+    : S(170)
   return (
     <Layer justify="flex-start" align="flex-start" pad={{ top, left: left + (props.shift ?? 0) }}>
       <Frame width={w} height={h} edge={PAL.violetLight} fill={PAL.violetGlass} radius={S(18)} border={S(3)} align="center" justify="center">

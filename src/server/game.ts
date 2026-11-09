@@ -117,8 +117,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     ;(room as any).send(name, data, { to })
   }
 
-  function toast(text: string, to?: string) {
-    bcast('toast', { text }, to ? [to] : members())
+  function toast(text: string, to?: string, kind?: 'powerup') {
+    bcast('toast', { text, kind }, to ? [to] : members())
   }
 
   // Server-side gate shared by actions that could disrupt the ongoing word. Tossing one's held cube stays available.
@@ -704,7 +704,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     if (item.id !== 'wildcard') itemReady.set(addr, clock + C.ITEM_COOLDOWN)
     touch(addr)
     sendProfile(addr)
-    toast(`${playerLabel(playerOf(addr)?.name ?? 'Player', addr)} used ${item.name}!`)
+    const detail = item.id === 'freeze' ? ` ${C.FREEZE_SECONDS}s of Time Freeze!` : item.id === 'reroll' ? ' A fresh pile of cubes!' : ''
+    toast(`${playerLabel(playerOf(addr)?.name ?? 'Player', addr)} used ${item.name}!${detail}`, undefined, 'powerup')
   }
 
   function on_hint(data: any, addr: string) {

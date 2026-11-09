@@ -11,6 +11,7 @@ export const cs = {
   showSettings: false, // the Settings panel is open
   settings: {} as Record<string, boolean | number>, // your saved switches and volume levels (SETTINGS, VOLUMES in config); missing = the default
   message: '',
+  messageKind: '',
   messageTime: 0,
   game: -1, // the game (pad) you hold a seat in, -1 in the lobby
   inGame: false, // false in the lobby, true once teleported into (or standing in) the game
@@ -28,7 +29,8 @@ export const cs = {
   messageSticky: false // the message stays until you let go of the cube you grabbed (the first HOLD_TIPS_STICKY grabs)
 }
 
-export function showMessage(text: string, seconds = 3) {
+export function showMessage(text: string, seconds = 3, kind = '') {
+  cs.messageKind = kind
   cs.message = text
   cs.messageTime = seconds
 }
@@ -48,4 +50,10 @@ export function volumeLevel(id: string): number {
   const v = cs.settings[id]
   if (typeof v === 'number') return v
   return VOLUMES.find((x) => x.id === id)?.default ?? 0
+}
+
+// Informational broadcasts must not replace the first mobile holding tutorials.
+export function showPowerupToast(text: string) {
+  if (cs.messageSticky) return
+  showMessage(text, 3, 'powerup')
 }

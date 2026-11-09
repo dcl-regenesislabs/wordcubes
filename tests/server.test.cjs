@@ -95,7 +95,10 @@ test('each successful power-up sends one toast to every game member only', async
     assert.equal(profile.items[item.id], 1)
     const toasts = h.sent.filter(m => m.name === 'toast')
     assert.equal(toasts.length, 1)
-    assert.equal(toasts[0].data.text, `Alice#lice used ${item.name}!`)
+    assert.equal(toasts[0].data.kind, 'powerup')
+    assert.ok(toasts[0].data.text.startsWith(`Alice#lice used ${item.name}!`))
+    if (item.id === 'freeze') assert.match(toasts[0].data.text, /20s of Time Freeze/)
+    if (item.id === 'reroll') assert.match(toasts[0].data.text, /A fresh pile of cubes/)
     assert.deepEqual(Array.from(toasts[0].to), ['alice', 'bob'])
 
     h.sent.length = 0
