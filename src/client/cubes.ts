@@ -218,7 +218,7 @@ function adopt(entity: Entity, letter: string, id: number): ClientCube {
   Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
   MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
   pointerEventsSystem.onPointerDown(
-    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
+    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.PICKUP_DISTANCE } },
     () => room.send('grab', { cubeId: id })
   )
   return { mode: 'free', holder: '', slot: -1, letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true, fall: null }

@@ -125,7 +125,7 @@ function newCopy(letter: string): Copy {
   MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
   const copy: Copy = { entity, hit, letter, cubeId: -1 }
   pointerEventsSystem.onPointerDown(
-    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.INTERACT_DISTANCE } },
+    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.PICKUP_DISTANCE } },
     () => {
       if (copy.cubeId >= 0) room.send('grab', { cubeId: copy.cubeId })
     }

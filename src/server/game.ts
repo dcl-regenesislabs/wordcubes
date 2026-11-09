@@ -630,7 +630,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     if (!cube || cube.mode !== 'free') return
     if (holders.has(addr)) return toast('Hands full. Click a frame to throw it, E to break it or F to throw it away.', addr)
     const p = playerOf(addr)
-    if (!p || Vector3.distance(p.pos, Vector3.create(cube.body.x, cube.body.y, cube.body.z)) > C.INTERACT_DISTANCE + 4) return
+    if (!p || Vector3.distance(p.pos, Vector3.create(cube.body.x, cube.body.y, cube.body.z)) > C.PICKUP_DISTANCE) return
     wakeNear(world, cube.body.x, cube.body.y, cube.body.z, C.CUBE_RADIUS * 3)
     cube.mode = 'held'
     cube.holder = addr

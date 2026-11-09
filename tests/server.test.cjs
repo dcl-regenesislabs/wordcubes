@@ -83,6 +83,29 @@ function harness() {
   return { config, profiles, server, Transform, Vector3, send, fill, grab, sent, systems, PlayerIdentityData, PlayerRanks, GameState }
 }
 
+test('pickup requires proximity in three dimensions, including requests sent directly to the server', () => {
+  for (const offset of [
+    { x: 6, y: 0, z: 0 }, // remote reach previously allowed from the platform
+    { x: 2.01, y: 0, z: 0 },
+    { x: 0, y: 2.01, z: 0 },
+    { x: 1.5, y: 0, z: 1.5 }
+  ]) {
+    const h = harness()
+    h.fill()
+    const cube = [...h.server.testing.cubes.values()].find(c => c.mode === 'free')
+    // Keep the player inside the arena for every case; only distance should reject the grab.
+    Object.assign(cube.body, { x: 8, y: h.config.CUBE_RADIUS, z: 0 })
+    h.Transform.get(1).position = h.Vector3.create(8 + offset.x, cube.body.y + offset.y, offset.z)
+    h.send('grab', { cubeId: cube.id })
+    assert.equal(cube.mode, 'free', `remote pickup must fail: ${JSON.stringify(offset)}`)
+    // A rejected request must leave the cube available for a nearby player.
+    h.Transform.get(1).position = h.Vector3.create(8 + h.config.PICKUP_DISTANCE, cube.body.y, 0)
+    h.send('grab', { cubeId: cube.id })
+    assert.equal(cube.mode, 'held', 'pickup at the configured boundary succeeds')
+    assert.equal(cube.holder, 'alice')
+  }
+})
+
 test('each successful power-up sends one toast to every game member only', async () => {
   for (const item of loadTs('src/config.ts').ITEMS) {
     const h = harness()
