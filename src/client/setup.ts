@@ -7,7 +7,7 @@ import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './f
 import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { predictSystem } from './predict'
 import { playThrowEmote } from './emotes'
-import { cs, showMessage, lockoutLeft } from './state'
+import { cs, showMessage, showPowerupToast, lockoutLeft } from './state'
 import { breakHeld, tossHeld } from './actions'
 import { grassSystem } from './grass'
 import { setupUi } from './ui'
@@ -194,6 +194,7 @@ export function initClient() {
   })
 
   room.onMessage('toast', (d) => {
+    if (d.kind === 'powerup') return showPowerupToast(d.text)
     // Phones: the server's "Holding X. ..." tip stays on screen until you place, break or toss that cube, for your first
     // HOLD_TIPS_STICKY grabs, so there is time to read it. After that, and for every other message, the usual 3 s.
     if (mobile() && d.text.startsWith('Holding ') && holdTips < HOLD_TIPS_STICKY) {

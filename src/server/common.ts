@@ -1,5 +1,5 @@
 // Helpers shared by the server manager and every game: who is online, profile messages and coins.
-import { engine, Transform, PlayerIdentityData } from '@dcl/sdk/ecs'
+import { engine, Transform, PlayerIdentityData, AvatarBase } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { room } from '../shared/messages'
@@ -7,6 +7,7 @@ import { profileOf, touch } from './profiles'
 
 export interface PlayerInfo {
   address: string
+  name: string
   pos: Vector3
   rot: Quaternion
 }
@@ -16,7 +17,7 @@ export function players(): PlayerInfo[] {
   for (const [entity, identity] of engine.getEntitiesWith(PlayerIdentityData)) {
     const t = Transform.getOrNull(entity)
     if (!t) continue
-    out.push({ address: identity.address.toLowerCase(), pos: t.position, rot: t.rotation })
+    out.push({ name: AvatarBase.getOrNull(entity)?.name || 'Player', address: identity.address.toLowerCase(), pos: t.position, rot: t.rotation })
   }
   return out
 }

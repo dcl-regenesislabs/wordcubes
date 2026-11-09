@@ -180,3 +180,40 @@ test('mobile layout uses device insets and follows safe-area changes', () => {
   assert.equal(desktop.platform.getUiRendererConfig().screenInset, 'none')
   assert.equal(desktop.platform.view().w, 2400)
 })
+
+test('power-up broadcasts preserve mobile holding tutorials and resume after release', () => {
+  const h = harness(true)
+  for (let grab = 0; grab < 3; grab++) {
+    h.state.showMessage('Holding X. Click a frame to throw it.', 0)
+    h.state.cs.messageSticky = true
+    for (const item of h.config.ITEMS) {
+      h.state.showPowerupToast(`Alice#abcd used ${item.name}!`)
+      assert.equal(h.state.cs.message, 'Holding X. Click a frame to throw it.')
+      assert.equal(h.state.cs.messageTime, 0)
+      assert.equal(h.state.cs.messageSticky, true)
+    }
+    h.state.cs.messageSticky = false // release, placement or leaving clears the tutorial
+    h.state.showPowerupToast('Alice#abcd used Bomb!')
+    assert.equal(h.state.cs.message, 'Alice#abcd used Bomb!')
+    assert.equal(h.state.cs.messageTime, 3)
+    assert.equal(h.state.cs.messageKind, 'powerup')
+  }
+})
+
+test('power-up player names render as plain text on phones', () => {
+  const h = harness(true)
+  const toast = h.module.Toast({ text: 'E F Click#abcd used Bomb!', plain: true })
+  const frame = toast.children[0]
+  const label = frame.children.find(child => child && child.type === 'Label')
+  assert.equal(label.props.value, 'E F Click#abcd used Bomb!')
+})
+
+test('desktop toast layout does not depend on mobile app button tuning', () => {
+  const h = harness(false)
+  const before = h.module.Toast({ text: 'Alice#abcd used Bomb!' })
+  h.config.MOBILE_APP_BUTTONS_Y = 0.8
+  h.config.MOBILE_APP_BUTTONS_RIGHT = 0.9
+  const after = h.module.Toast({ text: 'Alice#abcd used Bomb!' })
+  assert.deepEqual(after.props.pad, before.props.pad)
+  assert.equal(after.children[0].props.width, before.children[0].props.width)
+})

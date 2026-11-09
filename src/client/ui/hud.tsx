@@ -333,7 +333,7 @@ function CoinsRow(props: { size: number }) {
 
 const estW = (text: string, font: number) => Math.round(text.length * font * 0.55)
 
-// Phones: the latest message as a toast at the top left, under the app's buttons and left of the top bar's question,
+// The latest message as a toast at the top left, under the app's buttons and left of the top bar's question,
 // instead of a wide pill at the bottom. Narrow, so long messages wrap onto a few short lines.
 // The server's texts name the desktop keys ("E to break", "throw it back with F"): on a phone those keys are the native
 // buttons, so they show as the same icons inline, and "Click" reads "Tap".
@@ -352,33 +352,33 @@ export function toastPieces(text: string): ToastPiece[] {
 // The toast on screen, kept by the HUD system (updateHud) so it can slide out after the message is gone.
 const TOAST_IN_MS = 220
 const TOAST_OUT_MS = 380
-let toast = { text: '', at: 0, leaving: 0 }
+let toast = { text: '', kind: '', at: 0, leaving: 0 }
 function trackToast() {
-  const text = mobile() ? message() : ''
+  const text = message()
   const now = Date.now()
-  if (text !== '' && text !== toast.text) toast = { text, at: now, leaving: 0 }
-  else if (text !== '' && toast.leaving) toast = { text, at: now, leaving: 0 }
+  if (text !== '' && text !== toast.text) toast = { text, kind: cs.messageKind, at: now, leaving: 0 }
+  else if (text !== '' && toast.leaving) toast = { text, kind: cs.messageKind, at: now, leaving: 0 }
   else if (text === '' && toast.text !== '' && !toast.leaving) toast.leaving = now
-  else if (toast.leaving && now - toast.leaving > TOAST_OUT_MS) toast = { text: '', at: 0, leaving: 0 }
+  else if (toast.leaving && now - toast.leaving > TOAST_OUT_MS) toast = { text: '', kind: '', at: 0, leaving: 0 }
 }
 const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3)
-/** Phones: the toast now, and how far it has slid (px): from the right as it comes in, off to the left as it goes. */
-export function MobileToast() {
+/** The toast now, and how far it has slid (px): from the right as it comes in, off to the left as it goes. */
+export function HudToast() {
   if (toast.text === '') return null
   const now = Date.now()
   const enter = 1 - ease((now - toast.at) / TOAST_IN_MS)
   const leave = toast.leaving ? ease((now - toast.leaving) / TOAST_OUT_MS) : 0
-  return <Toast text={toast.text} shift={Math.round(enter * S(60) - leave * view().w * 0.5)} />
+  return <Toast text={toast.text} plain={toast.kind === 'powerup'} shift={Math.round(enter * S(60) - leave * view().w * 0.5)} />
 }
 
-export function Toast(props: { text: string; shift?: number }) {
+export function Toast(props: { text: string; plain?: boolean; shift?: number }) {
   if (props.text === '') return null
   const font = S(20)
   const icon = Math.round(font * 1.5)
   const left = mobile() ? 0 : EDGE() + S(40) // mobile renderer already applies the device safe area
-  const w = Math.min(S(360), Math.max(S(200), mobileLayout(null).left - S(16) - left)) // ends before the top bar (and its question) starts
+  const w = mobile() ? Math.min(S(360), Math.max(S(200), mobileLayout(null).left - S(16) - left)) : S(360) // ends before the top bar (and its question) starts
   const inner = w - S(28)
-  const pieces = toastPieces(props.text)
+  const pieces: ToastPiece[] = mobile() && !props.plain ? toastPieces(props.text) : [{ text: props.text }]
   const withIcons = pieces.some((p) => 'icon' in p)
   // Word by word (only needed for the icons): each word gets a generous width of its own, since glyphs run wider than
   // the usual estimate, and a full space after it. Without icons the text is one Label with real spaces.
@@ -400,7 +400,7 @@ export function Toast(props: { text: string; shift?: number }) {
   const h = Math.min(4, lines) * lineH + S(22)
   const top = mobile()
     ? mobileLayout(null).top + mobileLayout(null).barH + S(24)
-    : Math.round(view().h * (C.MOBILE_APP_BUTTONS_Y + 0.08))
+    : S(170)
   return (
     <Layer justify="flex-start" align="flex-start" pad={{ top, left: left + (props.shift ?? 0) }}>
       <Frame width={w} height={h} edge={PAL.violetLight} fill={PAL.violetGlass} radius={S(18)} border={S(3)} align="center" justify="center">
@@ -427,7 +427,7 @@ export function Toast(props: { text: string; shift?: number }) {
   )
 }
 
-// What you are holding, the latest message and one line of help, centred at the bottom. (Phones: the message is a Toast.)
+// What you are holding and one line of help, centred at the bottom.
 function BottomArea() {
   const held = heldLetter()
   const phone = mobile()
@@ -438,9 +438,7 @@ function BottomArea() {
     : phone
       ? 'Tap a cube to grab it'
       : 'Click a cube to grab it'
-  const msgFont = S(30)
   const helpFont = S(22)
-  const msgW = clamp(estW(message(), msgFont) + S(60), S(200), fit(view().w, 0.8))
   const helpW = clamp(estW(help, helpFont) + S(50), S(200), fit(view().w, 0.8))
   const heldSize = S(76)
   return (
@@ -455,11 +453,6 @@ function BottomArea() {
           <OutlineLabel value={held === '*' ? 'Wildcard' : 'Holding'} fontSize={S(26)} color={held === '*' ? PAL.yellow : PAL.text} width={S(130)} height={heldSize} />
           <LetterTile size={heldSize} index={held.charCodeAt(0)} letter={held === '*' ? '?' : held} state="locked" />
         </UiEntity>
-      )}
-      {!phone && message() !== '' && (
-        <Frame width={msgW} height={S(56)} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(28)} align="center" justify="center" margin={{ bottom: S(8) }}>
-          <Label value={message()} fontSize={msgFont} font="sans-serif" color={PAL.text} textWrap="nowrap" uiTransform={{ width: '100%', height: '100%' }} />
-        </Frame>
       )}
       <Frame width={helpW} height={S(40)} edge={c(0, 0, 0, 0)} fill={c(0.2, 0.1, 0.4, 0.6)} radius={S(20)} border={0} align="center" justify="center">
         <Label value={help} fontSize={helpFont} font="sans-serif" color={PAL.dim} textWrap="nowrap" uiTransform={{ width: '100%', height: '100%' }} />
@@ -883,25 +876,14 @@ export function GameHud() {
       {g && g.phase === 'playing' && <LevelBanner />}
       <SidePanel g={g} />
       <BottomArea />
-      {mobile() && <MobileToast />}
+      <HudToast />
     </UiEntity>
   )
 }
 
 // The latest message ("Starting game #2", "You left game 2", "Game 3 is full") while you are in the lobby.
 export function LobbyMessage() {
-  const text = cs.message
-  if (mobile()) return <MobileToast />
-  if (text === '') return null
-  const msgFont = S(30)
-  const msgW = clamp(estW(text, msgFont) + S(60), S(200), fit(view().w, 0.8))
-  return (
-    <Layer justify="flex-end" pad={{ bottom: S(36) + BOTTOM_RESERVE() }}>
-      <Frame width={msgW} height={S(56)} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(28)} align="center" justify="center">
-        <Label value={text} fontSize={msgFont} font="sans-serif" color={PAL.text} textWrap="nowrap" uiTransform={{ width: '100%', height: '100%' }} />
-      </Frame>
-    </Layer>
-  )
+  return <HudToast />
 }
 
 // The whole HUD until the server has answered (connection.ts): a small line at the bottom, and clicks stop here.

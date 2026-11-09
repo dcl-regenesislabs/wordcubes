@@ -4,6 +4,7 @@ import { engine, Transform } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
+import { playerLabel } from '../shared/player-label'
 import { pickWord } from './words'
 import { profileOf, touch, ratingDelta } from './profiles'
 import { room } from '../shared/messages'
@@ -160,8 +161,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     ;(room as any).send(name, data, { to })
   }
 
-  function toast(text: string, to?: string) {
-    bcast('toast', { text }, to ? [to] : members())
+  function toast(text: string, to?: string, kind?: 'powerup') {
+    bcast('toast', { text, kind }, to ? [to] : members())
   }
 
   // Server-side gate shared by actions that could disrupt the ongoing word. Tossing one's held cube stays available.
@@ -743,16 +744,16 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
       if (ok) wildcardUsed = true
     } else if (item.id === 'freeze') {
       freezeLeft = C.FREEZE_SECONDS
-      toast(`${C.FREEZE_SECONDS}s of Time Freeze!`)
     } else if (item.id === 'reroll') {
       rerollPile()
-      toast('A fresh pile of cubes!')
     } else if (item.id === 'bomb') ok = bombAt(addr)
     if (!ok) return
     p.items[item.id]--
     if (item.id !== 'wildcard') itemReady.set(addr, clock + C.ITEM_COOLDOWN)
     touch(addr)
     sendProfile(addr)
+    const detail = item.id === 'freeze' ? ` ${C.FREEZE_SECONDS}s of Time Freeze!` : item.id === 'reroll' ? ' A fresh pile of cubes!' : ''
+    toast(`${playerLabel(playerOf(addr)?.name ?? 'Player', addr)} used ${item.name}!${detail}`, undefined, 'powerup')
   }
 
   function on_hint(data: any, addr: string) {

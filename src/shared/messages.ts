@@ -43,7 +43,7 @@ export const room = registerMessages({
   cubeMoves: Schemas.Map({ g: Schemas.Int, s: Schemas.Int, o: Schemas.Vector3, d: Schemas.Array(Schemas.Short) }),
   entered: Schemas.Map({ game: Schemas.Int, ok: Schemas.Int }), // answer to enter: 1 seat granted, 0 game full
   eject: Schemas.Map({ n: Schemas.Int }), // you stand in an arena without a seat: go back to the lobby
-  toast: Schemas.Map({ text: Schemas.String }),
+  toast: Schemas.Map({ text: Schemas.String, kind: Schemas.Optional(Schemas.String) }),
   fx: Schemas.Map({ kind: Schemas.String, slot: Schemas.Int }), // 'lock' | 'fail' | 'win'
   coins: Schemas.Map({ value: Schemas.Int }),
   burst: Schemas.Map({ x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, gold: Schemas.Int }), // effect here: 0 grey puff (needed letter broken), 1 gold sparks (coin break), 2 bomb blast
