@@ -1,0 +1,48 @@
+name: Deploy
+
+# Merge to main -> testing world (.zone). Published release or manual run -> production world (.org).
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  DEPLOY_ENV: ${{ github.event_name == 'push' && 'testing' || 'production' }}
+
+concurrency:
+  group: world-deploy-${{ github.event_name == 'push' && 'testing' || 'production' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Same pin as marsh-colony: newer Node security releases trigger node-fetch v2
+          # "Premature close" errors that break @dcl/sdk-commands deploys.
+          node-version: 22.22.0
+      # No package-lock in this repo: install the SDK matching the pinned multiplayer runtime, like build.yml.
+      - name: Install the SDK matching the pinned multiplayer runtime
+        run: |
+          dcl_sdk_version=$(node -p "require('./package.json').devDependencies['@dcl/js-runtime']")
+          npm install --no-save --no-package-lock "@dcl/sdk@$dcl_sdk_version"
+      - name: Build scene
+        run: npm run build
+      - name: Deploy scene
+        run: npm run deploy:${{ env.DEPLOY_ENV }}
+        env:
+          DCL_PRIVATE_KEY: ${{ secrets.DCL_WORLDS_PRIVATE_KEY }}
