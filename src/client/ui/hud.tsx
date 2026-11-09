@@ -904,6 +904,16 @@ export function LobbyMessage() {
   )
 }
 
+// The whole HUD until the server has answered (connection.ts): a small line at the bottom, and clicks stop here.
+export function ConnectingGate(props: { slow: boolean }) {
+  const text = props.slow ? 'Still connecting to the server...' : 'Connecting to the server...'
+  return (
+    <UiEntity uiTransform={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'flex-end', pointerFilter: 'block' }}>
+      <Label value={text} fontSize={S(18)} font="sans-serif" color={PAL.dim} textAlign="middle-center" uiTransform={{ width: '100%', height: S(30), margin: { bottom: S(60) + BOTTOM_RESERVE() } }} />
+    </UiEntity>
+  )
+}
+
 // Shown while standing on the start pad in the lobby.
 export function LobbyCountdown() {
   const n = cs.lobbyCountdown

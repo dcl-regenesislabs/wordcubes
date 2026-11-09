@@ -1,6 +1,5 @@
 import { engine, inputSystem, InputAction, PointerEventType, TouchScreenControls } from '@dcl/sdk/ecs'
 import { getPlayer } from '@dcl/sdk/players'
-import { isStateSyncronized } from '@dcl/sdk/network'
 import { room } from '../shared/messages'
 import { myState } from './gamestate'
 import { buildSlots, clearSlots, disableArenaPassports, setSlotClickHandler } from './arena'
@@ -24,8 +23,8 @@ import { rankTagSystem } from './ranktags'
 import { leaderboardSystem } from './leaderboard'
 import { setupCheats } from './cheats'
 import { SFX, playSfx, preloadSfx, audioSystem, onCoins } from './audio'
+import { connectionSystem, serverReady, setupConnection } from './connection'
 
-let joined = false
 const HOLD_TIPS_STICKY = 3
 let holdTips = 0 // how many sticky "Holding" tips you have had this session
 let stickySawHold = false // the grab reached us (the tip can arrive a frame before the cube's synced state)
@@ -46,10 +45,8 @@ function clientSystem(dt: number) {
     const p = getPlayer()
     if (p) cs.myAddress = p.userId.toLowerCase()
   }
-  if (!joined && cs.myAddress && isStateSyncronized()) {
-    joined = true
-    room.send('join', { n: 0 })
-  }
+  connectionSystem(dt) // sends 'join' until the server answers; freezes you and hides the HUD until then
+  if (!serverReady()) return
 
   // keep the frame row in step with the server's word
   const g = myState()
@@ -171,6 +168,7 @@ function syncTouchButtons(holding: boolean, inGame: boolean, items: boolean) {
 export function initClient() {
   syncTouchButtons(false, false, false)
   preloadSfx()
+  setupConnection()
   setupUi()
   setupLobby()
   setupFx()
