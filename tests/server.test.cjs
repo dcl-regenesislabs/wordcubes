@@ -86,9 +86,9 @@ function harness() {
 test('pickup requires proximity in three dimensions, including requests sent directly to the server', () => {
   for (const offset of [
     { x: 6, y: 0, z: 0 }, // remote reach previously allowed from the platform
-    { x: 2.01, y: 0, z: 0 },
-    { x: 0, y: 2.01, z: 0 },
-    { x: 1.5, y: 0, z: 1.5 }
+    { x: 2.71, y: 0, z: 0 },
+    { x: 0, y: 2.71, z: 0 },
+    { x: 2, y: 0, z: 2 }
   ]) {
     const h = harness()
     h.fill()
@@ -99,11 +99,36 @@ test('pickup requires proximity in three dimensions, including requests sent dir
     h.send('grab', { cubeId: cube.id })
     assert.equal(cube.mode, 'free', `remote pickup must fail: ${JSON.stringify(offset)}`)
     // A rejected request must leave the cube available for a nearby player.
-    h.Transform.get(1).position = h.Vector3.create(8 + h.config.PICKUP_DISTANCE, cube.body.y, 0)
+    h.Transform.get(1).position = h.Vector3.create(8 + h.config.PICKUP_CENTER_DISTANCE, cube.body.y, 0)
     h.send('grab', { cubeId: cube.id })
     assert.equal(cube.mode, 'held', 'pickup at the configured boundary succeeds')
     assert.equal(cube.holder, 'alice')
   }
+})
+
+test('server accepts the client surface reach plus the rotated collider corner margin', () => {
+  const h = harness()
+  h.fill()
+  const cube = [...h.server.testing.cubes.values()].find(c => c.mode === 'free')
+  Object.assign(cube.body, { x: 8, y: h.config.CUBE_HALF, z: 0 })
+  const corner = Math.sqrt(3) * 0.25 * h.config.CUBE_SCALE
+  h.Transform.get(1).position = h.Vector3.create(8 + h.config.PICKUP_DISTANCE + corner - 0.001, cube.body.y, 0)
+  h.send('grab', { cubeId: cube.id })
+  assert.equal(cube.mode, 'held')
+})
+
+test('platform edge cannot grab a cube resting against the pedestal, but nearby ground can', () => {
+  const h = harness()
+  h.fill()
+  const cube = [...h.server.testing.cubes.values()].find(c => c.mode === 'free')
+  Object.assign(cube.body, { x: h.config.STAGE_RADIUS + h.config.CUBE_RADIUS, y: h.config.CUBE_HALF, z: 0 })
+  h.Transform.get(1).position = h.Vector3.create(h.config.STAGE_RADIUS, h.config.STAGE_TOP, 0)
+  h.send('grab', { cubeId: cube.id })
+  assert.equal(cube.mode, 'free')
+  assert.ok(h.sent.some(m => m.name === 'toast' && /Step off/.test(m.data.text)))
+  h.Transform.get(1).position = h.Vector3.create(cube.body.x + 1, h.config.FLOOR_Y, 0)
+  h.send('grab', { cubeId: cube.id })
+  assert.equal(cube.mode, 'held')
 })
 
 test('each successful power-up sends one toast to every game member only', async () => {
