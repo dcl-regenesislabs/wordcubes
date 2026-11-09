@@ -55,6 +55,9 @@ export const THROW_FLIGHT_TIME = 0.75
 export const THROW_ARC_HEIGHT = 1.6
 export const HOLD_EMOTE = 'models/carry_box_emote.glb'
 export const THROW_EMOTE = 'models/throw_ball_emote.glb'
+// Clients measure reach to the pointer box surface; the server measures to its centre.
+export const PICKUP_DISTANCE = 2
+export const PICKUP_CENTER_DISTANCE = PICKUP_DISTANCE + Math.sqrt(3) * 0.25 * CUBE_SCALE
 export const INTERACT_DISTANCE = 10
 // Cubes don't block the player: the player pushes them instead (see PLAYER_RADIUS). If true, settled
 // cubes would get a hard physics collider on top of that.
