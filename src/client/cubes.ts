@@ -1,4 +1,4 @@
-// Client view of the server's cubes. Free cubes are rendered from their synced Transform. For every other mode the
+// Client view of the server's cubes (local entities kept by cubenet.ts). Free cubes are rendered from their Transform. For every other mode the
 // server parks the real cube underground and this module draws a local copy ("proxy"): carried on a player's head
 // bone, flying to a frame, or sitting in a frame.
 import {
@@ -42,7 +42,7 @@ interface ClientCube {
   sinceSnap: number
   idle: number
   smooth: Entity | null
-  // Local click target riding on the synced cube (the server gives the cube no collider). Switched off while the
+  // Local click target riding on the cube entity (the server sends no collider). Switched off while the
   // cube is drawn as a predicted copy (the copy carries its own click) so there is never a second, invisible target.
   hit: Entity
   hitOn: boolean
@@ -209,7 +209,7 @@ function smoothFree(entity: Entity, c: ClientCube, dt: number) {
   t.rotation = Quaternion.slerp(t.rotation, tr.rotation, k)
 }
 
-// A cube of the game you play in: give the synced entity its model (the server sends none, see cubemodel.ts) and a
+// A cube of the game you play in (built from the server's messages, cubenet.ts): give it its model (cubemodel.ts) and a
 // click target.
 function adopt(entity: Entity, letter: string, id: number): ClientCube {
   addCubeModel(entity, letter)
@@ -253,7 +253,7 @@ function endFall(entity: Entity, c: ClientCube, alive: boolean) {
 }
 
 // Drop everything this client added for a cube: it was removed, or it belongs to a game you are not in (any more).
-// `alive` = the synced entity still exists.
+// `alive` = the cube entity still exists.
 function forgetCube(entity: Entity, c: ClientCube, alive: boolean) {
   if (c.mode === 'held' && c.holder === cs.myAddress) stopHoldEmote()
   if (c.smooth) engine.removeEntity(c.smooth)
