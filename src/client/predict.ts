@@ -55,7 +55,7 @@ interface Copy {
 }
 
 interface Local {
-  entity: Entity // the real, synced cube
+  entity: Entity // the real cube (cubenet.ts keeps it where the server says)
   id: number
   letter: string
   body: Body

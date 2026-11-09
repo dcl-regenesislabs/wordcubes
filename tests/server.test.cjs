@@ -48,18 +48,22 @@ function harness() {
   const common = loadTs('src/server/common.ts', {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math, '../config': config, '../shared/messages': { room }, './profiles': profiles
   })
+  const cubenet = loadTs('src/shared/cubenet.ts')
+  const cubesync = loadTs('src/server/cubesync.ts', { '../config': config, '../shared/messages': { room }, '../shared/cubenet': cubenet })
   const game = loadTs('src/server/game.ts', {
-    '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math, '@dcl/sdk/network': { syncEntity: noop },
+    '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math,
     '../config': config, './words': { pickWord: () => ({ answer: 'DOG', question: 'A pet?' }) },
     './profiles': profiles, '../shared/messages': { room }, '../shared/env': env, '../shared/schemas': schemas,
     '../shared/world': world, './common': common,
     '../shared/pushers': { PusherTracker: class { update() { return { x: 0, y: 0, z: 0, vx: 0, vz: 0 } } prune() {} } },
-    '../sim/physics': loadTs('src/sim/physics.ts')
+    '../sim/physics': loadTs('src/sim/physics.ts'),
+    '../shared/cubenet': cubenet, './cubesync': cubesync
   })
   const server = loadTs('src/server/server.ts', {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/network': { syncEntity: noop }, '@dcl/sdk/server': { Storage },
     '../config': config, './profiles': profiles, '../shared/messages': { room }, '../shared/env': env,
-    '../shared/schemas': schemas, './common': common, './game': game
+    '../shared/schemas': schemas, './common': common, './game': game,
+    './netstats': { setupNetStats: noop, recordTick: noop, netAccessTick: noop, forgetNetAccess: noop } // the dev-only live monitor is not under test
   }, 'exports.games = games; exports.publishRanks = publishRanks')
   server.initServer()
   const g0 = server.games[0]
@@ -403,4 +407,119 @@ test('a running game cannot be restarted from its pad and takes players mid-roun
   h.send('enter', { game: 0 }, 'bob')
   assert.equal(h.sent.filter(m => m.name === 'entered').pop().data.ok, 1, 'joined straight into the running game')
   assert.equal(g0.round, round, 'joining does not restart the round')
+})
+
+// ---- cubes travel as per-game messages (server/cubesync.ts -> client/cubenet.ts), not as synced entities ----
+
+// The client's cube mirror (client/cubenet.ts) on plain component doubles, fed with the server's messages.
+function cubeClient(h) {
+  let next = 100000
+  const comp = () => {
+    const values = new Map()
+    return { values, create: (e, v) => values.set(e, { ...v }), get: e => values.get(e), getMutable: e => values.get(e) }
+  }
+  const Transform = comp()
+  const CubeData = comp()
+  const engine = { addEntity: () => next++, removeEntity: e => { Transform.values.delete(e); CubeData.values.delete(e) } }
+  const handlers = new Map()
+  const out = []
+  const room = { onMessage: (name, fn) => handlers.set(name, fn), send: (name, data) => out.push({ name, data }) }
+  const cs = { game: -1 }
+  const Quaternion = { fromEulerDegrees: (x, y, z) => ({ y }), slerp: (a, b) => b }
+  const mod = loadTs('src/client/cubenet.ts', {
+    '@dcl/sdk/ecs': { engine, Transform }, '@dcl/sdk/math': { Vector3: h.Vector3, Quaternion }, '../config': h.config,
+    '../shared/messages': { room }, '../shared/schemas': { CubeData }, '../shared/cubenet': loadTs('src/shared/cubenet.ts'), './state': { cs }
+  })
+  mod.setupCubeNet()
+  let read = 0
+  return {
+    cs, out, Transform, CubeData,
+    system: dt => mod.cubeNetSystem(dt),
+    // hand the client every cube message the server sent to `addr` since last time (skip: drop some, like a lossy link)
+    deliver(addr, skip = () => false) {
+      for (; read < h.sent.length; read++) {
+        const m = h.sent[read]
+        if (!m.name.startsWith('cube') || !(m.to ?? []).includes(addr) || skip(m)) continue
+        handlers.get(m.name)(m.data)
+      }
+    },
+    cubes: () => [...CubeData.values.entries()].map(([e, d]) => ({ ...d, pos: Transform.get(e).position })),
+    // the client's requests reach the server
+    forward(addr) {
+      for (const m of out.splice(0)) h.send(m.name, m.data, addr)
+    }
+  }
+}
+
+const tickServer = (h, seconds) => {
+  for (let t = 0; t < seconds; t += 1 / 30) h.systems.get('word-cubes-server')(1 / 30)
+}
+
+test('cube messages reach only the players seated in that game, and each one stays small', () => {
+  const h = harness()
+  h.send('enter', { game: 1 }, 'bob') // bob plays game 1, alice game 0
+  tickServer(h, 3)
+  const cubeMsgs = h.sent.filter(m => m.name === 'cubeState' || m.name === 'cubeMoves')
+  assert.ok(cubeMsgs.length > 0)
+  for (const m of cubeMsgs) {
+    assert.deepEqual([...m.to], m.data.g === 0 ? ['alice'] : ['bob'], `${m.name} for game ${m.data.g} goes to its players only`)
+    assert.ok(m.data.d.length * 2 < 8 * 1024, `${m.name} is ${m.data.d.length * 2} bytes`)
+  }
+  // every cube of game 0 reached alice in a cubeState
+  const ids = new Set()
+  for (const m of cubeMsgs) if (m.name === 'cubeState' && m.data.g === 0) for (let i = 0; i < m.data.d.length; i += 9) ids.add(m.data.d[i])
+  assert.deepEqual([...ids].sort(), [...h.server.games[0].cubes.keys()].sort())
+})
+
+test('the client rebuilds its game from the messages and recovers from a lost one', () => {
+  const h = harness()
+  const c = cubeClient(h)
+  c.cs.game = 0 // alice's seat in game 0
+  c.system(1 / 30)
+  assert.equal(c.out[0].name, 'cubeSync', 'entering a game asks for its cubes')
+  c.forward('alice')
+  tickServer(h, 3) // the pile settles and is created
+  c.deliver('alice')
+  c.system(1)
+  const server = [...h.server.games[0].cubes.values()]
+  const client = new Map(c.cubes().map(x => [x.id, x]))
+  assert.equal(client.size, server.length, 'one local cube per server cube')
+  for (const s of server) {
+    const x = client.get(s.id)
+    assert.equal(x.letter, s.letter)
+    assert.equal(x.mode, 'free')
+    assert.ok(Math.abs(x.pos.x - s.body.x) < 0.01 && Math.abs(x.pos.z - s.body.z) < 0.01, 'same spot, to the cm')
+  }
+  assert.ok(c.cubes().every(x => x.born > 0), 'a fresh pile plays its fall')
+
+  // alice grabs a cube, but that cubeState never arrives
+  const cube = server.find(s => s.mode === 'free')
+  h.grab(cube)
+  tickServer(h, 0.5)
+  c.deliver('alice', m => m.name === 'cubeState')
+  assert.equal(client.get(cube.id).mode, 'free', 'the grab was lost on the way')
+  tickServer(h, h.config.CUBE_SYNC_COOLDOWN + 0.5)
+  c.deliver('alice')
+  c.system(h.config.CUBE_SYNC_COOLDOWN + 0.1)
+  assert.ok(c.out.some(m => m.name === 'cubeSync'), 'the gap in the sequence asks for the full state')
+  c.forward('alice')
+  c.deliver('alice')
+  const held = c.cubes().find(x => x.id === cube.id)
+  assert.equal(held.mode, 'held')
+  assert.equal(held.holder, 'alice')
+  assert.equal(c.cubes().length, h.server.games[0].cubes.size)
+})
+
+test('leaving the game drops its cubes on the client', () => {
+  const h = harness()
+  const c = cubeClient(h)
+  c.cs.game = 0
+  c.system(1 / 30)
+  c.forward('alice')
+  tickServer(h, 3)
+  c.deliver('alice')
+  assert.ok(c.cubes().length > 0)
+  c.cs.game = -1
+  c.system(1 / 30)
+  assert.equal(c.cubes().length, 0)
 })
