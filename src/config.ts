@@ -280,3 +280,8 @@ export const MOBILE_TOP_BAR_HEIGHT = 0.09
 // DEV ONLY: on phones, show every custom native button at once (break, toss, hint, how to play, settings, back to
 // lobby), whatever you are doing, to check their icons and layout. Set to false before merging.
 export const TOUCH_CONTROLS_DEBUG = false
+
+// DEV ONLY: skip the "Connecting to the server" gate (client/connection.ts): no freeze, HUD at once. Set to false before merging.
+export const SKIP_SERVER_GATE = false
+export const SERVER_GATE_HINT_SECONDS = 8 // after this long still connecting, the gate says so
+export const JOIN_RETRY_SECONDS = 2 // 'join' goes out again this often until the server answers with your profile
