@@ -5,6 +5,7 @@ import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import { syncEntity } from '@dcl/sdk/network'
 import * as C from '../config'
+import { playerLabel } from '../shared/player-label'
 import { pickWord } from './words'
 import { profileOf, touch, ratingDelta } from './profiles'
 import { room } from '../shared/messages'
@@ -695,16 +696,15 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
       if (ok) wildcardUsed = true
     } else if (item.id === 'freeze') {
       freezeLeft = C.FREEZE_SECONDS
-      toast(`${C.FREEZE_SECONDS}s of Time Freeze!`)
     } else if (item.id === 'reroll') {
       rerollPile()
-      toast('A fresh pile of cubes!')
     } else if (item.id === 'bomb') ok = bombAt(addr)
     if (!ok) return
     p.items[item.id]--
     if (item.id !== 'wildcard') itemReady.set(addr, clock + C.ITEM_COOLDOWN)
     touch(addr)
     sendProfile(addr)
+    toast(`${playerLabel(playerOf(addr)?.name ?? 'Player', addr)} used ${item.name}!`)
   }
 
   function on_hint(data: any, addr: string) {

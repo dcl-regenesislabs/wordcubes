@@ -13,6 +13,7 @@ function harness() {
   }
   const Transform = component()
   const PlayerIdentityData = component()
+  const AvatarBase = component()
   const CubeData = component()
   const GameState = component()
   const PlayerRanks = component()
@@ -42,7 +43,7 @@ function harness() {
   const handlers = new Map()
   const sent = []
   const room = { onMessage: (name, fn) => handlers.set(name, fn), send: (name, data, opts) => sent.push({ name, data, to: opts && opts.to }) }
-  const ecs = { engine, Transform, PlayerIdentityData, GltfContainer, ColliderLayer: { CL_NONE: 0 } }
+  const ecs = { engine, Transform, PlayerIdentityData, AvatarBase, GltfContainer, ColliderLayer: { CL_NONE: 0 } }
   const math = { Vector3, Quaternion: { fromEulerDegrees: () => ({ x: 0, y: 0, z: 0, w: 1 }) } }
   const schemas = { CubeData, GameState, PlayerRanks, protectServerEntity: noop, modelFor: letter => letter }
   const common = loadTs('src/server/common.ts', {
@@ -52,6 +53,7 @@ function harness() {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math, '@dcl/sdk/network': { syncEntity: noop },
     '../config': config, './words': { pickWord: () => ({ answer: 'DOG', question: 'A pet?' }) },
     './profiles': profiles, '../shared/messages': { room }, '../shared/env': env, '../shared/schemas': schemas,
+    '../shared/player-label': loadTs('src/shared/player-label.ts'),
     '../shared/world': world, './common': common,
     '../shared/pushers': { PusherTracker: class { update() { return { x: 0, y: 0, z: 0, vx: 0, vz: 0 } } prune() {} } },
     '../sim/physics': loadTs('src/sim/physics.ts')
@@ -66,6 +68,7 @@ function harness() {
   server.testing = { cubes: g0.cubes, ...g0.testing, publishRanks: server.publishRanks, game: g0 }
   Transform.create(1, { position: Vector3.create(8, 0, 0), rotation: {} })
   PlayerIdentityData.create(1, { address: 'alice' })
+  AvatarBase.create(1, { name: 'Alice' })
   const send = (name, data = {}, from = 'alice') => handlers.get(name)(data, { from })
   send('enter', { game: 0 }) // alice takes a seat in game 0 (the player stands in its arena)
   const fill = () => server.testing.settlePile()
@@ -75,6 +78,38 @@ function harness() {
   }
   return { config, profiles, server, Transform, Vector3, send, fill, grab, sent, systems, PlayerIdentityData, PlayerRanks, GameState }
 }
+
+test('each successful power-up sends one toast to every game member only', async () => {
+  for (const item of loadTs('src/config.ts').ITEMS) {
+    const h = harness()
+    const profile = await h.profiles.retain('alice')
+    profile.items[item.id] = 2
+    h.fill()
+    for (const [entity, address] of [[2, 'bob'], [3, 'outsider']]) {
+      h.PlayerIdentityData.create(entity, { address })
+      h.Transform.create(entity, { position: h.Vector3.create(8, 0, 0), rotation: {} })
+    }
+    h.send('enter', { game: 0 }, 'bob')
+    h.sent.length = 0
+    h.send('useItem', { item: item.id })
+    assert.equal(profile.items[item.id], 1)
+    const toasts = h.sent.filter(m => m.name === 'toast')
+    assert.equal(toasts.length, 1)
+    assert.equal(toasts[0].data.text, `Alice#lice used ${item.name}!`)
+    assert.deepEqual(Array.from(toasts[0].to), ['alice', 'bob'])
+
+    h.sent.length = 0
+    h.send('useItem', { item: item.id })
+    assert.equal(profile.items[item.id], 1, 'rejected repeat use consumes nothing')
+    assert.ok(h.sent.filter(m => m.name === 'toast').every(m =>
+      m.data.text !== `Alice#lice used ${item.name}!` && m.to.length === 1 && m.to[0] === 'alice'
+    ), 'rejection feedback stays private')
+
+    h.sent.length = 0
+    h.send('useItem', { item: item.id }, 'outsider')
+    assert.equal(h.sent.length, 0, 'unseated players cannot announce a power-up')
+  }
+})
 
 test('repeated paid rerolls cannot replenish break rewards, while a new round can', async () => {
   const h = harness()
@@ -404,3 +439,10 @@ test('a running game cannot be restarted from its pad and takes players mid-roun
   assert.equal(h.sent.filter(m => m.name === 'entered').pop().data.ok, 1, 'joined straight into the running game')
   assert.equal(g0.round, round, 'joining does not restart the round')
 })
+
+ test('player labels preserve wallet suffix and truncate long names', () => {
+  const { playerLabel } = loadTs('src/shared/player-label.ts')
+  assert.equal(playerLabel('Alice', '0x1234abcd'), 'Alice#abcd')
+  assert.equal(playerLabel('ABCDEFGHIJKLMNOPQRST', '0x1234abcd'), 'ABCDEFGHIJKLM...#abcd')
+  assert.equal(playerLabel('Alice#abcd', '0x1234abcd'), 'Alice#abcd')
+ })
