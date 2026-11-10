@@ -23,6 +23,10 @@ export const netMon = {
 }
 
 // Traffic limits per client for the traffic light (the monitor's own netStatsReply is left out of them).
+export function toggleNetMonitor() {
+  if (netMon.allowed) netMon.open = !netMon.open
+}
+
 const WARN_KBS = 20
 const FAIL_KBS = 60
 const WARN_MSGS = 60
@@ -99,7 +103,10 @@ export function netStatsSystem(dt: number) {
     frames = 0
     trackSession()
   }
-  if (!netMon.open) return
+  if (!netMon.allowed || !netMon.open) {
+    askAcc = 0
+    return
+  }
   askAcc += dt
   if (askAcc >= 1) {
     askAcc = 0

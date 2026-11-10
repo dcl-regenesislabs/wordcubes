@@ -1,3 +1,4 @@
+import { netMon, toggleNetMonitor } from '../netstats'
 import ReactEcs, { Label, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
 import { myState, stateOf as stateOfGame } from '../gamestate'
@@ -700,18 +701,22 @@ export function ConfirmLeave() {
 // ---- settings: on/off switches, saved with your profile ----
 export function SettingsPanel() {
   const phone = mobile()
-  const w = fit(S(820))
-  const rowH = phone ? S(84) : S(96) // phones: a little tighter, so the card fits under the top bar
-  const border = S(6)
-  const pad = S(22)
+  const devAvailable = C.NET_STATS && netMon.allowed
+  const count = SETTINGS.length + C.VOLUMES.length + 1 + (devAvailable ? 1 : 0)
+  const scale = panelScale(820, (phone ? 52 : 64) + 46 + count * (phone ? 84 : 96) + 90)
+  const z = (n: number) => Math.round(S(n) * scale)
+  const w = fit(z(820))
+  const rowH = phone ? z(84) : z(96) // phones: a little tighter, so the card fits under the top bar
+  const border = z(6)
+  const pad = z(22)
   // Two columns on every row: the name and a short line on the left, the control centred in a fixed column on the right,
   // so the switches, flags and volume buttons all line up.
-  const ctrlW = S(280)
-  const textW = w - 2 * (border + pad) - ctrlW - S(12)
-  const descFont = mobile() ? S(18) : S(20)
-  const rows = SETTINGS.length + C.VOLUMES.length + 1 // + the language row
-  const titleH = phone ? S(52) : S(64)
-  const h = titleH + S(46) + rows * rowH + S(90)
+  const ctrlW = z(280)
+  const textW = w - 2 * (border + pad) - ctrlW - z(12)
+  const descFont = mobile() ? z(18) : z(20)
+  const rows = SETTINGS.length + C.VOLUMES.length + 1 + (devAvailable ? 1 : 0) // language and authorized developer controls
+  const titleH = phone ? z(52) : z(64)
+  const h = titleH + z(46) + rows * rowH + z(90)
   // phones: start below the top bar (the app's buttons and your coins), centred in the space under it
   const top = phone ? Math.round(view().h * MOBILE_TOP_BAR_BOTTOM) : 0
   const save = (id: string, value: boolean | number) => {
@@ -721,23 +726,23 @@ export function SettingsPanel() {
   const row = (key: string, label: string, desc: string, control: any) => (
     <UiEntity key={key} uiTransform={{ width: '100%', height: rowH, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', pointerFilter: 'none' }}>
       <UiEntity uiTransform={{ width: textW, height: rowH, flexDirection: 'column', justifyContent: 'center', pointerFilter: 'none' }}>
-        <Label value={label} fontSize={S(30)} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: '100%', height: S(40) }} />
-        <Label value={desc} fontSize={descFont} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap="wrap" textAlign="top-left" uiTransform={{ width: '100%', height: S(48) }} />
+        <Label value={label} fontSize={z(30)} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: '100%', height: z(40) }} />
+        <Label value={desc} fontSize={descFont} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap="wrap" textAlign="top-left" uiTransform={{ width: '100%', height: z(48) }} />
       </UiEntity>
       <UiEntity uiTransform={{ width: ctrlW, height: rowH, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>{control}</UiEntity>
     </UiEntity>
   )
   return (
     <Layer pad={{ top }}>
-      <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={S(30)} border={border} pad={pad} align="center" justify="flex-start" block>
-        <Label value={t('settings.title')} fontSize={phone ? S(38) : S(44)} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: titleH }} />
+      <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={z(30)} border={border} pad={pad} align="center" justify="flex-start" block>
+        <Label value={t('settings.title')} fontSize={phone ? z(38) : z(44)} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: titleH }} />
         {SETTINGS.map((s) => {
           const on = setting(s.id)
           return row(
             `set-${s.id}`,
             t(`setting.${s.id}.label`),
             t(`setting.${s.id}.desc`),
-            <PillButton id={`set-btn-${s.id}`} label={on ? t('common.on') : t('common.off')} width={S(150)} height={S(56)} font={S(26)} tint={on ? PAL.green : c(0.6, 0.55, 0.7, 0.8)} onClick={() => save(s.id, !on)} />
+            <PillButton id={`set-btn-${s.id}`} label={on ? t('common.on') : t('common.off')} width={z(150)} height={z(56)} font={z(26)} tint={on ? PAL.green : c(0.6, 0.55, 0.7, 0.8)} onClick={() => save(s.id, !on)} />
           )
         })}
         {row(
@@ -747,11 +752,11 @@ export function SettingsPanel() {
           mobile() ? t('settings.languageMobile') : t('settings.languageDesc'),
           mobile() ? (
             <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
-              <Flag lang={uiLang()} height={S(40)} margin={{ right: S(10) }} />
-              <Label value={LANG_NAMES[uiLang()]} fontSize={S(26)} font="sans-serif" color={PAL.ink} textWrap="nowrap" textAlign="middle-left" uiTransform={{ width: S(140), height: S(44) }} />
+              <Flag lang={uiLang()} height={z(40)} margin={{ right: z(10) }} />
+              <Label value={LANG_NAMES[uiLang()]} fontSize={z(26)} font="sans-serif" color={PAL.ink} textWrap="nowrap" textAlign="middle-left" uiTransform={{ width: z(140), height: z(44) }} />
             </UiEntity>
           ) : (
-            LANGS.map((l) => <FlagChip key={`ui-lang-${l}`} id={`ui-lang-${l}`} lang={l} height={S(48)} active={uiLang() === l} onClick={() => !C.UI_PREVIEW && pickUiLang(l)} />)
+            LANGS.map((l) => <FlagChip key={`ui-lang-${l}`} id={`ui-lang-${l}`} lang={l} height={z(48)} active={uiLang() === l} onClick={() => !C.UI_PREVIEW && pickUiLang(l)} />)
           )
         )}
         {C.VOLUMES.map((v) => {
@@ -762,29 +767,35 @@ export function SettingsPanel() {
             t(`volume.${v.id}.label`),
             t(`volume.${v.id}.desc`),
             <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
-              <PillButton id={`vol-down-${v.id}`} label="-" width={S(70)} height={S(56)} font={S(30)} onClick={() => step(-1)} />
-              <Label value={level === 0 ? t('common.off') : `${level * 10}%`} fontSize={S(26)} font="sans-serif" color={PAL.ink} uiTransform={{ width: S(110), height: S(56) }} />
-              <PillButton id={`vol-up-${v.id}`} label="+" width={S(70)} height={S(56)} font={S(30)} tint={PAL.green} onClick={() => step(1)} />
+              <PillButton id={`vol-down-${v.id}`} label="-" width={z(70)} height={z(56)} font={z(30)} onClick={() => step(-1)} />
+              <Label value={level === 0 ? t('common.off') : `${level * 10}%`} fontSize={z(26)} font="sans-serif" color={PAL.ink} uiTransform={{ width: z(110), height: z(56) }} />
+              <PillButton id={`vol-up-${v.id}`} label="+" width={z(70)} height={z(56)} font={z(30)} tint={PAL.green} onClick={() => step(1)} />
             </UiEntity>
           )
         })}
-        <UiEntity uiTransform={{ width: '100%', flexDirection: 'row', justifyContent: 'center', margin: { top: S(10) }, pointerFilter: 'none' }}>
+        {devAvailable && row(
+          'set-dev-panel',
+          'Activate dev panel',
+          'Live network, server and cube statistics',
+          <PillButton id="set-dev-toggle" label={netMon.open ? t('common.on') : t('common.off')} width={z(150)} height={z(56)} font={z(26)} tint={netMon.open ? PAL.green : c(0.6, 0.55, 0.7, 0.8)} onClick={() => { toggleNetMonitor(); if (netMon.open) cs.showSettings = false }} />
+        )}
+        <UiEntity uiTransform={{ width: '100%', flexDirection: 'row', justifyContent: 'center', margin: { top: z(10) }, pointerFilter: 'none' }}>
           {mobile() && (
             <PillButton
               id="settings-howto"
               label={t('hud.howTo')}
-              width={S(240)}
-              height={S(60)}
-              font={S(26)}
+              width={z(240)}
+              height={z(60)}
+              font={z(26)}
               tint={PAL.cyan}
-              margin={{ right: S(16) }}
+              margin={{ right: z(16) }}
               onClick={() => {
                 cs.showSettings = false
                 cs.showHowTo = true
               }}
             />
           )}
-          <PillButton id="settings-close" label={t('common.close')} width={S(220)} height={S(60)} font={S(28)} onClick={() => (cs.showSettings = false)} />
+          <PillButton id="settings-close" label={t('common.close')} width={z(220)} height={z(60)} font={z(28)} onClick={() => (cs.showSettings = false)} />
         </UiEntity>
       </Frame>
     </Layer>
