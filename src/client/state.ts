@@ -1,4 +1,5 @@
 import { SETTINGS, VOLUMES } from '../config'
+import type { Lang } from '../shared/lang'
 
 // Client-only UI state. Game state itself comes from the server's synced components.
 export const cs = {
@@ -24,6 +25,7 @@ export const cs = {
   countdownTitle: '', // what the countdown leads to: "Game starts in" (shared start) or "Joining in" (your join)
   padAction: '' as '' | 'start' | 'join' | 'full', // the button the pad you stand on offers ('' off the pad or counting)
   padGame: -1, // the game of that pad
+  padLang: 'en' as Lang, // the language picked on an idle pad before Start game (the game is played in it)
   itemsOpen: false, // phones: the row of power-ups opened from the native items button
   confirmLeave: false, // phones: the "leave this game?" card opened by the native back-to-lobby button
   messageSticky: false // the message stays until you let go of the cube you grabbed (the first HOLD_TIPS_STICKY grabs)

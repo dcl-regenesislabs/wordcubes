@@ -250,7 +250,8 @@ export const PAD_INFO_GAP = 2.9 // m from the number cube's centre down to the s
 const RANK_BADGE_FILES = ['rank1_letter', 'rank2_syllable', 'rank3_word', 'rank4_phrase', 'rank5_sentence', 'rank6_paragraph', 'rank7_author']
 export const rankBadgeImage = (rank: number) => `assets/images/sign_plates/${RANK_BADGE_FILES[rank]}.png`
 export const RANK_BADGE_SIZE = 0.6 // m across
-export const RANK_BADGE_HEIGHT = 0.35 // m from the name tag up to the badge's centre
+export const RANK_BADGE_HEIGHT = 0.35 // m from the name tag up to the badge's centre (phones)
+export const RANK_BADGE_HEIGHT_DESKTOP = 0.6 // desktop and Bevy draw a taller name tag: higher, so the badge clears it
 export const RANK_BADGE_GLOW = 0.5 // how much the badge lights itself (1 = full glow, 0 = only the scene's light)
 
 // The top players written on the lobby's Leaderboard sign (src/client/leaderboard.ts). Positions are in the sign
@@ -269,6 +270,8 @@ export const PAD_PLATE_IMAGE = 'assets/images/sign_plate.png'
 export const PAD_PLATE_WIDTH = 5.6 // m
 export const PAD_PLATE_GLOW = 0.3 // how much the plate lights itself (1 = full glow, 0 = only the scene's light)
 export const PAD_PLATE_DEPTH = 0.05 // m behind the text (towards +Z: the title faces the camera with its -Z side)
+export const PAD_FLAG_HEIGHT = 0.9 // m: the game's language flag, just left of the status plate (hidden while the game is idle)
+export const PAD_FLAG_GAP = 0.25 // m between the plate's edge and the flag
 export const PAD_TITLE_YAW: number = 180 // with PAD_TITLE_ROLL, stands the number upright on the cube's side faces
 export const PAD_TITLE_ROLL = -90 // (the frames' PLACED_ROLL comes out upside down here)
 

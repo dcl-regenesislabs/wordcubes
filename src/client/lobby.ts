@@ -15,6 +15,9 @@ import {
 import { Color3, Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
 import { movePlayerTo } from '~system/RestrictedActions'
 import * as C from '../config'
+import { isLang, LANG_NAMES, type Lang } from '../shared/lang'
+import { t, uiLang } from './i18n'
+import { FLAG_ATLAS, planeFlagUvs, flagAspect } from './ui/flags'
 import { envOrigin, arenaAt } from '../shared/env'
 import { room } from '../shared/messages'
 import { cs, showMessage } from './state'
@@ -79,7 +82,7 @@ function teleportToLobby(origin: Vector3, lookAt: Vector3) {
 /** Tell the server you left (it frees the seat) and say so on screen. */
 function leaveGame(game: number) {
   room.send('leave', { n: 0 })
-  if (game >= 0) showMessage(`You left game ${game + 1}`, 3)
+  if (game >= 0) showMessage(t('lobby.left', { n: game + 1 }), 3)
 }
 
 /** Button in the game HUD: back to the lobby island. Gives your seat up so someone else can take it. */
@@ -103,7 +106,7 @@ export function onEntered(game: number, ok: boolean) {
   if (waitingFor !== game) return
   waitingFor = -1
   if (!ok) {
-    showMessage(`Game ${game + 1} is full. Try another pad.`, 3)
+    showMessage(t('lobby.gameFull', { n: game + 1 }), 3)
     return
   }
   // The arena models are built on the spot: teleport once its floor and walls have loaded, or give up waiting
@@ -111,7 +114,7 @@ export function onEntered(game: number, ok: boolean) {
   requestArena(game)
   pendingTeleport = { game, left: C.ARENA_LOAD_TIMEOUT }
   playSfx(SFX.teleport)
-  showMessage(`Starting game #${game + 1}`, 4)
+  showMessage(t('lobby.starting', { n: game + 1 }), 4)
 }
 
 let pendingTeleport: { game: number; left: number } | undefined
@@ -125,7 +128,7 @@ export function onEjected() {
   cs.game = -1
   cs.inGame = false
   teleportToLobby(origin, padPos)
-  showMessage('That game is full or not yours. Pick a pad in the lobby.', 3)
+  showMessage(t('lobby.ejected'), 3)
 }
 
 interface PadView {
@@ -136,6 +139,8 @@ interface PadView {
   baseScale: Vector3
   label: Entity // the spinning number cube's root (see makeNumberCube)
   info: Entity
+  flag: Entity // the game's language flag beside the status line (makeFlag)
+  flagLang: Lang | null
   labelShown: number
   size: number // spring: 0 hidden, 1 shown
   sizeV: number
@@ -193,6 +198,37 @@ function addPlate(text: Entity) {
   })
 }
 
+// The language flag beside a pad's status line: a plane child of the line (so it turns to the camera with it), left of
+// the plate, cut from the flag atlas (ui/flags.tsx). Its texture coords pick the flag; scale 0 hides it.
+function makeFlag(flag: Entity, info: Entity) {
+  Transform.create(flag, { parent: info, scale: Vector3.Zero() })
+  const texture = Material.Texture.Common({ src: FLAG_ATLAS })
+  Material.setPbrMaterial(flag, {
+    texture,
+    emissiveTexture: texture,
+    emissiveColor: Color3.White(),
+    emissiveIntensity: C.PAD_PLATE_GLOW,
+    transparencyMode: MaterialTransparencyMode.MTM_ALPHA_BLEND,
+    metallic: 0,
+    roughness: 1,
+    castShadows: false
+  })
+}
+
+function showFlag(pad: PadView, lang: Lang | null) {
+  if (lang === pad.flagLang) return
+  pad.flagLang = lang
+  const tr = Transform.getMutable(pad.flag)
+  if (!lang) {
+    tr.scale = Vector3.Zero()
+    return
+  }
+  MeshRenderer.setPlane(pad.flag, planeFlagUvs(lang))
+  const w = C.PAD_FLAG_HEIGHT * flagAspect(lang)
+  tr.scale = Vector3.create(w, C.PAD_FLAG_HEIGHT, 1)
+  tr.position = Vector3.create(-(C.PAD_PLATE_WIDTH / 2 + C.PAD_FLAG_GAP + w / 2), 0, 0)
+}
+
 // The big number cube floating over a pad (assets/models/Cube<n>.glb, one per game): a root that spins about Y, with the
 // cube as its child turned so the number stands upright on its side faces.
 function makeNumberCube(game: number): Entity {
@@ -237,14 +273,23 @@ function padState(game: number): PadState {
   return { kind: 'idle' }
 }
 
-/** What the small line under a pad says about its game. */
+/** The language a game is played in (or about to be, during its start countdown), null while it is idle. */
+export function gameLang(game: number): Lang | null {
+  const lang = stateOf(game)?.lang ?? ''
+  return isLang(lang) ? lang : null
+}
+
+/** What the small line under a pad says about its game: its language, level and how many play. */
 function padInfo(game: number): string {
   const s = padState(game)
-  if (s.kind === 'counting') return `Starting in ${Math.max(1, Math.ceil(s.left))}...`
-  if (s.kind === 'idle') return 'Empty  -  start a game'
+  const code = gameLang(game)
+  const lang = code ? LANG_NAMES[code] : ''
+  if (s.kind === 'counting') return `${t('sign.counting', { s: Math.max(1, Math.ceil(s.left)) })}${lang ? `  -  ${lang}` : ''}`
+  if (s.kind === 'idle') return t('sign.idle')
   const g = stateOf(game)!
-  if (s.kind === 'full') return `Level ${g.difficulty}  -  ${g.players}/${C.MAX_PLAYERS_PER_GAME}  FULL`
-  return `In progress  -  Level ${g.difficulty}  -  ${g.players}/${C.MAX_PLAYERS_PER_GAME}`
+  const seats = `${g.players}/${C.MAX_PLAYERS_PER_GAME}`
+  if (s.kind === 'full') return `${lang}  -  ${t('sign.level', { n: g.difficulty })}  -  ${seats}  ${t('sign.full')}`
+  return `${lang}  -  ${t('sign.level', { n: g.difficulty })}  -  ${seats}`
 }
 
 let joinTimer = -1 // seconds left of your Join game countdown, -1 when none runs
@@ -256,7 +301,7 @@ export function pressStart() {
   if (cs.padAction !== 'start' || cs.padGame < 0) return
   startPressed = cs.padGame
   startPressTimer = 4
-  room.send('start', { game: cs.padGame })
+  room.send('start', { game: cs.padGame, lang: cs.padLang })
 }
 
 /** HUD button on the pad of a running game: your own short countdown, then you go in. */
@@ -286,6 +331,8 @@ export function setupLobby() {
       label: makeNumberCube(game),
       // Smaller line under it: the game's level and how many are playing
       info: withPlate(makeText('', 3.5, BLOCK.green)),
+      flag: engine.addEntity(),
+      flagLang: null,
       labelShown: 0,
       size: 0,
       sizeV: 0,
@@ -295,6 +342,7 @@ export function setupLobby() {
       angle: 0
     })
   }
+  for (const pad of pads) makeFlag(pad.flag, pad.info)
   let time = 0
 
   let onPad = -1 // the pad you stand on
@@ -344,6 +392,7 @@ export function setupLobby() {
     onPad = -1
     if (me) for (const pad of pads) if (onPadNow(pad, me, before === pad.game)) onPad = pad.game
     if (onPad >= 0) lit.add(onPad)
+    if (onPad >= 0 && onPad !== before) cs.padLang = uiLang() // a new pad starts on your own language; the buttons change it
 
     // Falling off the floating islands sends you back to where you came from (your game if you were in it, else the lobby)
     if (fallGrace > 0) fallGrace -= dt
@@ -381,7 +430,7 @@ export function setupLobby() {
       waitTimer -= dt
       if (waitTimer <= 0) {
         waitingFor = -1 // no answer: let the player try again
-        showMessage('The game server did not answer. Is the multiplayer server running? Try again.', 4)
+        showMessage(t('lobby.noServer'), 4)
       }
     }
     if (lockout > 0) lockout -= dt
@@ -395,7 +444,7 @@ export function setupLobby() {
       waitingFor = game
       waitTimer = 4
       lockout = TELEPORT_LOCKOUT
-      showMessage(`Starting game #${game + 1}`, 4)
+      showMessage(t('lobby.starting', { n: game + 1 }), 4)
       room.send('enter', { game })
     }
 
@@ -414,7 +463,7 @@ export function setupLobby() {
         counting = true
         timer = state.left
         total = C.LOBBY_COUNTDOWN_SECONDS
-        cs.countdownTitle = 'Game starts in'
+        cs.countdownTitle = t('pad.startsIn')
         if (state.left <= 0 && entered !== startAt) {
           entered = startAt
           enter(onPad)
@@ -425,7 +474,7 @@ export function setupLobby() {
           counting = true
           timer = joinTimer
           total = C.JOIN_COUNTDOWN_SECONDS
-          cs.countdownTitle = 'Joining in'
+          cs.countdownTitle = t('pad.joiningIn')
           if (joinTimer <= 0) {
             joinTimer = -1
             enter(onPad)
@@ -454,6 +503,7 @@ export function setupLobby() {
       lt.scale = Vector3.create(ls, ls, ls)
       if (ls > 0) lt.rotation = Quaternion.fromEulerDegrees(0, (time * C.PAD_NUMBER_SPIN + pad.game * 50) % 360, 0)
 
+      showFlag(pad, gameLang(pad.game))
       const roomText = padInfo(pad.game)
       const ts = TextShape.getMutable(pad.info)
       if (ts.text !== roomText) ts.text = roomText
