@@ -7,7 +7,8 @@ import { getPlayer } from '@dcl/sdk/players'
 import { EntityNames } from '../../assets/scene/entity-names'
 import { boardText } from './gamestate'
 import { parseBoard } from './ranktags'
-import { rankName } from './ui/rank'
+import { rankIndex } from './ui/rank'
+import { t, uiLang } from './i18n'
 import * as C from '../config'
 
 const CREAM = Color4.create(1, 0.96, 0.86, 1)
@@ -78,14 +79,14 @@ export function leaderboardSystem(dt: number) {
     build(sign)
   }
   const top = parseBoard(boardText()).slice(0, C.LEADERBOARD_ROWS)
-  const lines = top.map(([address, rating]) => [nameOf(address), rankName(rating)])
-  const key = JSON.stringify(lines)
+  const lines = top.map(([address, rating]) => [nameOf(address), t(`rank.${rankIndex(rating)}`)])
+  const key = JSON.stringify([uiLang(), lines]) // a language switch redraws the board too
   if (key === shown) return
   shown = key
   for (let i = 0; i < rows.length; i++) {
     const line = lines[i]
     setText(rows[i].place, line ? `${i + 1}.` : '')
-    setText(rows[i].name, line ? line[0] : i === 0 && lines.length === 0 ? 'Nobody ranked yet' : '')
+    setText(rows[i].name, line ? line[0] : i === 0 && lines.length === 0 ? t('board.nobody') : '')
     setText(rows[i].rank, line ? line[1] : '')
   }
 }

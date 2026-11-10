@@ -1,6 +1,10 @@
+import type { Lang } from '../shared/lang'
+import { BANK_ES } from './words_es'
+import { BANK_PT } from './words_pt'
+
 export type WordEntry = { question: string; answer: string; level: number }
 
-// The question bank, one list per difficulty level (1 easy .. 7 hard). Answers are a single word of A-Z or Ñ (there is a CubeNh model).
+// The question bank, one list per difficulty level (1 easy .. 7 hard). Answers are a single word of plain A-Z, in every language (no Ñ, no accents).
 // Easy levels use short, everyday words; harder levels use longer or less common ones. This is a starter set: a 24/7 room needs
 // a much bigger bank (see docs/round-system-design.md). Add entries here, keeping each question unambiguous.
 const BANK: Record<number, [string, string][]> = {
@@ -23,7 +27,6 @@ const BANK: Record<number, [string, string][]> = {
     ['GREEN', 'Colour of grass'],
     ['SMILE', 'Happy look on your face'],
     ['PIZZA', 'Round Italian food with cheese'],
-    ['AÑO', 'Spanish word for "year"'],
     ['COW', 'Gives us milk on a farm'],
     ['PIG', 'Pink farm animal that says oink'],
     ['HEN', 'A female chicken'],
@@ -335,14 +338,18 @@ const BANK: Record<number, [string, string][]> = {
   ],
 }
 
-export const WORDS: WordEntry[] = Object.entries(BANK).flatMap(([level, rows]) =>
-  rows.map(([answer, question]) => ({ answer, question, level: Number(level) }))
-)
+const flatten = (bank: Record<number, [string, string][]>): WordEntry[] =>
+  Object.entries(bank).flatMap(([level, rows]) => rows.map(([answer, question]) => ({ answer, question, level: Number(level) })))
+
+/** Every language's bank (words_es.ts, words_pt.ts): the game's language picks one. */
+export const WORDS_BY_LANG: Record<Lang, WordEntry[]> = { en: flatten(BANK), es: flatten(BANK_ES), pt: flatten(BANK_PT) }
+export const WORDS: WordEntry[] = WORDS_BY_LANG.en
 
 // A random word for a difficulty level, never the same as the last round. If a level has no words, the closest level is used.
-export function pickWord(level: number, exclude: string): WordEntry {
-  const pool = WORDS.filter((w) => w.answer !== exclude)
-  const candidates = pool.length > 0 ? pool : WORDS
+export function pickWord(level: number, exclude: string, lang: Lang = 'en'): WordEntry {
+  const words = WORDS_BY_LANG[lang] ?? WORDS
+  const pool = words.filter((w) => w.answer !== exclude)
+  const candidates = pool.length > 0 ? pool : words
   const gap = (w: WordEntry) => Math.abs(w.level - level)
   const best = Math.min(...candidates.map(gap))
   const fitting = candidates.filter((w) => gap(w) === best)

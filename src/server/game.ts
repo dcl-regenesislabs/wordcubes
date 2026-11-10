@@ -5,7 +5,11 @@ import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { playerLabel } from '../shared/player-label'
+import { say } from './say'
+import { letterArg, type Args } from '../shared/i18n'
 import { pickWord } from './words'
+import { ALPHABETS, toLang } from '../shared/lang'
+import type { Lang } from '../shared/lang'
 import { profileOf, touch, ratingDelta } from './profiles'
 import { room } from '../shared/messages'
 import { envOrigin, arenaAt } from '../shared/env'
@@ -35,7 +39,6 @@ interface SCube {
   breakReward: boolean // rerolls and replacement supply cannot mint more break coins
 }
 
-const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const SIM_DT = 1 / 30
 const FLIGHT_TOTAL = C.THROW_RELEASE_DELAY + C.THROW_FLIGHT_TIME
 const SETTLE_STEPS_PER_TICK = 20 // sim steps per server tick while a new pile settles unseen (~0.5 s for a pile)
@@ -81,6 +84,11 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
   let lastVoteShown = -1
   const votes = new Map<string, number>() // address -> -1 easier, 0 same, 1 harder
   let difficulty = C.START_DIFFICULTY
+  let lang: Lang = 'en' // set when the game starts, from what the Start game press picked (GameState.lang)
+  const randomLetter = () => {
+    const letters = ALPHABETS[lang]
+    return letters[Math.floor(Math.random() * letters.length)]
+  }
   let timeLeft = 0
   let lastTimeShown = -1
   let round = 0
@@ -161,8 +169,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     ;(room as any).send(name, data, { to })
   }
 
-  function toast(text: string, to?: string, kind?: 'powerup') {
-    bcast('toast', { text, kind }, to ? [to] : members())
+  function toast(key: string, args: Args = {}, to?: string, kind?: 'powerup') {
+    bcast('toast', { ...say(key, args), kind }, to ? [to] : members())
   }
 
   // Server-side gate shared by actions that could disrupt the ongoing word. Tossing one's held cube stays available.
@@ -170,7 +178,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     if (phase !== 'playing' || !arenaPlayers().some((p) => p.address === address)) return false
     const wait = (lockedUntil.get(address) ?? 0) - clock
     if (wait <= 0) return true
-    toast(`Locked out: ${Math.ceil(wait)}s left. You can still throw your held cube away.`, address)
+    toast('srv.lockedOut', { s: Math.ceil(wait) }, address)
     return false
   }
 
@@ -338,7 +346,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
 
   // ---------- rounds ----------
 
-  function startRound(message = 'New round! Find the letters.') {
+  function startRound(message = 'srv.newRound', messageArgs: Args = {}) {
     for (const cube of Array.from(cubes.values())) removeCube(cube)
     clearBodies(world)
     holders.clear()
@@ -346,7 +354,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     flights.length = 0
 
     const level = C.LEVELS[difficulty - 1]
-    const entry = pickWord(difficulty, lastWord)
+    const entry = pickWord(difficulty, lastWord, lang)
     lastWord = entry.answer
     timeLeft = level.seconds
     lastTimeShown = -1
@@ -367,14 +375,14 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     updateGameState()
 
     const letters = answer.split('')
-    while (letters.length < C.CUBES_PER_ROUND) letters.push(LETTERS[Math.floor(Math.random() * LETTERS.length)])
+    while (letters.length < C.CUBES_PER_ROUND) letters.push(randomLetter())
     // shuffled so the word's letters don't all land first
     for (let i = letters.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[letters[i], letters[j]] = [letters[j], letters[i]]
     }
     startPile(letters.map((letter) => ({ letter, breakReward: true })))
-    toast(message)
+    toast(message, messageArgs)
   }
 
   function spawnInHeap(letter: string, breakReward = false) {
@@ -419,7 +427,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     clearPlaced(true)
     updateGameState()
     bcast('fx', { kind: 'fail', slot: -1 })
-    toast('Wrong cube! The whole word collapsed.')
+    toast('srv.collapsed')
     if (causedBy) {
       lockedUntil.set(causedBy, clock + C.COLLAPSE_LOCKOUT_SECONDS)
       room.send('lockout', { seconds: C.COLLAPSE_LOCKOUT_SECONDS }, { to: [causedBy] })
@@ -428,7 +436,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
         holders.delete(causedBy)
         release(held, playerOf(causedBy)?.pos ?? fallbackDrop(), 0, 0, 0)
       }
-      toast(`You collapsed the word. Cube actions and power-ups are locked for ${C.COLLAPSE_LOCKOUT_SECONDS}s.`, causedBy)
+      toast('srv.youCollapsed', { s: C.COLLAPSE_LOCKOUT_SECONDS }, causedBy)
     }
   }
 
@@ -442,7 +450,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     bcast('fx', { kind: 'fail', slot: -1 })
     const deltas = settleRound(false, Array.from(participants))
     for (const [addr, delta] of deltas) room.send('result', { coins: 0, delta }, { to: [addr] })
-    toast(`Time's up! The word was ${answer}`)
+    toast('srv.timeUp', { word: answer })
     console.log('[ROUND]', 'timeout', answer, 'level', difficulty, 'participants', Array.from(participants).join(','))
   }
 
@@ -495,17 +503,17 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
       GameState.getMutable(stateEntity).builders = builders.length
       const deltas = settleRound(true, builders)
       bcast('fx', { kind: 'win', slot: -1 })
-      toast(`${answer}! Built by ${builders.length} player${builders.length === 1 ? '' : 's'}`)
+      toast(builders.length === 1 ? 'srv.built.one' : 'srv.built', { word: answer, n: builders.length })
       // sent after the group message so each builder's own message is the one they see
       for (const addr of builders) {
         giveCoins(addr, C.COINS_PER_WORD)
         room.send('result', { coins: C.COINS_PER_WORD, delta: deltas.get(addr) ?? 0 }, { to: [addr] })
-        toast(`You built ${answer}! +${C.COINS_PER_WORD} coins`, addr)
+        toast('srv.youBuilt', { word: answer, coins: C.COINS_PER_WORD }, addr)
         const p = profileOf(addr)
         if (p && p.wins >= C.ROUNDS_FOR_REWARD && !p.rewarded) {
           p.rewarded = true
           touch(addr)
-          toast('Wearable reward unlocked! (stub: not delivered yet)', addr)
+          toast('srv.wearable', {}, addr)
         }
       }
       console.log('[ROUND]', 'won', answer, 'level', difficulty, 'builders', builders.join(','), 'participants', Array.from(participants).join(','))
@@ -522,7 +530,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     for (const cube of Array.from(cubes.values())) if (cube.mode === 'free') removeCube(cube)
     const letters: string[] = []
     for (let i = 0; i < answer.length; i++) if (!(slots[i] && slots[i]!.mode === 'placed')) letters.push(answer[i])
-    while (letters.length < C.CUBES_PER_ROUND) letters.push(LETTERS[Math.floor(Math.random() * LETTERS.length)])
+    while (letters.length < C.CUBES_PER_ROUND) letters.push(randomLetter())
     for (let i = letters.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[letters[i], letters[j]] = [letters[j], letters[i]]
@@ -617,7 +625,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     const next = Math.min(C.MAX_DIFFICULTY, Math.max(1, difficulty + step))
     const changed = next !== difficulty
     difficulty = next
-    startRound(changed ? `Level ${difficulty} (${step > 0 ? 'harder' : 'easier'})! Find the letters.` : `Level ${difficulty}. Find the letters.`)
+    if (changed) startRound('srv.levelChanged', { n: difficulty, dir: step > 0 ? '@srv.harder' : '@srv.easier' })
+    else startRound('srv.levelSame', { n: difficulty })
   }
 
   // ---------- messages (called by the server for seated players only) ----------
@@ -628,16 +637,16 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     if (!canPlay(addr)) return
     const cube = cubes.get(data.cubeId)
     if (!cube || cube.mode !== 'free') return
-    if (holders.has(addr)) return toast('Hands full. Click a frame to throw it, E to break it or F to throw it away.', addr)
+    if (holders.has(addr)) return toast('srv.handsFull', {}, addr)
     const p = playerOf(addr)
     if (!p) return
     const pr = world.params
     // Reach alone cannot exclude cubes touching the pedestal: its edge is only ~1.16m away.
     if (Math.hypot(p.pos.x - pr.centerX, p.pos.z - pr.centerZ) <= pr.stageRadius && p.pos.y >= pr.stageTop - 0.1) {
-      return toast('Step off the platform to pick up letters.', addr)
+      return toast('srv.stepOff', {}, addr)
     }
     if (Vector3.distance(p.pos, Vector3.create(cube.body.x, cube.body.y, cube.body.z)) > C.PICKUP_CENTER_DISTANCE) {
-      return toast('Move closer to pick up this letter.', addr)
+      return toast('srv.moveCloser', {}, addr)
     }
     wakeNear(world, cube.body.x, cube.body.y, cube.body.z, C.CUBE_RADIUS * 3)
     cube.mode = 'held'
@@ -646,14 +655,14 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     holders.set(addr, cube)
     park(cube)
     sync(cube)
-    toast(`Holding ${cube.letter}. Click a frame to throw it, E to break, F to throw away.`, addr)
+    toast('srv.holding', { letter: letterArg(cube.letter) }, addr)
   }
 
   function on_place(data: any, addr: string) {
     if (phase !== 'playing') return
     if (!canPlay(addr)) return
     const cube = holders.get(addr)
-    if (!cube) return toast('Grab a cube first (click it), then click a frame.', addr)
+    if (!cube) return toast('msg.grabFirst', {}, addr)
     if (data.slot < 0 || data.slot >= slots.length || slots[data.slot]) return
     holders.delete(addr)
     slots[data.slot] = cube
@@ -674,9 +683,9 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
   function on_breakCube(data: any, addr: string) {
     if (!canPlay(addr)) return
     const cube = holders.get(addr)
-    if (!cube) return toast('Nothing to break. Click a cube to grab it first.', addr)
-    if (cube.letter === '*') return toast('A wildcard cannot be broken. Place it in a frame or throw it away.', addr)
-    if (answer.includes(cube.letter)) return toast('That letter is needed. Place it or throw it back with F.', addr)
+    if (!cube) return toast('msg.nothingToBreak', {}, addr)
+    if (cube.letter === '*') return toast('srv.wildcardNoBreak', {}, addr)
+    if (answer.includes(cube.letter)) return toast('srv.needed', {}, addr)
     holders.delete(addr)
     const reward = cube.breakReward ? C.COINS_PER_BREAK : 0
     const letter = cube.letter
@@ -686,8 +695,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     removeCube(cube)
     if (reward > 0) {
       giveCoins(addr, reward)
-      toast(`Broke ${letter}! +${reward} coins`, addr)
-    } else toast(`Broke ${letter}. Rerolled cubes give no coins.`, addr)
+      toast('srv.broke', { letter: letterArg(letter), coins: reward }, addr)
+    } else toast('srv.brokeNoCoins', { letter: letterArg(letter) }, addr)
     ensureSupply()
   }
 
@@ -735,16 +744,16 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     const item = itemOf(data.item)
     const p = profileOf(addr)
     if (!item || !p) return
-    if (phase !== 'playing') return toast('Power-ups only work while a round is running.', addr)
+    if (phase !== 'playing') return toast('srv.powerupsOnlyRound', {}, addr)
     if (!arenaPlayers().some((a) => a.address === addr)) return
-    if ((p.items[item.id] ?? 0) <= 0) return toast(`You have no ${item.name}. The vendor sells them.`, addr)
+    if ((p.items[item.id] ?? 0) <= 0) return toast('srv.noItem', { item: `@item.${item.id}.name` }, addr)
     if (item.id === 'wildcard') {
-      if (wildcardUsed) return toast('A wildcard was already used this round.', addr)
-      if (holders.has(addr)) return toast('Free your hands first: throw or place the cube you hold.', addr)
+      if (wildcardUsed) return toast('srv.wildcardUsed', {}, addr)
+      if (holders.has(addr)) return toast('srv.freeHands', {}, addr)
     } else {
       const wait = (itemReady.get(addr) ?? 0) - clock
-      if (wait > 0) return toast(`Power-ups recharge in ${Math.ceil(wait)}s.`, addr)
-      if (item.id === 'freeze' && freezeLeft > 0) return toast('Time is already frozen.', addr)
+      if (wait > 0) return toast('srv.recharge', { s: Math.ceil(wait) }, addr)
+      if (item.id === 'freeze' && freezeLeft > 0) return toast('srv.alreadyFrozen', {}, addr)
     }
     let ok = true
     if (item.id === 'wildcard') {
@@ -760,21 +769,21 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     if (item.id !== 'wildcard') itemReady.set(addr, clock + C.ITEM_COOLDOWN)
     touch(addr)
     sendProfile(addr)
-    const detail = item.id === 'freeze' ? ` ${C.FREEZE_SECONDS}s of Time Freeze!` : item.id === 'reroll' ? ' A fresh pile of cubes!' : ''
-    toast(`${playerLabel(playerOf(addr)?.name ?? 'Player', addr)} used ${item.name}!${detail}`, undefined, 'powerup')
+    const key = item.id === 'freeze' ? 'srv.used.freeze' : item.id === 'reroll' ? 'srv.used.reroll' : 'srv.used'
+    toast(key, { player: playerLabel(playerOf(addr)?.name ?? 'Player', addr), item: `@item.${item.id}.name`, s: C.FREEZE_SECONDS }, undefined, 'powerup')
   }
 
   function on_hint(data: any, addr: string) {
     if (phase !== 'playing') return
     if (!canPlay(addr)) return
-    if (hintsUsed >= answer.length - 1) return toast('No more hints for this word!', addr)
+    if (hintsUsed >= answer.length - 1) return toast('srv.noMoreHints', {}, addr)
     const cost = hintCost()
     const have = coinsOf(addr)
-    if (have < cost) return toast(`A hint costs ${cost} coins. You have ${have}.`, addr)
+    if (have < cost) return toast('srv.hintCost', { cost, have }, addr)
     giveCoins(addr, -cost)
     hintsUsed++
     updateGameState()
-    toast(`Hint revealed! (-${cost} coins)`)
+    toast('srv.hintRevealed', { cost })
   }
 
   // The client entered the game or missed a cubeState: all of this game's cubes, to that player only.
@@ -789,10 +798,12 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
   function activate() {
     if (active) return
     active = true
+    lang = toLang(GameState.get(stateEntity).lang)
+    GameState.getMutable(stateEntity).lang = lang
     difficulty = C.START_DIFFICULTY
     completed = 0
     lastWord = ''
-    startRound('A new game! Find the letters.')
+    startRound('srv.newGame')
   }
 
   // The pad asks for a seat; false when the game is full. The first seat wakes an idle game up.
@@ -848,7 +859,9 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     round = 0
     timeLeft = 0
     active = false
+    lang = 'en'
     const g = GameState.getMutable(stateEntity)
+    g.lang = '' // idle: the next Start game picks again
     g.question = ''
     g.timeLeft = 0
     g.builders = 0
@@ -1063,7 +1076,7 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
         case 'cubeSync': return on_cubeSync(addr)
       }
     },
-    broadcastToast: (text: string) => toast(text),
+    broadcastToast: (key: string, args: Args = {}) => toast(key, args),
     // for tests
     // settlePile: finish the pile that is settling, at once
     testing: { net, settlePile: () => settleSome(Infinity), cubeData: (e: Entity) => CubeData.get(e), startRound, startVote, endVote, collapse, land, timeUp, advance: (seconds: number) => { clock += seconds }, get clock() { return clock } }

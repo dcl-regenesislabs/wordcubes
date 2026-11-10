@@ -4,7 +4,8 @@ import { registerMessages } from '@dcl/sdk/network'
 export const room = registerMessages({
   // client -> server
   join: Schemas.Map({ n: Schemas.Int }),
-  start: Schemas.Map({ game: Schemas.Int }), // Start game on an idle game's pad: the server starts the shared countdown
+  // Start game on an idle game's pad: the server starts the shared countdown. lang: the language picked on the pad.
+  start: Schemas.Map({ game: Schemas.Int, lang: Schemas.String }),
   enter: Schemas.Map({ game: Schemas.Int }), // ask for a seat in a game before teleporting (max MAX_PLAYERS_PER_GAME)
   leave: Schemas.Map({ n: Schemas.Int }), // back in the lobby: give the seat up
   grab: Schemas.Map({ cubeId: Schemas.Int }),
@@ -43,7 +44,8 @@ export const room = registerMessages({
   cubeMoves: Schemas.Map({ g: Schemas.Int, s: Schemas.Int, o: Schemas.Vector3, d: Schemas.Array(Schemas.Short) }),
   entered: Schemas.Map({ game: Schemas.Int, ok: Schemas.Int }), // answer to enter: 1 seat granted, 0 game full
   eject: Schemas.Map({ n: Schemas.Int }), // you stand in an arena without a seat: go back to the lobby
-  toast: Schemas.Map({ text: Schemas.String, kind: Schemas.Optional(Schemas.String) }),
+  // text: English; key + args (JSON): the same message for the client to show in its language (server/say.ts)
+  toast: Schemas.Map({ text: Schemas.String, kind: Schemas.Optional(Schemas.String), key: Schemas.Optional(Schemas.String), args: Schemas.Optional(Schemas.String) }),
   fx: Schemas.Map({ kind: Schemas.String, slot: Schemas.Int }), // 'lock' | 'fail' | 'win'
   coins: Schemas.Map({ value: Schemas.Int }),
   burst: Schemas.Map({ x: Schemas.Number, y: Schemas.Number, z: Schemas.Number, gold: Schemas.Int }), // effect here: 0 grey puff (needed letter broken), 1 gold sparks (coin break), 2 bomb blast

@@ -1,6 +1,6 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { loadTs } = require('./load-ts.cjs')
+const { loadTs, loadI18n } = require('./load-ts.cjs')
 
 // The platform module talks to the SDK: stub the canvas it reads and the renderer it drives.
 function sdkStubs(canvasInfo, rendererCalls = []) {
@@ -30,7 +30,8 @@ function harness(phone, canvas) {
     '@dcl/sdk/react-ecs': react, '@dcl/sdk/ecs': { engine: { getEntitiesWith: () => currentGame ? [[0, currentGame]] : [] } },
     '../../shared/schemas': {}, '../gamestate': { myState: () => currentGame || undefined, boardText: () => '' }, '../state': state, '../cubes': { heldLetter: () => '' },
     '../../config': config, '../../shared/messages': { room: { send: noop } },
-    '../lobby': { returnToLobby: noop }, '../arena': {}, './platform': platform,
+    '../lobby': { returnToLobby: noop, gameLang: () => '' }, '../../shared/lang': loadTs('src/shared/lang.ts'),
+    '../i18n': { t: (key, args) => loadI18n().format('en', key, args, phone), uiLang: () => 'en', pickUiLang: noop }, './flags': { Flag: 'Flag' }, '../arena': {}, './platform': platform,
     '../audio': { SFX: {}, playSfx: noop, onItems: noop, onProfileLoaded: noop, talkSfx: noop },
     './theme': theme, './debug': { dbg: { screen: 'game' }, debugWord: () => ({ answer: 'PARIS', question: 'Capital of France?' }) }, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
     '../../../assets/scene/entity-names': {}
@@ -98,7 +99,7 @@ for (const [name, canvas] of [['pixel ratio 1', undefined], ['a 2400x1080 phone 
     assert.equal(held[1].text, 'E.', 'Holding E. is the letter, not the break key')
     assert.equal(held[2].text, 'Tap')
     assert.equal(held.filter((p) => p.icon).length, 2)
-    assert.equal(h.module.NpcDialog().props.justify, 'center', 'phones: the NPC dialog is a centred card, clear of the app bottom controls')
+    assert.equal(h.module.NpcDialog().props.justify, 'flex-end', 'phones: the NPC dialog sits at the bottom like on desktop, between the joystick and the native buttons')
   })
 }
 

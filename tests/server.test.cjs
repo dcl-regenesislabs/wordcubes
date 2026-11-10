@@ -1,6 +1,6 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { loadTs } = require('./load-ts.cjs')
+const { loadTs, loadI18n } = require('./load-ts.cjs')
 
 function harness() {
   const config = loadTs('src/config.ts')
@@ -41,6 +41,7 @@ function harness() {
   }
   const world = loadTs('src/shared/world.ts', { '../config': config, './env': env })
   const handlers = new Map()
+  const picks = [] // the language of every word the games picked
   const sent = []
   const room = { onMessage: (name, fn) => handlers.set(name, fn), send: (name, data, opts) => sent.push({ name, data, to: opts && opts.to }) }
   const ecs = { engine, Transform, PlayerIdentityData, AvatarBase, GltfContainer, ColliderLayer: { CL_NONE: 0 } }
@@ -49,22 +50,25 @@ function harness() {
   const common = loadTs('src/server/common.ts', {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math, '../config': config, '../shared/messages': { room }, './profiles': profiles
   })
+  const lang = loadTs('src/shared/lang.ts')
+  const i18n = loadI18n()
+  const say = loadTs('src/server/say.ts', { '../shared/i18n': i18n })
   const cubenet = loadTs('src/shared/cubenet.ts')
   const cubesync = loadTs('src/server/cubesync.ts', { '../config': config, '../shared/messages': { room }, '../shared/cubenet': cubenet })
   const game = loadTs('src/server/game.ts', {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math,
-    '../config': config, './words': { pickWord: () => ({ answer: 'DOG', question: 'A pet?' }) },
+    '../config': config, './words': { pickWord: (level, exclude, lang) => { picks.push(lang); return { answer: 'DOG', question: 'A pet?' } } },
     './profiles': profiles, '../shared/messages': { room }, '../shared/env': env, '../shared/schemas': schemas,
     '../shared/player-label': loadTs('src/shared/player-label.ts'),
     '../shared/world': world, './common': common,
     '../shared/pushers': { PusherTracker: class { update() { return { x: 0, y: 0, z: 0, vx: 0, vz: 0 } } prune() {} } },
     '../sim/physics': loadTs('src/sim/physics.ts'),
-    '../shared/cubenet': cubenet, './cubesync': cubesync
+    '../shared/cubenet': cubenet, './cubesync': cubesync, '../shared/lang': lang, './say': say, '../shared/i18n': i18n
   })
   const server = loadTs('src/server/server.ts', {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/network': { syncEntity: noop }, '@dcl/sdk/server': { Storage },
     '../config': config, './profiles': profiles, '../shared/messages': { room }, '../shared/env': env,
-    '../shared/schemas': schemas, './common': common, './game': game,
+    '../shared/schemas': schemas, './common': common, './game': game, '../shared/lang': lang, './say': say, '../shared/i18n': i18n,
     './netstats': { setupNetStats: noop, recordTick: noop, netAccessTick: noop, forgetNetAccess: noop } // the dev-only live monitor is not under test
   }, 'exports.games = games; exports.publishRanks = publishRanks')
   server.initServer()
@@ -80,7 +84,7 @@ function harness() {
     Transform.get(1).position = Vector3.create(cube.body.x, cube.body.y, cube.body.z)
     send('grab', { cubeId: cube.id })
   }
-  return { config, profiles, server, Transform, Vector3, send, fill, grab, sent, systems, PlayerIdentityData, PlayerRanks, GameState }
+  return { config, profiles, server, Transform, Vector3, send, fill, grab, sent, systems, PlayerIdentityData, PlayerRanks, GameState, picks }
 }
 
 test('pickup requires proximity in three dimensions, including requests sent directly to the server', () => {
@@ -581,6 +585,7 @@ test('the client rebuilds its game from the messages and recovers from a lost on
     const x = client.get(s.id)
     assert.equal(x.letter, s.letter)
     assert.equal(x.mode, 'free')
+    if (!s.body.asleep) continue // a cube still sliding has moved on since the last send
     assert.ok(Math.abs(x.pos.x - s.body.x) < 0.01 && Math.abs(x.pos.z - s.body.z) < 0.01, 'same spot, to the cm')
   }
   assert.ok(c.cubes().every(x => x.born > 0), 'a fresh pile plays its fall')
@@ -615,4 +620,24 @@ test('leaving the game drops its cubes on the client', () => {
   c.cs.game = -1
   c.system(1 / 30)
   assert.equal(c.cubes().length, 0)
+})
+
+test('the player who presses Start game picks the language the game is played in, until it goes idle', () => {
+  const h = harness()
+  const g = h.server.games[2]
+  const state = () => h.GameState.get(g.stateEntity)
+  assert.equal(state().lang, '', 'an idle game has no language yet')
+  h.send('start', { game: 2, lang: 'es' }, 'bob')
+  assert.equal(state().lang, 'es', 'the pad shows it during the countdown')
+  h.send('start', { game: 2, lang: 'pt' }, 'carol')
+  assert.equal(state().lang, 'es', 'a second press does not change it')
+  g.requestSeat('bob') // the countdown ended: bob goes in
+  assert.equal(state().active, 1)
+  assert.equal(h.picks.pop(), 'es', 'the words come from the Spanish bank')
+  g.leaveSeat('bob')
+  for (let i = 0; i < 10; i++) g.tick(1) // empty long enough to go idle
+  assert.equal(state().active, 0)
+  assert.equal(state().lang, '', 'idle again: the next Start game picks again')
+  h.send('start', { game: 3, lang: 'klingon' }, 'dave') // game 2's countdown still runs; try an untouched pad
+  assert.equal(h.GameState.get(h.server.games[3].stateEntity).lang, 'en', 'an unknown language falls back to English')
 })

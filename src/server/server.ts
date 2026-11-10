@@ -8,6 +8,9 @@ import { CubeData, GameState, PlayerRanks } from '../shared/schemas'
 import { Storage } from '@dcl/sdk/server'
 import { players, giveCoins, sendProfile } from './common'
 import { createGame } from './game'
+import { toLang, LANGS } from '../shared/lang'
+import { say } from './say'
+import type { Args } from '../shared/i18n'
 import { setupNetStats, recordTick, netAccessTick, forgetNetAccess } from './netstats'
 import type { Game } from './game'
 
@@ -28,7 +31,7 @@ let heartbeatAcc = 0
 let clock = 0
 const games: Game[] = []
 
-const toastTo = (text: string, to: string) => room.send('toast', { text }, { to: [to] })
+const toastTo = (key: string, args: Args, to: string) => room.send('toast', say(key, args), { to: [to] })
 
 const gameOf = (addr: string): Game | undefined => games.find((g) => g.hasSeat(addr))
 
@@ -101,10 +104,13 @@ function init() {
     const game = games[index]
     if (!game) return
     const g = GameState.get(game.stateEntity)
-    if (isRunning(game)) return toastTo(`Game ${index + 1} is already running. Press Join game.`, addr)
+    if (isRunning(game)) return toastTo('srv.alreadyRunning', { n: index + 1 }, addr)
     if (countdownLeft(g) > 0) return // someone pressed it first: that countdown is everyone's
-    GameState.getMutable(game.stateEntity).startAt = Date.now() + C.LOBBY_COUNTDOWN_SECONDS * 1000
-    console.log('[START]', addr, 'game', index, 'countdown', C.LOBBY_COUNTDOWN_SECONDS)
+    const lang = toLang(data.lang)
+    const state = GameState.getMutable(game.stateEntity)
+    state.startAt = Date.now() + C.LOBBY_COUNTDOWN_SECONDS * 1000
+    state.lang = lang // the game is played in it until it goes idle again
+    console.log('[START]', addr, 'game', index, 'lang', lang, 'countdown', C.LOBBY_COUNTDOWN_SECONDS)
   })
 
   // The start pad asks for a seat before the client teleports. At most MAX_PLAYERS_PER_GAME per game.
@@ -116,7 +122,7 @@ function init() {
     if (!game) return
     // during the start countdown nobody goes in early: the group enters together when it ends
     if (countdownLeft(GameState.get(game.stateEntity)) > ENTER_EARLY_MS) {
-      return toastTo(`Game ${index + 1} starts when the countdown ends.`, addr)
+      return toastTo('srv.startsWhenCountdown', { n: index + 1 }, addr)
     }
     // a full game leaves you where you are: only give up your current seat once the new one is granted
     const current = gameOf(addr)
@@ -124,7 +130,7 @@ function init() {
     if (ok && current && current !== game) current.leaveSeat(addr)
     console.log('[ENTER]', addr, 'game', index, ok ? 'seat granted' : 'full')
     room.send('entered', { game: index, ok: ok ? 1 : 0 }, { to: [addr] })
-    if (!ok) toastTo(`Game ${index + 1} is full (${C.MAX_PLAYERS_PER_GAME} players). Try another pad.`, addr)
+    if (!ok) toastTo('srv.fullPlayers', { n: index + 1, max: C.MAX_PLAYERS_PER_GAME }, addr)
   })
 
   room.onMessage('leave', (_data, ctx) => {
@@ -146,7 +152,7 @@ function init() {
     if (!ctx || !C.CHEATS_ENABLED) return
     const addr = ctx.from.toLowerCase()
     giveCoins(addr, C.CHEAT_COINS)
-    toastTo(`+${C.CHEAT_COINS} coins (test cheat)`, addr)
+    toastTo('srv.cheat', { coins: C.CHEAT_COINS }, addr)
   })
 
   room.onMessage('setSetting', (data, ctx) => {
@@ -156,6 +162,7 @@ function init() {
     if (!p) return
     if (C.VOLUMES.some((v) => v.id === data.key)) p.settings[data.key] = Math.max(0, Math.min(C.VOLUME_MAX, Math.round(data.value)))
     else if (C.SETTINGS.some((s) => s.id === data.key)) p.settings[data.key] = data.value === 1 // only entries listed in config
+    else if (data.key === 'lang') p.settings.lang = Math.max(0, Math.min(LANGS.length - 1, Math.round(data.value))) // desktop language picker: index into LANGS
     else return
     touch(addr)
   })
@@ -166,13 +173,13 @@ function init() {
     const item = itemOf(data.item)
     const p = profileOf(addr)
     if (!item || !p) return
-    if ((p.items[item.id] ?? 0) >= 9) return toastTo(`You already carry 9 ${item.name}s.`, addr)
-    if (p.coins < item.price) return toastTo(`${item.name} costs ${item.price} coins. You have ${p.coins}.`, addr)
+    if ((p.items[item.id] ?? 0) >= 9) return toastTo('srv.carry9', { item: `@item.${item.id}.name` }, addr)
+    if (p.coins < item.price) return toastTo('srv.itemCost', { item: `@item.${item.id}.name`, price: item.price, have: p.coins }, addr)
     giveCoins(addr, -item.price)
     p.items[item.id] = (p.items[item.id] ?? 0) + 1
     touch(addr)
     sendProfile(addr)
-    toastTo(`Bought ${item.name}!`, addr)
+    toastTo('srv.bought', { item: `@item.${item.id}.name` }, addr)
   })
 }
 
@@ -194,7 +201,11 @@ function serverSystem(dt: number) {
     for (const g of games) g.housekeep()
     // a start countdown that ended a while ago is over: the players who were on the pad are in (or nobody stayed)
     for (const g of games) {
-      if (countdownLeft(GameState.get(g.stateEntity)) < -C.START_GRACE_SECONDS * 1000) GameState.getMutable(g.stateEntity).startAt = 0
+      if (countdownLeft(GameState.get(g.stateEntity)) < -C.START_GRACE_SECONDS * 1000) {
+        const state = GameState.getMutable(g.stateEntity)
+        state.startAt = 0
+        if (!g.isActive()) state.lang = '' // nobody went in: the pad is free to pick again
+      }
     }
     // standing in an arena without a seat (walked in, or the game was full): back to the lobby
     for (const p of list) {
@@ -265,6 +276,7 @@ export function initServer() {
     GameState.create(stateEntity, {
       game: i,
       active: 0,
+      lang: '',
       phase: 'playing',
       round: 0,
       difficulty: C.START_DIFFICULTY,

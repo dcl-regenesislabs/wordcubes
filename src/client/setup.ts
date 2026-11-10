@@ -24,6 +24,7 @@ import { leaderboardSystem } from './leaderboard'
 import { setupCheats } from './cheats'
 import { SFX, playSfx, preloadSfx, audioSystem, onCoins } from './audio'
 import { connectionSystem, serverReady, setupConnection } from './connection'
+import { setupLocalization, serverText, t } from './i18n'
 import { cubeNetSystem, setupCubeNet } from './cubenet'
 import { netStatsSystem, setupNetStats } from './netstats'
 import { NET_STATS } from '../config'
@@ -172,6 +173,7 @@ function syncTouchButtons(holding: boolean, inGame: boolean, items: boolean) {
 export function initClient() {
   syncTouchButtons(false, false, false)
   preloadSfx()
+  setupLocalization()
   setupConnection()
   setupCubeNet()
   if (NET_STATS) {
@@ -186,27 +188,28 @@ export function initClient() {
   setupCheats()
 
   setSlotClickHandler((slot) => {
-    if (!isHolding()) return showMessage('Grab a cube first (click it), then click a frame.', 2)
-    if (lockoutLeft() > 0) return showMessage(`Locked out: ${lockoutLeft()}s left before you can place again.`, 2)
+    if (!isHolding()) return showMessage(t('msg.grabFirst'), 2)
+    if (lockoutLeft() > 0) return showMessage(t('msg.lockedPlace', { s: lockoutLeft() }), 2)
     playThrowEmote()
     playSfx(SFX.throw)
     room.send('place', { slot })
   })
 
   room.onMessage('toast', (d) => {
-    if (d.kind === 'powerup') return showPowerupToast(d.text)
+    const text = serverText(d) // in your UI language (the server sends a key, shared/i18n)
+    if (d.kind === 'powerup') return showPowerupToast(text)
     // Phones: the server's "Holding X. ..." tip stays on screen until you place, break or toss that cube, for your first
     // HOLD_TIPS_STICKY grabs, so there is time to read it. After that, and for every other message, the usual 3 s.
-    if (mobile() && d.text.startsWith('Holding ') && holdTips < HOLD_TIPS_STICKY) {
+    if (mobile() && (d.key === 'srv.holding' || d.text.startsWith('Holding ')) && holdTips < HOLD_TIPS_STICKY) {
       holdTips++
-      showMessage(d.text, 0) // 0: no countdown, cleared in clientSystem when the cube leaves your hands
+      showMessage(text, 0) // 0: no countdown, cleared in clientSystem when the cube leaves your hands
       cs.messageSticky = true
       stickySawHold = false
       stickyAge = 0
       return
     }
     cs.messageSticky = false
-    showMessage(d.text, 3)
+    showMessage(text, 3)
   })
   room.onMessage('entered', (d) => onEntered(d.game, d.ok === 1))
   room.onMessage('eject', () => onEjected())

@@ -2,7 +2,7 @@ import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
 import { cs } from './state'
 import { UI_PREVIEW, NET_STATS } from '../config'
 import { setupResponsiveUi } from './ui/platform'
-import { ConnectingGate, GameHud, ItemsRow, ConfirmLeave, LobbyHud, LobbyMessage, LobbyCountdown, PadPrompt, HowToPlay, NpcDialog, ShopPanel, SettingsPanel, setupHudMessages, updateHud } from './ui/hud'
+import { ConnectingGate, GameHud, ItemsRow, ConfirmLeave, LobbyHud, LobbyMessage, PadCard, HowToPlay, NpcDialog, ShopPanel, SettingsPanel, setupHudMessages, updateHud } from './ui/hud'
 import { engine } from '@dcl/sdk/ecs'
 import { DebugBar, applyDebug, showGame } from './ui/debug'
 import { serverReady, connectingTooLong } from './connection'
@@ -31,8 +31,7 @@ export const uiMenu = () => {
   const inGame = showGame()
   return (
     <UiEntity uiTransform={{ width: '100%', height: '100%', pointerFilter: 'none' }}>
-      {cs.lobbyCountdown > 0 && <LobbyCountdown />}
-      {!inGame && !cs.dialog && cs.padAction !== '' && <PadPrompt />}
+      {!inGame && !cs.dialog && <PadCard />}
       {!inGame && <LobbyHud />}
       {!inGame && !cs.dialog && <LobbyMessage />}
       {inGame && <GameHud />}

@@ -16,6 +16,8 @@ import {
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
+import { t } from './i18n'
+import { letterArg } from '../shared/i18n'
 import { CubeData, modelFor, letterLabel } from '../shared/schemas'
 import { room } from '../shared/messages'
 import { slotPosition } from './arena'
@@ -218,7 +220,7 @@ function adopt(entity: Entity, letter: string, id: number): ClientCube {
   Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
   MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
   pointerEventsSystem.onPointerDown(
-    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Grab ${letterLabel(letter)}`, maxDistance: C.PICKUP_DISTANCE } },
+    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.grab', { letter: letterArg(letter) }), maxDistance: C.PICKUP_DISTANCE } },
     () => room.send('grab', { cubeId: id })
   )
   return { mode: 'free', holder: '', slot: -1, letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true, fall: null }

@@ -10,6 +10,7 @@ import { cs } from './state'
 import { talkSfx } from './audio'
 import { lobbyAnchors, worldPosition } from './lobby'
 import { RANK_NAMES } from './ui/rank'
+import { t, uiLang } from './i18n'
 
 const BASE = 'urn:decentraland:off-chain:base-avatars:'
 const LOOK = ['eyebrows_00', 'mouth_00', 'eyes_00', 'blue_tshirt', 'brown_pants', 'classic_shoes', 'short_hair'].map((w) => BASE + w)
@@ -17,7 +18,8 @@ const TALK_DISTANCE = 6
 
 interface NpcDef {
   id: string
-  name: string
+  talk: 'lexi' | 'cubby' // its name, prompt and lines in the UI language: npc.<talk>.* in shared/i18n
+  name: string // English name (for reading the code; the UI shows npc.<talk>.name)
   entityName: string // composite entity that overrides the position
   where: 'lobby' | 'arena'
   game?: number // arena vendors: which game's arena
@@ -29,10 +31,11 @@ interface NpcDef {
   pages: string[]
 }
 
-// Draft text. The rank system is not live yet: these pages describe the plan (docs/round-system-design.md).
+// Lexi's lines are npc.lexi.1..4 in shared/i18n (pagesOf). The rank system describes the plan (docs/round-system-design.md).
 const NPCS: NpcDef[] = [
   {
     id: 'wc-npc-ranker',
+    talk: 'lexi',
     name: 'Lexi, Keeper of Ranks',
     entityName: 'RankNpc',
     where: 'lobby',
@@ -40,15 +43,11 @@ const NPCS: NpcDef[] = [
     female: true,
     hair: Color3.create(0.55, 0.25, 0.7),
     skin: Color3.create(0.94, 0.8, 0.65),
-    pages: [
-      'Welcome to Word Cubes! Everyone here has a rank, and it shows next to your coins in the lobby.',
-      `You start as a ${RANK_NAMES[0]}. Win words in harder rooms and you climb: ${RANK_NAMES.join(', ')}.`,
-      'After every round the players in the room vote: easier, the same, or harder. Harder rooms are worth more.',
-      'Only the players who put the final letters in place earn the reward, so dig for your cubes and help build the word!'
-    ]
+    pages: []
   },
   {
     id: 'wc-npc-vendor-lobby',
+    talk: 'cubby',
     name: 'Cubby, the Vendor',
     entityName: 'VendorNpc',
     where: 'lobby',
@@ -62,6 +61,7 @@ const NPCS: NpcDef[] = [
   // the vendor of the first arena (game 0); the other arenas get theirs when they are built (spawnArenaVendor)
   {
     id: 'wc-npc-vendor-arena',
+    talk: 'cubby',
     name: 'Cubby, the Vendor',
     entityName: 'VendorNpc_2', // the name the Creator Hub gave the second copy
     where: 'arena',
@@ -95,12 +95,46 @@ function standPosition(def: NpcDef): Vector3 | undefined {
   return Vector3.create(mid.x + (-dz / len) * 3.5 * def.side, mid.y, mid.z + (dx / len) * 3.5 * def.side)
 }
 
+/** What Lexi says, in the UI language at the moment you talk to her. */
+function pagesOf(def: NpcDef): string[] {
+  if (def.talk !== 'lexi') return def.pages
+  const ranks = RANK_NAMES.map((_, i) => t(`rank.${i}`))
+  return [t('npc.lexi.1'), t('npc.lexi.2', { first: ranks[0], all: ranks.join(', ') }), t('npc.lexi.3'), t('npc.lexi.4')]
+}
+
+// Texts that sit on world entities (name tag, prompt, SHOP sign), redone when the UI language changes.
+const labelled: { def: NpcDef; npc: Entity; hit: Entity; sign?: Entity }[] = []
+let labelledLang = ''
+
+function setTalkPrompt(def: NpcDef, hit: Entity) {
+  pointerEventsSystem.removeOnPointerDown(hit)
+  pointerEventsSystem.onPointerDown(
+    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.talk', { name: `@npc.${def.talk}.short` }), maxDistance: TALK_DISTANCE } },
+    () => {
+      talkSfx()
+      if (def.shop) cs.shop = true
+      else cs.dialog = { name: t(`npc.${def.talk}.name`), pages: pagesOf(def), page: 0 }
+    }
+  )
+}
+
+function relabel() {
+  if (labelledLang === uiLang()) return
+  labelledLang = uiLang()
+  for (const l of labelled) {
+    const avatar = AvatarShape.getMutableOrNull(l.npc)
+    if (avatar) avatar.name = t(`npc.${l.def.talk}.name`)
+    setTalkPrompt(l.def, l.hit)
+    if (l.sign) TextShape.getMutable(l.sign).text = t('npc.shopSign')
+  }
+}
+
 function spawn(def: NpcDef, pos: Vector3): () => void {
   const npc = engine.addEntity()
   Transform.create(npc, { position: pos })
   AvatarShape.create(npc, {
     id: def.id,
-    name: def.name,
+    name: t(`npc.${def.talk}.name`),
     bodyShape: BASE + (def.female ? 'BaseFemale' : 'BaseMale'),
     wearables: LOOK,
     emotes: [],
@@ -111,17 +145,14 @@ function spawn(def: NpcDef, pos: Vector3): () => void {
   const hit = engine.addEntity()
   Transform.create(hit, { parent: npc, position: Vector3.create(0, 0.95, 0), scale: Vector3.create(0.9, 1.9, 0.9) })
   MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
-  pointerEventsSystem.onPointerDown(
-    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: `Talk to ${def.name.split(',')[0]}`, maxDistance: TALK_DISTANCE } },
-    () => {
-      talkSfx()
-      if (def.shop) cs.shop = true
-      else cs.dialog = { name: def.name, pages: def.pages, page: 0 }
-    }
-  )
+  setTalkPrompt(def, hit)
   const extras = def.shop ? addShopSign(pos) : []
+  const entry = { def, npc, hit, sign: extras[1] }
+  labelled.push(entry)
   spawned.set(def.id, npc)
   return () => {
+    const at = labelled.indexOf(entry)
+    if (at >= 0) labelled.splice(at, 1)
     pointerEventsSystem.removeOnPointerDown(hit)
     for (const e of [hit, npc, ...extras]) engine.removeEntity(e)
     for (const e of extras) {
@@ -142,7 +173,7 @@ function addShopSign(pos: Vector3): Entity[] {
   const sign = engine.addEntity()
   Transform.create(sign, { position: Vector3.create(pos.x, pos.y + 3.8, pos.z) })
   TextShape.create(sign, {
-    text: 'SHOP',
+    text: t('npc.shopSign'),
     fontSize: 4,
     textColor: Color4.create(1, 0.85, 0.25, 1),
     outlineColor: Color4.create(0.2, 0.1, 0.35, 1),
@@ -168,6 +199,7 @@ export function spawnArenaVendor(game: number): () => void {
 
 export function setupNpcs() {
   engine.addSystem((dt: number) => {
+    relabel()
     for (const def of NPCS) {
       if (spawned.has(def.id)) continue
       const pos = standPosition(def)

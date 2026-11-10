@@ -4,11 +4,12 @@ import { isHolding } from './cubes'
 import { SFX, playSfx } from './audio'
 import { playThrowEmote } from './emotes'
 import { lockoutLeft, showMessage } from './state'
+import { t } from './i18n'
 
 /** Break the cube you hold for coins (E). */
 export function breakHeld() {
-  if (!isHolding()) return showMessage('Nothing to break. Click a cube to grab it first.', 2)
-  if (lockoutLeft() > 0) return showMessage(`Locked out: ${lockoutLeft()}s left.`, 2)
+  if (!isHolding()) return showMessage(t('msg.nothingToBreak'), 2)
+  if (lockoutLeft() > 0) return showMessage(t('msg.locked', { s: lockoutLeft() }), 2)
   room.send('breakCube', { n: 0 })
 }
 

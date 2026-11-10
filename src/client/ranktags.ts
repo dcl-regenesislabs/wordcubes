@@ -21,8 +21,10 @@ import {
 import type { Entity } from '@dcl/sdk/ecs'
 import { Color3, Vector3 } from '@dcl/sdk/math'
 import { CubeData, PlayerRanks } from '../shared/schemas'
-import { rankIndex, RANK_NAMES } from './ui/rank'
+import { rankIndex } from './ui/rank'
+import { t } from './i18n'
 import { cs, setting } from './state'
+import { mobile } from './ui/platform'
 import * as C from '../config'
 
 const SHOW_DISTANCE = 28
@@ -62,7 +64,7 @@ function drawRank(badge: Entity, rank: number) {
   })
   pointerEventsSystem.removeOnPointerDown(badge)
   pointerEventsSystem.onPointerDown(
-    { entity: badge, opts: { button: InputAction.IA_POINTER, hoverText: `Rank ${rank + 1}: ${RANK_NAMES[rank]}`, maxDistance: SHOW_DISTANCE } },
+    { entity: badge, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.rank', { n: rank + 1, rank: `@rank.${rank}` }), maxDistance: SHOW_DISTANCE } },
     () => {} // nothing to do: the badge is there for its hover text
   )
 }
@@ -127,6 +129,9 @@ export function rankTagSystem() {
     const size = far || !enabled || holding.has(address) ? 0 : C.RANK_BADGE_SIZE
     const bt = Transform.get(tag.badge)
     if (bt.scale.x !== size) Transform.getMutable(tag.badge).scale = Vector3.create(size, size, 1)
+    // the platform is known a moment after start: move the badge once it is
+    const lift = mobile() ? C.RANK_BADGE_HEIGHT : C.RANK_BADGE_HEIGHT_DESKTOP
+    if (bt.position.y !== lift) Transform.getMutable(tag.badge).position = Vector3.create(0, lift, 0)
   }
   for (const [address, tag] of Array.from(tags.entries())) {
     if (seen.has(address)) continue

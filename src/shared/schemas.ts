@@ -20,6 +20,8 @@ export const CubeData = engine.defineComponent('wc:Cube', {
 export const GameState = engine.defineComponent('wc:GameState', {
   game: Schemas.Int, // game index 0..GAME_COUNT-1, one GameState entity per game
   active: Schemas.Int, // 1 while the game has players and is running, 0 when it is idle and waiting for a first player
+  // 'en' | 'es' | 'pt': picked by whoever pressed Start game, kept until the game goes idle; '' while idle (shared/lang.ts)
+  lang: Schemas.String,
   phase: Schemas.String, // 'playing' | 'won' | 'timeout' | 'vote'
   round: Schemas.Int,
   difficulty: Schemas.Int, // room level, 1..7

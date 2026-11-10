@@ -17,3 +17,13 @@ exports.loadTs = function loadTs(file, mocks = {}, extra = '') {
   vm.runInNewContext(code + '\n' + extra, { module, exports: module.exports, require: requireMock, console, Date, Promise }, { filename: file })
   return module.exports
 }
+
+// The real translations (src/shared/i18n), for harnesses whose modules show text.
+exports.loadI18n = function loadI18n() {
+  const { loadTs } = exports
+  return loadTs('src/shared/i18n/index.ts', {
+    './en': loadTs('src/shared/i18n/en.ts'),
+    './es': loadTs('src/shared/i18n/es.ts'),
+    './pt': loadTs('src/shared/i18n/pt.ts')
+  })
+}

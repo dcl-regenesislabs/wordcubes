@@ -13,6 +13,7 @@ import {
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
+import { t } from './i18n'
 import { envOrigin } from '../shared/env'
 import { cs } from './state'
 
@@ -98,7 +99,7 @@ export function buildSlots(count: number) {
     MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
     for (const target of [e, hit]) {
       pointerEventsSystem.onPointerDown(
-        { entity: target, opts: { button: InputAction.IA_POINTER, hoverText: 'Place cube', maxDistance: C.INTERACT_DISTANCE } },
+        { entity: target, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.place'), maxDistance: C.INTERACT_DISTANCE } },
         () => onSlotClick(i)
       )
     }
