@@ -702,9 +702,9 @@ export function ConfirmLeave() {
 export function SettingsPanel() {
   const phone = mobile()
   const devAvailable = C.NET_STATS && netMon.allowed
-  const count = SETTINGS.length + C.VOLUMES.length + 1 + (devAvailable ? 1 : 0)
-  const scale = panelScale(820, (phone ? 52 : 64) + 46 + count * (phone ? 84 : 96) + 90)
-  const z = (n: number) => Math.round(S(n) * scale)
+  const rows = SETTINGS.length + C.VOLUMES.length + 1 + (devAvailable ? 1 : 0)
+  const scale = devAvailable ? panelScale(820, (phone ? 52 : 64) + 46 + rows * (phone ? 84 : 96) + 90) : 1
+  const z = (n: number) => Math.floor(S(n) * scale)
   const w = fit(z(820))
   const rowH = phone ? z(84) : z(96) // phones: a little tighter, so the card fits under the top bar
   const border = z(6)
@@ -714,7 +714,6 @@ export function SettingsPanel() {
   const ctrlW = z(280)
   const textW = w - 2 * (border + pad) - ctrlW - z(12)
   const descFont = mobile() ? z(18) : z(20)
-  const rows = SETTINGS.length + C.VOLUMES.length + 1 + (devAvailable ? 1 : 0) // language and authorized developer controls
   const titleH = phone ? z(52) : z(64)
   const h = titleH + z(46) + rows * rowH + z(90)
   // phones: start below the top bar (the app's buttons and your coins), centred in the space under it
@@ -775,8 +774,8 @@ export function SettingsPanel() {
         })}
         {devAvailable && row(
           'set-dev-panel',
-          'Activate dev panel',
-          'Live network, server and cube statistics',
+          t('settings.devPanel.label'),
+          t('settings.devPanel.desc'),
           <PillButton id="set-dev-toggle" label={netMon.open ? t('common.on') : t('common.off')} width={z(150)} height={z(56)} font={z(26)} tint={netMon.open ? PAL.green : c(0.6, 0.55, 0.7, 0.8)} onClick={() => { toggleNetMonitor(); if (netMon.open) cs.showSettings = false }} />
         )}
         <UiEntity uiTransform={{ width: '100%', flexDirection: 'row', justifyContent: 'center', margin: { top: z(10) }, pointerFilter: 'none' }}>

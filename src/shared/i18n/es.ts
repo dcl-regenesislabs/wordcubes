@@ -51,6 +51,8 @@ export const ES: Record<string, string> = {
   'leave.body': 'Vuelves al lobby y dejas tu lugar libre.',
 
   'settings.title': 'Ajustes',
+  'settings.devPanel.label': 'Activar panel de desarrollo',
+  'settings.devPanel.desc': 'Estadísticas de red, servidor y cubos en vivo',
   'settings.language': 'Idioma',
   'settings.languageDesc': 'Menús y mensajes',
   'settings.languageMobile': 'Sigue a tu app de Decentraland: Profile > Settings > Language',

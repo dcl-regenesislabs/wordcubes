@@ -26,9 +26,12 @@ function harness(phone, canvas) {
   const theme = { PAL: {}, Frame: 'Frame', OutlineLabel: 'OutlineLabel', PillButton: 'PillButton',
     LetterTile: 'LetterTile', CoinIcon: 'CoinIcon', c: noop,
     clamp: (n, min, max) => Math.min(max, Math.max(min, n)) }
+  const netMon = { allowed: false, open: false }
+  const netstats = { netMon, toggleNetMonitor: () => { if (netMon.allowed) netMon.open = !netMon.open } }
   const hud = loadTs('src/client/ui/hud.tsx', {
     '@dcl/sdk/react-ecs': react, '@dcl/sdk/ecs': { engine: { getEntitiesWith: () => currentGame ? [[0, currentGame]] : [] } },
     '../../shared/schemas': {}, '../gamestate': { myState: () => currentGame || undefined, boardText: () => '' }, '../state': state, '../cubes': { heldLetter: () => '' },
+    '../netstats': netstats,
     '../../config': config, '../../shared/messages': { room: { send: noop } },
     '../lobby': { returnToLobby: noop, gameLang: () => '' }, '../../shared/lang': loadTs('src/shared/lang.ts'),
     '../i18n': { t: (key, args) => loadI18n().format('en', key, args, phone), uiLang: () => 'en', pickUiLang: noop }, './flags': { Flag: 'Flag' }, '../arena': {}, './platform': platform,
@@ -36,7 +39,7 @@ function harness(phone, canvas) {
     './theme': theme, './debug': { dbg: { screen: 'game' }, debugWord: () => ({ answer: 'PARIS', question: 'Capital of France?' }) }, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
     '../../../assets/scene/entity-names': {}
   }, 'exports.testing = { WordPanel, SidePanel, ItemBar, VoteScreen, BottomArea, snapshot: () => ({ seenRound, prev, prevPhase, failAt, winAt, lastDifficulty, levelAt, myVote, votedRound }) }')
-  return { hud: hud.testing, module: hud, config, state, platform, react, setGame: g => { currentGame = g } }
+  return { hud: hud.testing, module: hud, config, state, platform, react, theme, netstats, setGame: g => { currentGame = g } }
 }
 
 const longGame = { phase: 'playing', length: 14, masked: '_'.repeat(14), question: 'A long question '.repeat(10), hint: '', frozen: 0, difficulty: 1 }
@@ -218,3 +221,77 @@ test('desktop toast layout does not depend on mobile app button tuning', () => {
   assert.deepEqual(after.props.pad, before.props.pad)
   assert.equal(after.children[0].props.width, before.children[0].props.width)
 })
+
+function nodes(tree) {
+  if (!tree || typeof tree !== 'object') return []
+  return [tree, ...(tree.children || []).flatMap(nodes)]
+}
+
+for (const [name, phone, canvas] of [
+  ['desktop', false, undefined],
+  ['dpr-1 phone', true, undefined],
+  ['dpr-3 phone', true, { width: 2400, height: 1080, devicePixelRatio: 3 }]
+]) {
+  test(`developer Settings toggle is gated and fits on ${name}`, () => {
+    const h = harness(phone, canvas)
+    const off = h.module.SettingsPanel()
+    assert.ok(!nodes(off).some(n => n.props.id === 'set-dev-toggle'))
+    assert.equal(off.children[0].props.width, Math.min(h.platform.S(820), Math.round(h.platform.view().w * 0.92)), 'ordinary Settings keeps its original size')
+    h.netstats.netMon.allowed = true
+    const panel = h.module.SettingsPanel()
+    const button = nodes(panel).find(n => n.props.id === 'set-dev-toggle')
+    assert.ok(button)
+    assert.ok(nodes(panel).some(n => n.props.value === 'Activate dev panel'))
+    if (phone) assert.ok(panel.children[0].props.height <= h.platform.view().h * 0.64 + 1)
+    h.state.cs.showSettings = true
+    button.props.onClick()
+    assert.equal(h.netstats.netMon.open, true)
+    assert.equal(h.state.cs.showSettings, false)
+    nodes(h.module.SettingsPanel()).find(n => n.props.id === 'set-dev-toggle').props.onClick()
+    assert.equal(h.netstats.netMon.open, false)
+    h.config.NET_STATS = false
+    assert.ok(!nodes(h.module.SettingsPanel()).some(n => n.props.id === 'set-dev-toggle'))
+  })
+
+  test(`all diagnostics and warnings remain reachable on ${name}`, () => {
+    const h = harness(phone, canvas)
+    Object.assign(h.theme.PAL, { pink: 'warning', text: 'normal' })
+    const source = Array.from({ length: 60 }, (_, i) => `row ${i} ${'data '.repeat(12)}`)
+    source[59] = 'NO ANSWER WAITING FULL STATE'
+    let reasons = ['NO connection ' + 'reason '.repeat(20)]
+    const monitor = loadTs('src/client/ui/netstats.tsx', {
+      '@dcl/sdk/react-ecs': h.react, './platform': h.platform, './theme': h.theme,
+      '../netstats': { ...h.netstats, netLines: () => source, health: () => ({ level: 'fail', reasons }), logSummary() {} }
+    })
+    assert.equal(monitor.NetMonitor(), null)
+    Object.assign(h.netstats.netMon, { allowed: true, open: true })
+    const seen = new Set()
+    let pages
+    for (let page = 0; page < 100; page++) {
+      const tree = monitor.NetMonitor()
+      const all = nodes(tree)
+      assert.ok(!all.some(n => n.props.uiTransform?.pointerFilter === 'block'), 'only buttons intercept input')
+      assert.ok(tree.props.uiTransform.position.top + tree.props.uiTransform.height <= h.platform.view().h - h.platform.BOTTOM_RESERVE() + 1)
+      const data = all.filter(n => n.type === 'Label' && n.props.font === 'monospace')
+      data.forEach(n => seen.add(n.props.value))
+      const content = tree.children[2]
+      assert.ok(data.length * h.platform.S(19) <= content.props.uiTransform.height)
+      const pageLabel = all.find(n => /^\d+ \/ \d+$/.test(n.props.value || ''))
+      pages = Number(pageLabel.props.value.split(' / ')[1])
+      if (page === pages - 1) break
+      all.find(n => n.props.id === 'net-next').props.onClick()
+    }
+    for (let i = 0; i < 59; i++) assert.ok([...seen].some(text => text.startsWith(`row ${i} `)), `row ${i} reachable`)
+    assert.ok(seen.has(source[59]), 'last server row reachable')
+    const last = nodes(monitor.NetMonitor()).find(n => n.props.value === source[59])
+    assert.equal(last.props.color, 'warning')
+    source.splice(0, source.length, 'short')
+    reasons = []
+    assert.ok(nodes(monitor.NetMonitor()).some(n => n.props.value === '1 / 1'), 'page clamps when data shrinks')
+    nodes(monitor.NetMonitor()).find(n => n.props.id === 'net-close').props.onClick()
+    assert.equal(monitor.NetMonitor(), null)
+    h.netstats.netMon.open = true
+    h.netstats.netMon.allowed = false
+    assert.equal(monitor.NetMonitor(), null)
+  })
+}
