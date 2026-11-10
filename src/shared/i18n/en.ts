@@ -58,6 +58,8 @@ export const EN: Record<string, string> = {
 
   // settings
   'settings.title': 'Settings',
+  'settings.devPanel.label': 'Activate dev panel',
+  'settings.devPanel.desc': 'Live network, server and cube statistics',
   'settings.language': 'Language',
   'settings.languageDesc': 'Menus and messages',
   'settings.languageMobile': 'Follows your Decentraland app: Profile > Settings > Language',

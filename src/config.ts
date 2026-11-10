@@ -292,7 +292,8 @@ export const MOBILE_TOP_BAR_HEIGHT = 0.09
 // lobby), whatever you are doing, to check their icons and layout. Set to false before merging.
 export const TOUCH_CONTROLS_DEBUG = false
 
-// Live network / game monitor (client/ui/netstats.tsx), opened by a small button on the left edge of the screen.
+// Live network / game monitor: opt-in via Activate dev panel in Settings.
+// Enabled by default, closed until opened; this flag is an operational kill switch.
 // Only the wallets in the NET_MONITOR_WALLETS env var see it (everyone in the local preview):
 //   npx sdk-commands storage env set NET_MONITOR_WALLETS --value '["0xabc...","0xdef..."]'
 // false turns it off for everybody.
