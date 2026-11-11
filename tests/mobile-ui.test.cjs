@@ -39,7 +39,7 @@ function harness(phone, canvas) {
     '../audio': { SFX: {}, playSfx: noop, onItems: noop, onProfileLoaded: noop, talkSfx: noop },
     './theme': theme, './debug': { dbg: { screen: 'game' }, debugWord: () => ({ answer: 'PARIS', question: 'Capital of France?' }) }, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
     '../../../assets/scene/entity-names': {}
-  }, 'exports.testing = { WordPanel, SidePanel, ItemBar, VoteScreen, BottomArea, snapshot: () => ({ seenRound, prev, prevPhase, failAt, winAt, lastDifficulty, levelAt, myVote, votedRound }) }')
+  }, 'exports.testing = { WordPanel, SidePanel, ItemBar, VoteScreen, BottomArea, LockoutBanner, snapshot: () => ({ seenRound, prev, prevPhase, failAt, winAt, lastDifficulty, levelAt, myVote, votedRound }) }')
   return { tutorialStarts, hud: hud.testing, module: hud, config, state, platform, react, theme, netstats, setGame: g => { currentGame = g } }
 }
 
@@ -360,4 +360,45 @@ for(const phone of [false,true]) test(`Cubby asks before replaying the tutorial 
   nodes(h.module.NpcDialog()).find(n=>n.props.id==='npc-next').props.onClick()
   assert.equal(h.state.cs.dialog,null)
   assert.equal(h.tutorialStarts.length,1)
+})
+
+test('the lockout banner gives the reason and the seconds left, with a bar that runs down', () => {
+  const h = harness(false)
+  const texts = (node, out = []) => {
+    if (!node || typeof node !== 'object') return out
+    if (node.props && typeof node.props.value === 'string') out.push(node.props.value)
+    for (const c of node.children || []) texts(c, out)
+    return out
+  }
+  const widths = (node, out = []) => {
+    if (!node || typeof node !== 'object') return out
+    if (node.props?.uiTransform?.width !== undefined) out.push(node.props.uiTransform.width)
+    for (const c of node.children || []) widths(c, out)
+    return out
+  }
+  h.state.cs.lockoutTotal = 20
+  h.state.cs.lockoutUntil = Date.now() + 10000 // half of it left
+  const banner = h.hud.LockoutBanner()
+  assert.ok(texts(banner).some(v => /^Wrong letter · locked 1[01]s$/.test(v)), 'one line: why and how long')
+  const ws = widths(banner).filter(w => typeof w === 'number')
+  const track = Math.max(...ws.filter(w => w < banner.props.width))
+  assert.ok(ws.some(w => w > 0 && w < track && Math.abs(w - track / 2) < track * 0.1), 'the bar is about half full with half the time left')
+})
+
+test('while locked out the help line is hidden: the banner replaces it', () => {
+  const h = harness(true)
+  const texts = (node, out = []) => {
+    if (!node || typeof node !== 'object') return out
+    if (node.props && typeof node.props.value === 'string') out.push(node.props.value)
+    for (const c of node.children || []) texts(c, out)
+    return out
+  }
+  h.state.cs.lockoutUntil = 0
+  assert.ok(texts(h.hud.BottomArea()).includes('Tap a cube to grab it'), 'the help line shows normally')
+  h.state.cs.lockoutUntil = Date.now() + 10000
+  h.state.cs.lockoutTotal = 25
+  const bottom = h.hud.BottomArea()
+  assert.ok(!texts(bottom).includes('Tap a cube to grab it'), 'no "tap a cube" while you cannot grab')
+  const has = (node, type) => !!node && typeof node === 'object' && (node.type === type || (node.children || []).some(c => has(c, type)))
+  assert.ok(has(bottom, h.hud.LockoutBanner), 'the banner is there')
 })

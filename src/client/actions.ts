@@ -13,7 +13,7 @@ import { myState } from './gamestate'
 import { cs } from './state'
 import { SFX, playSfx } from './audio'
 import { playThrowEmote } from './emotes'
-import { lockoutLeft, showMessage } from './state'
+import { lockoutLeft, showMessage, pingLockout } from './state'
 import { t } from './i18n'
 import { mobile } from './ui/platform'
 import { PRACTICE_GAME } from '../shared/tutorial'
@@ -52,6 +52,8 @@ export function grabCube(id: number) {
     if (e === undefined || !cs.practiceLetter || CubeData.get(e).letter !== cs.practiceLetter) return showMessage(t('tutorial.needed', { letter: cs.practiceLetter }), 2)
   }
   if (cs.game === PRACTICE_GAME) { grabLocalCube(id); return }
+  // locked out: the banner hops (it already says why and for how long); no need to ask the server to refuse it
+  if (lockoutLeft() > 0) return pingLockout()
   room.send('grab', { cubeId: id })
   if (grabLooksOk(id)) guessMode(id, 'held', -1)
 }
@@ -77,7 +79,7 @@ export function throwAtFrame(slot: number) {
 export function breakHeld() {
   if (cs.tutorialActive) return
   if (!isHolding()) return showMessage(t('msg.nothingToBreak'), 2)
-  if (lockoutLeft() > 0) return showMessage(t('msg.locked', { s: lockoutLeft() }), 2)
+  if (lockoutLeft() > 0) return pingLockout()
   room.send('breakCube', { n: 0 })
 }
 

@@ -7,7 +7,7 @@ import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './f
 import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { predictSystem } from './predict'
 import { playThrowEmote, preloadGrabAssets } from './emotes'
-import { cs, showMessage, showPowerupToast, lockoutLeft } from './state'
+import { cs, showMessage, showPowerupToast, lockoutLeft, clearLockout, pingLockout } from './state'
 import { breakHeld, tossHeld, throwAtFrame } from './actions'
 import { grassSystem } from './grass'
 import { setupUi } from './ui'
@@ -60,6 +60,7 @@ function clientSystem(dt: number) {
   const g = myState()
   if (cs.game !== lastGame) {
     lastGame = cs.game
+    clearLockout() // a lockout belongs to the game you collapsed (the server keeps one per game)
     if (cs.game >= 0) preloadGrabAssets() // emotes and cube models, before your first grab and throw (once)
     lastRound = -1
     lastLength = -1
@@ -210,6 +211,8 @@ export function initClient() {
 
   room.onMessage('toast', (d) => {
     if (cs.game === PRACTICE_GAME) return
+    // refused because you are locked out (hint, power-up...): the banner hops instead of repeating it in a toast
+    if (d.key === 'srv.lockedOut' && lockoutLeft() > 0) return pingLockout()
     const text = serverText(d) // in your UI language (the server sends a key, shared/i18n)
     if (d.kind === 'powerup') return showPowerupToast(text)
     // Phones: the server's "Holding X. ..." tip stays on screen until you place, break or toss that cube, for your first
