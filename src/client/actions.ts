@@ -12,7 +12,7 @@ import { myState } from './gamestate'
 import { cs } from './state'
 import { SFX, playSfx } from './audio'
 import { playThrowEmote } from './emotes'
-import { lockoutLeft, showMessage } from './state'
+import { lockoutLeft, showMessage, pingLockout } from './state'
 import { t } from './i18n'
 
 /**
@@ -34,8 +34,8 @@ function grabLooksOk(id: number): boolean {
 
 /** Click on a cube: ask the server, and put it in your hands right away when it should say yes. */
 export function grabCube(id: number) {
-  // locked out: say so here, no need to ask the server to refuse it
-  if (lockoutLeft() > 0) return showMessage(t('msg.locked', { s: lockoutLeft() }), 2)
+  // locked out: the banner hops (it already says why and for how long); no need to ask the server to refuse it
+  if (lockoutLeft() > 0) return pingLockout()
   room.send('grab', { cubeId: id })
   if (grabLooksOk(id)) guessMode(id, 'held', -1)
 }
@@ -56,7 +56,7 @@ export function throwAtFrame(slot: number) {
 /** Break the cube you hold for coins (E). */
 export function breakHeld() {
   if (!isHolding()) return showMessage(t('msg.nothingToBreak'), 2)
-  if (lockoutLeft() > 0) return showMessage(t('msg.locked', { s: lockoutLeft() }), 2)
+  if (lockoutLeft() > 0) return pingLockout()
   room.send('breakCube', { n: 0 })
 }
 

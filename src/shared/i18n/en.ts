@@ -153,7 +153,6 @@ export const EN: Record<string, string> = {
   'msg.lockedPlace': 'Locked out: {s}s left before you can place again.',
   'msg.nothingToBreak': 'Nothing to break. Click a cube to grab it first.',
   'msg.nothingToBreak.mobile': 'Nothing to break. Tap a cube to grab it first.',
-  'msg.locked': 'Locked out: {s}s left.',
 
   // messages from the server
   'srv.lockedOut': 'Locked out: {s}s left.',

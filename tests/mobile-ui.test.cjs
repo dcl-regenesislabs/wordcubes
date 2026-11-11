@@ -318,3 +318,21 @@ test('the lockout banner gives the reason and the seconds left, with a bar that 
   const track = Math.max(...ws.filter(w => w < banner.props.width))
   assert.ok(ws.some(w => w > 0 && w < track && Math.abs(w - track / 2) < track * 0.1), 'the bar is about half full with half the time left')
 })
+
+test('while locked out the help line is hidden: the banner replaces it', () => {
+  const h = harness(true)
+  const texts = (node, out = []) => {
+    if (!node || typeof node !== 'object') return out
+    if (node.props && typeof node.props.value === 'string') out.push(node.props.value)
+    for (const c of node.children || []) texts(c, out)
+    return out
+  }
+  h.state.cs.lockoutUntil = 0
+  assert.ok(texts(h.hud.BottomArea()).includes('Tap a cube to grab it'), 'the help line shows normally')
+  h.state.cs.lockoutUntil = Date.now() + 10000
+  h.state.cs.lockoutTotal = 25
+  const bottom = h.hud.BottomArea()
+  assert.ok(!texts(bottom).includes('Tap a cube to grab it'), 'no "tap a cube" while you cannot grab')
+  const has = (node, type) => !!node && typeof node === 'object' && (node.type === type || (node.children || []).some(c => has(c, type)))
+  assert.ok(has(bottom, h.hud.LockoutBanner), 'the banner is there')
+})

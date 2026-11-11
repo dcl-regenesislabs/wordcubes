@@ -22,6 +22,7 @@ export const cs = {
   dialog: null as null | { name: string; pages: string[]; page: number }, // open NPC conversation
   lockoutUntil: 0, // Date.now() time when you may place again (after you collapsed the word)
   lockoutTotal: 0, // seconds that lockout lasts in all (the banner's bar runs down over it)
+  lockoutPing: 0, // Date.now() of the last thing you tried while locked out: the banner gives a little hop
   lobbyCountdown: 0, // seconds left on the lobby start pad, 0 when not counting
   countdownTitle: '', // what the countdown leads to: "Game starts in" (shared start) or "Joining in" (your join)
   padAction: '' as '' | 'start' | 'join' | 'full', // the button the pad you stand on offers ('' off the pad or counting)
@@ -40,6 +41,18 @@ export function showMessage(text: string, seconds = 3, kind = '') {
 
 /** Seconds left of the collapse penalty on cube actions, hints and power-ups, 0 when free. */
 export const lockoutLeft = () => Math.max(0, Math.ceil((cs.lockoutUntil - Date.now()) / 1000))
+
+/** You tried something while locked out: the banner hops instead of a toast repeating what it already says. */
+export function pingLockout() {
+  cs.lockoutPing = Date.now()
+}
+
+/** The server keeps a lockout per game: leaving the game (or switching) leaves it behind. */
+export function clearLockout() {
+  cs.lockoutUntil = 0
+  cs.lockoutTotal = 0
+  cs.lockoutPing = 0
+}
 
 /** Current value of a Settings switch (its default until the server has sent yours). */
 export function setting(id: string): boolean {

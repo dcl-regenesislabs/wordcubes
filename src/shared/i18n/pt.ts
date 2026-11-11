@@ -138,7 +138,6 @@ export const PT: Record<string, string> = {
   'msg.lockedPlace': 'Bloqueado: faltam {s}s para você poder colocar de novo.',
   'msg.nothingToBreak': 'Nada para quebrar. Primeiro clique num cubo para pegar.',
   'msg.nothingToBreak.mobile': 'Nada para quebrar. Primeiro toque num cubo para pegar.',
-  'msg.locked': 'Bloqueado: faltam {s}s.',
 
   'srv.lockedOut': 'Bloqueado: faltam {s}s.',
   'srv.newRound': 'Nova rodada! Encontre as letras.',

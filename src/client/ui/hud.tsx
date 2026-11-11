@@ -442,9 +442,10 @@ function LockoutBanner() {
   const left = Math.max(0, (cs.lockoutUntil - Date.now()) / 1000)
   const barW = w - S(48)
   const fill = Math.round(barW * Math.min(1, left / total))
+  const hop = swell(cs.lockoutPing, 280, 0.08) // you tried something while locked out
   return (
-    <Frame width={w} height={S(84)} edge={PAL.pink} fill={PAL.violetDark} radius={S(22)} border={S(4)} pad={S(8)} align="center" justify="center" margin={{ bottom: S(10) }}>
-      <Label value={t('lock.line', { s: Math.ceil(left) })} fontSize={S(24)} font="sans-serif" color={PAL.pink} textAlign="middle-center" uiTransform={{ width: '100%', height: S(34) }} />
+    <Frame width={Math.round(w * hop)} height={Math.round(S(84) * hop)} edge={PAL.pink} fill={PAL.violetDark} radius={S(22)} border={S(4)} pad={S(8)} align="center" justify="center" margin={{ bottom: S(10) }}>
+      <Label value={t('lock.line', { s: Math.ceil(left) })} fontSize={S(24)} font="sans-serif" color={PAL.pink} textAlign="middle-center" textWrap="nowrap" uiTransform={{ width: '100%', height: S(34) }} />
       <UiEntity uiTransform={{ width: barW, height: S(10), margin: { top: S(4) }, borderRadius: S(5), pointerFilter: 'none' }} uiBackground={{ color: c(1, 1, 1, 0.15) }}>
         <UiEntity uiTransform={{ width: fill, height: '100%', borderRadius: S(5), pointerFilter: 'none' }} uiBackground={{ color: PAL.pink }} />
       </UiEntity>
