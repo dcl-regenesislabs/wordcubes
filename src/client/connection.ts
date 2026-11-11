@@ -17,7 +17,7 @@ let sinceJoin = Infinity
 /** True once the server has answered; until then the HUD shows only the connecting card. */
 export const serverReady = () => ready
 
-/** The single-player tutorial can run while the public-game connection is still loading. */
+/** Release a connection-owned freeze before the tutorial takes control of movement. */
 export function releaseTutorialGate() {
   if (frozen) {
     frozen = false

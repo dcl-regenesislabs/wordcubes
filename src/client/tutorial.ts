@@ -33,7 +33,6 @@ type Step =
 let step: Step = 'off'
 let age = 0
 let checked = false
-let profileWait = 0
 let stage: PracticeStage = 'intro'
 let lang: Lang = 'en'
 let pad: Entity | undefined
@@ -221,7 +220,7 @@ function send(action: string) {
 }
 
 export function startTutorial() {
-  if (!cubbyPosition() || !lobbyAnchors()) return
+  if (!serverReady() || !cubbyPosition() || !lobbyAnchors()) return
   if (cs.game >= 0) returnToLobby()
   checked = true
   cs.tutorialActive = true
@@ -329,7 +328,7 @@ function updateOverlay() {
   overlay.primaryDisplay = showNext ? 'flex' : 'none'
   overlay.buttonWidth = Math.min(phone ? Sbtn(260) : S(220), w - 2 * (overlay.padding + overlay.border))
   overlay.buttonHeight = phone ? Sbtn(58) : S(43)
-  overlay.buttonRowHeight = phone && !showNext ? 0 : overlay.buttonHeight
+  overlay.buttonRowHeight = showNext ? overlay.buttonHeight : 0
   const innerWidth = w - 2 * (overlay.padding + overlay.border)
   // Allow translated text to wrap; reserve real line height rather than shrinking the font.
   const estimatedLines = Math.max(1, Math.ceil(overlay.text.length * overlay.font * 0.57 / innerWidth))
@@ -400,9 +399,9 @@ export function tutorialSystem(dt: number) {
   }
   if (cs.game === PRACTICE_GAME) stage = localPracticeStage()
   if (!checked && cubbyPosition() && lobbyAnchors() && Transform.has(engine.PlayerEntity)) {
-    // Give a saved completion flag a moment to arrive. A missing server never blocks local play.
-    profileWait += dt
-    if (!serverReady() && profileWait < 2) return
+    // serverReady requires the player's profile reply and synced game states.
+    // Never infer a first visit from default settings while the server is unavailable.
+    if (!serverReady()) return
     checked = true
     if (cs.settings.tutorialComplete !== true) startTutorial()
   }

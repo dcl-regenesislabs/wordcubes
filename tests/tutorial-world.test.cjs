@@ -49,8 +49,8 @@ function harness() {
   return {config,cs,lobby,arena,ecs,systems,pointers,teleports}
 }
 
-test('pad accordion reveals 1, 5, 3, 6, 2, 7, 4 in sequence and restores the original heights', () => {
-  const h=harness(), order=[0,4,2,5,1,6,3]
+test('pad accordion reveals rooms 1 through 7 from left to right and restores the original heights', () => {
+  const h=harness(), order=[0,1,2,3,4,5,6]
   for(let i=0;i<order.length;i++) {
     h.lobby.setPadTour(1.2+i*0.45+0.2)
     for(let j=0;j<order.length;j++) assert.equal(h.lobby.padTourReveal(order[j])>0,j<=i)
@@ -111,4 +111,23 @@ test('an eject response for a previous room cannot kick the player out of the pr
   h.lobby.onEjected(0)
   assert.equal(h.cs.game,-1)
   assert.equal(h.teleports.length,1)
+})
+
+
+test('room numbers follow the existing physical pad order, keeping room one in place',()=>{
+  const h=harness()
+  assert.deepEqual(Array.from(h.config.LOBBY_PAD_NAMES),['StartPad.glb','StartPad.glb_5','StartPad.glb_3','StartPad.glb_6','StartPad.glb_2','StartPad.glb_7','StartPad.glb_4'])
+  h.lobby.setupLobby()
+  h.systems[0](0.1)
+  const cubes=[...h.ecs.GltfContainer.data].filter(([,c])=>/Cube[1-7]\.glb$/.test(c.src))
+  assert.equal(cubes.length,7)
+  for(let game=0;game<7;game++) {
+    const model=cubes.find(([,c])=>c.src===h.config.padNumberModel(game))[0]
+    const root=h.ecs.Transform.get(model).parent
+    const cubePosition=h.ecs.Transform.get(root).position
+    const padEntity=h.ecs.engine.getEntityOrNullByName(h.config.LOBBY_PAD_NAMES[game])
+    const padPosition=h.ecs.Transform.get(padEntity).position
+    assert.equal(cubePosition.x,padPosition.x)
+    assert.equal(cubePosition.z,padPosition.z)
+  }
 })

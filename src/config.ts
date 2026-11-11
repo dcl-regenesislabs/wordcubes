@@ -204,13 +204,14 @@ export const GRASS_DAMPING = 6 // lower = more wobble after a player passes
 export const GAME_COUNT = 7
 export const MAX_PLAYERS_PER_GAME = 5
 export const LOBBY_PAD_NAMES = [
+  // Physical left-to-right order, starting at the original room 1 pad.
   'StartPad.glb',
-  'StartPad.glb_2',
-  'StartPad.glb_3',
-  'StartPad.glb_4',
   'StartPad.glb_5',
+  'StartPad.glb_3',
   'StartPad.glb_6',
-  'StartPad.glb_7'
+  'StartPad.glb_2',
+  'StartPad.glb_7',
+  'StartPad.glb_4'
 ]
 // Game 0 plays in the composite's "GameEnv". The other arenas are not in the composite: each client builds one on the fly (client/arenas.ts)
 // as a copy of GameEnv's models, shifted by these offsets (metres), only while it takes part in that game.

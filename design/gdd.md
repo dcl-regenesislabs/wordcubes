@@ -10,7 +10,7 @@ The tutorial is mandatory until completed once, has no Skip button, and can late
 
 ## Sequence
 
-1. Arrive talking to Cubby. A cinematic shows the public pads rising in order 1, 5, 3, 6, 2, 7, 4. This does not reorder the rooms.
+1. Arrive talking to Cubby. A cinematic shows the public pads rising in order 1, 2, 3, 4, 5, 6, 7. This does not reorder the rooms.
 2. Cubby spawns a practice pad with the normal pad collider and white status plate. Walk onto it and create practice in the language selected on the phone/app (saved UI language on desktop).
 3. A copy of the existing arena appears locally at the unused eighth location within the current parcels. Only the local player and the scene's local NPCs remain visible.
 4. The first arena cinematic explains the arrow: it marks the beginning and reading direction; the first **letter** goes in the adjacent first frame.
@@ -28,8 +28,8 @@ The word selection and scripted X demonstration are implementation choices withi
 - Pickups and placements do not wait for network replies or perform server distance checks. The coach still guides one letter/frame at a time.
 - An avatar modifier covers the lobby and lab while the tutorial is active, excluding the local player and local NPCs. NPC AvatarShape IDs use stable address-shaped scene identifiers so mobile keeps those identities in modifier exclusions; the coach is excluded before spawning. Other players' cube packets, effects and toasts cannot affect the lab. The server does not eject visitors from the local lab coordinate.
 - Leaving or interrupting practice removes its local cubes/state and restores camera/input/avatar visibility. Replaying creates a fresh local practice.
-- Profile storage is the only server interaction: after completion, save `tutorialComplete` in the existing profile, without checking gameplay. It is retried in the background until the profile acknowledges it. Neither completion nor practice waits for this save.
-- On arrival, allow up to two seconds for a saved completion flag, so returning players normally skip onboarding. If the server is unavailable, start the local tutorial anyway. An offline completion cannot persist across clients until the profile reconnects.
+- The server supplies the initial profile check and completion storage: after completion, save `tutorialComplete` in the existing profile, without checking gameplay. It is retried in the background until the profile acknowledges it. Neither completion nor practice waits for this save.
+- On arrival, wait for the server profile and connection before deciding whether onboarding is required. If the server is unavailable, keep the connection screen; never assume the tutorial is unfinished.
 - The public-game connection gate remains in place outside the tutorial. It releases local tutorial input and cannot override an active cinematic when a late connection arrives.
 
 ## Mobile presentation
@@ -42,7 +42,7 @@ The word selection and scripted X demonstration are implementation choices withi
 
 ## Verification and remaining limits
 
-Automated checks exercise the full local word/collapse/rebuild loop in all languages with zero gameplay network messages, instant pickup that cannot be undone by a timeout, cleanup, public-game prediction, offline tutorial progression, late connection input, saved completion, avatar exclusions, mobile touch controls and caption bounds. Public-game tests remain in place.
+Automated checks exercise the full local word/collapse/rebuild loop in all languages with zero gameplay network messages, instant pickup that cannot be undone by a timeout, cleanup, public-game prediction, local progression after an initial profile check, delayed profile gating, cinematic input, saved completion, avatar exclusions, mobile touch controls and caption bounds. Public-game tests remain in place.
 
 Real-device visual framing, readability, avatar modifier behavior and touch behavior still need in-world confirmation. Passing tests does not establish that the player understands the lesson. No assets were downloaded and parcels were not changed.
 
@@ -53,3 +53,7 @@ Cubby is the tutorial guide, without a shop sign, and asks whether to replay the
 Lobby order follows the existing Cubby-to-Lexi anchor line: Cubby stays at VendorNpc, Bix takes RankNpc, and Lexi moves four metres beyond Bix along that line. Cubby offers explicit replay / not now choices; merely talking to him never starts the tutorial.
 
 Mobile dialogue aligns a complete name/text column with a vertically centred action column. Panel and button rims share the same viewport-based scale; Next, pickup and retry tile keep a consistent action-column width. The mistake caption stays visible through the collapse and waits for Next instead of auto-advancing, on both desktop and mobile.
+
+Public room pads are mapped to their physical left-to-right order, keeping the original room 1 in place. Each room number, status, lights, interaction and cinematic reveal uses that same mapping.
+
+Tutorial entry always waits for the initial server profile and scene connection to be ready before checking tutorialComplete. There is no timeout fallback to an assumed first visit; manual replay also respects this entry gate. After the initial decision, the practice mechanics remain entirely local.

@@ -25,12 +25,14 @@ export function TutorialOverlay(props: { onNext: () => void; onGrab?: () => void
         <Frame width={state.width} height={state.height} edge={PAL.violet} fill={PAL.cream} radius={state.radius} border={state.border} pad={state.padding} align="flex-start" justify="center" block>
           <Label value={state.title} font="sans-serif" fontSize={state.titleFont} color={PAL.violet} textAlign="middle-left" uiTransform={{ width: '100%', height: state.titleHeight }} />
           <Label value={state.text} font="sans-serif" fontSize={state.font} color={PAL.ink} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: state.lineHeight }} />
-          <UiEntity uiTransform={{ width: '100%', height: state.buttonRowHeight, flexDirection: 'row', justifyContent: 'flex-end', pointerFilter: 'none' }}>
+          <UiEntity uiTransform={{ width: '100%', height: state.buttonRowHeight, display: state.primaryDisplay, flexDirection: 'row', justifyContent: 'flex-end', pointerFilter: 'none' }}>
             <UiEntity key="tutorial-next-slot" uiTransform={{ width: state.buttonWidth, height: state.buttonHeight, pointerFilter: 'none' }}>
               {state.primaryDisplay === 'flex' && <PillButton id="tutorial-next" label={state.next} width={state.buttonWidth} height={state.buttonHeight} font={state.font} tint={PAL.green} onClick={props.onNext} />}
             </UiEntity>
           </UiEntity>
-          {state.framesDisplay === 'flex' && <LetterTile size={state.tileSize} letter="" state="empty" index={2} glow onClick={() => clickSlot(2)} />}
+          <UiEntity key="tutorial-frame-row" uiTransform={{ width: '100%', height: state.framesHeight, display: state.framesDisplay, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
+            {state.framesDisplay === 'flex' && <LetterTile size={state.tileSize} letter="" state="empty" index={2} glow onClick={() => clickSlot(2)} />}
+          </UiEntity>
           <Label value={state.progress} font="sans-serif" fontSize={state.progressFont} color={PAL.ink} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: state.progressHeight }} />
         </Frame>
       </UiEntity>

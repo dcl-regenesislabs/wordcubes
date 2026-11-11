@@ -166,8 +166,9 @@ test('practice uses the language at creation and arrow explanation precedes ever
 
 for (const [phone, offline] of [[false,false],[true,false],[true,true]]) test(`coached actions trigger cinematics, collapse, rebuild and return to the lobby (${phone ? 'mobile' : 'desktop'}, ${offline ? 'offline' : 'online'})`, () => {
   const h = harness(phone)
+  h.tick(2) // the initial server profile must be checked before any tutorial
   if (offline) h.setReady(false)
-  h.tick(2); h.enter()
+  h.enter()
   h.advance(); h.advance() // arrow -> clue -> grab
   h.CubeData.create(70, { game: 7, letter: 'S', mode: 'held', holder: 'alice' })
   h.setHeld(70); h.tick()
@@ -455,16 +456,20 @@ test('tutorial hides other players in both lobby and lab, while keeping its loca
   assert.equal(h.isolationAreas.data.size,0)
 })
 
-test('offline profile lookup never prevents the single-player welcome from starting', () => {
+for(const completed of [false,true]) test(`tutorial waits for the server profile before deciding whether to start (completed=${completed})`,()=>{
   const h=harness(true)
   h.setReady(false)
-  h.tick(2)
-  assert.equal(h.mod.testing.step(),'welcome')
-  assert.equal(h.cs.tutorialActive,true)
-  h.advance();h.advance();h.advance()
-  assert.equal(h.mod.testing.step(),'walk')
-  assert.equal(h.cs.tutorialCinematic,false)
-  assert.equal(h.sent.length,0)
+  for(let i=0;i<5;i++) h.tick(60)
+  assert.equal(h.mod.testing.step(),'off')
+  assert.equal(h.cs.tutorialActive,false)
+  assert.equal(h.teleports.length,0)
+  h.mod.startTutorial()
+  assert.equal(h.cs.tutorialActive,false,'manual replay cannot bypass the initial server gate')
+  h.cs.settings.tutorialComplete=completed
+  h.setReady(true)
+  h.tick()
+  assert.equal(h.cs.tutorialActive,!completed)
+  assert.equal(h.mod.testing.step(),completed?'off':'welcome')
 })
 
 test('NPC identities survive the mobile address filter and remain distinct across arenas', () => {
@@ -512,6 +517,13 @@ test('post-collapse UI frame throws into the last slot on desktop and mobile', (
     visit(ui.TutorialOverlay({onNext(){}}))
     const tiles=nodes.filter(n=>n.type==='LetterTile')
     assert.equal(tiles.length,1)
+    if(!mobile) {
+      const row=nodes.find(n=>n.props.key==='tutorial-frame-row')
+      assert.equal(row.props.uiTransform.width,'100%')
+      assert.equal(row.props.uiTransform.justifyContent,'center')
+      assert.equal(row.props.uiTransform.alignItems,'center')
+      assert.ok(row.children.includes(tiles[0]),'the placement tile is inside its centered row')
+    }
     tiles[0].props.onClick()
     assert.deepEqual(clicks,[2])
   }

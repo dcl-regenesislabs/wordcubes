@@ -168,7 +168,7 @@ interface PadView {
   localY: number
 }
 
-const PAD_TOUR_ORDER = [0, 4, 2, 5, 1, 6, 3]
+const PAD_TOUR_ORDER = [0, 1, 2, 3, 4, 5, 6]
 let padTourTime: number | null = null
 export function setPadTour(time: number | null) { padTourTime = time }
 export function padTourReveal(game: number): number {
