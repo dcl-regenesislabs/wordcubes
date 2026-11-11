@@ -30,7 +30,7 @@ export const EN: Record<string, string> = {
   'hud.help.held.mobile': 'Tap a frame to place it',
   'hud.help.empty': 'Click a cube to grab it',
   'hud.help.empty.mobile': 'Tap a cube to grab it',
-  'hud.lockedOut': 'Locked out  {s}s',
+  'lock.line': 'Wrong letter · locked {s}s',
   'hud.wildcard': 'Wildcard',
   'hud.holding': 'Holding',
   'toast.holdingWord': 'Holding', // the word before the held letter in srv.holding (a letter, not a key icon)
@@ -153,10 +153,9 @@ export const EN: Record<string, string> = {
   'msg.lockedPlace': 'Locked out: {s}s left before you can place again.',
   'msg.nothingToBreak': 'Nothing to break. Click a cube to grab it first.',
   'msg.nothingToBreak.mobile': 'Nothing to break. Tap a cube to grab it first.',
-  'msg.locked': 'Locked out: {s}s left.',
 
   // messages from the server
-  'srv.lockedOut': 'Locked out: {s}s left. You can still throw your held cube away.',
+  'srv.lockedOut': 'Locked out: {s}s left.',
   'srv.newRound': 'New round! Find the letters.',
   'srv.newGame': 'A new game! Find the letters.',
   'srv.levelChanged': 'Level {n} ({dir})! Find the letters.',
