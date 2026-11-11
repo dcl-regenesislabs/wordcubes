@@ -7,6 +7,9 @@ import { engine } from '@dcl/sdk/ecs'
 import { DebugBar, applyDebug, showGame } from './ui/debug'
 import { serverReady, connectingTooLong } from './connection'
 import { NetMonitor } from './ui/netstats'
+import { TutorialOverlay } from '../ui/TutorialOverlay'
+import { nextTutorial } from './tutorial'
+import { grabTutorialCube } from './actions'
 
 // The UI canvas depends on the device (1920x1080 desktop, 1600x720 x pixel ratio on phones): setupResponsiveUi sets
 // the renderer up once and again as soon as the platform lookup answers.
@@ -20,7 +23,7 @@ export function setupUi() {
 // Pieces and look live in ./ui (theme = palette and shared widgets, hud = the screens).
 export const uiMenu = () => {
   applyDebug() // UI_PREVIEW only: the screen picked in the debug bar
-  if (!serverReady() && !UI_PREVIEW) {
+  if (!serverReady() && !cs.tutorialActive && !UI_PREVIEW) {
     return (
       <UiEntity uiTransform={{ width: '100%', height: '100%', pointerFilter: 'none' }}>
         <ConnectingGate slow={connectingTooLong()} />
@@ -29,6 +32,7 @@ export const uiMenu = () => {
     )
   }
   const inGame = showGame()
+  if (cs.tutorialActive) return <TutorialOverlay onNext={nextTutorial} onGrab={grabTutorialCube} />
   return (
     <UiEntity uiTransform={{ width: '100%', height: '100%', pointerFilter: 'none' }}>
       {!inGame && !cs.dialog && <PadCard />}

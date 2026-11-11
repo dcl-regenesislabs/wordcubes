@@ -237,6 +237,7 @@ export const PillButton = (props: {
   label: string
   width: number
   height: number
+  border?: number
   font?: number
   tint?: Color4
   active?: boolean // e.g. the option you picked: gold rim and bright text
@@ -251,7 +252,7 @@ export const PillButton = (props: {
   const w = Math.round(props.width * k)
   const h = Math.round(props.height * k)
   const rim = props.tint ?? PAL.violetLight
-  const p = S(4) // rim thickness
+  const p = props.border ?? S(4) // rim thickness
   const font = props.font ?? S(24)
   const innerW = w - 3 * p
   const innerH = Math.max(S(20), h - 3 * p)
@@ -280,10 +281,10 @@ export const PillButton = (props: {
         uiBackground={{ color: hov ? PAL.violet : PAL.violetDark }}
       >
         {props.cost === undefined ? (
-          <Label value={props.label} fontSize={font} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: innerW, height: innerH }} />
+          <Label value={props.label} fontSize={font} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textAlign="middle-center" textWrap="nowrap" uiTransform={{ width: innerW, height: innerH }} />
         ) : (
           <UiEntity uiTransform={{ width: innerW, height: innerH, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
-            <Label value={props.label} fontSize={font} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textWrap="nowrap" uiTransform={{ width: Math.round(font * 2.3), height: innerH }} />
+            <Label value={props.label} fontSize={font} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textAlign="middle-center" textWrap="nowrap" uiTransform={{ width: Math.round(font * 2.3), height: innerH }} />
             <CoinIcon size={Math.round(font * 0.95)} margin={{ left: p, right: p }} />
             <Label value={`${props.cost}`} fontSize={font} font="sans-serif" color={PAL.yellow} textWrap="nowrap" uiTransform={{ width: Math.round(font * 1.2), height: innerH }} />
           </UiEntity>

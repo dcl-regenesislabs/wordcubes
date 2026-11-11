@@ -17,6 +17,7 @@ import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, S, view } fro
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c, Edges, hovered, hover } from './theme'
 import { rankIndex } from './rank'
 import { dbg, debugWord } from './debug'
+import { startTutorial } from '../tutorial'
 
 type Game = { frozen: number; players: number; builders: number; hintCost: number; phase: string; round: number; difficulty: number; timeLeft: number; voteLeft: number; voteDown: number; voteSame: number; voteUp: number; completed: number; question: string; length: number; masked: string; hint: string }
 
@@ -582,15 +583,20 @@ export function NpcDialog() {
         <Label value={d.name} fontSize={z(30)} font="sans-serif" color={PAL.violet} textAlign="middle-left" uiTransform={{ width: '100%', height: z(40) }} />
         <Label value={d.pages[d.page]} fontSize={z(28)} font="sans-serif" color={PAL.ink} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: z(110) }} />
         <UiEntity uiTransform={{ width: '100%', height: z(60), flexDirection: 'row', justifyContent: 'flex-end', pointerFilter: 'none' }}>
-          <PillButton id="npc-close" label={t('common.close')} width={z(150)} height={z(52)} font={z(24)} margin={{ right: z(12) }} onClick={() => (cs.dialog = null)} />
+          <PillButton id="npc-close" label={t(d.replayTutorial ? 'npc.cubby.replayNo' : 'common.close')} width={z(d.replayTutorial ? 220 : 150)} height={z(52)} font={z(24)} margin={{ right: z(12) }} onClick={() => (cs.dialog = null)} />
           <PillButton
             id="npc-next"
-            label={last ? t('common.done') : t('common.next')}
+            label={d.replayTutorial ? t('npc.cubby.replayYes') : last ? t('common.done') : t('common.next')}
             width={z(170)}
             height={z(52)}
             font={z(24)}
             tint={PAL.green}
             onClick={() => {
+              if (d.replayTutorial) {
+                cs.dialog = null
+                startTutorial()
+                return
+              }
               if (!last) talkSfx()
               cs.dialog = last || !cs.dialog ? null : { ...cs.dialog, page: cs.dialog.page + 1 }
             }}
@@ -889,7 +895,10 @@ export function HowToPlay() {
           </UiEntity>
         ))}
         <Label value={t('howto.vote')} fontSize={z(22)} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap={phone ? 'wrap' : 'nowrap'} uiTransform={{ width: '100%', height: z(40) }} />
-        <PillButton id="howto-close" label={t('common.gotIt')} width={z(260)} height={z(64)} font={z(30)} tint={PAL.green} margin={{ top: z(6) }} onClick={() => (cs.showHowTo = false)} />
+        <UiEntity uiTransform={{ width: '100%', height: z(70), flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
+          {!cs.inGame && <PillButton id="howto-tutorial" label={t('tutorial.replay')} width={z(300)} height={z(64)} font={z(26)} tint={PAL.green} margin={{ right: z(16) }} onClick={() => { cs.showHowTo = false; startTutorial() }} />}
+          <PillButton id="howto-close" label={t('common.gotIt')} width={z(260)} height={z(64)} font={z(30)} onClick={() => (cs.showHowTo = false)} />
+        </UiEntity>
       </Frame>
     </Layer>
   )
@@ -1052,7 +1061,9 @@ export function setupHudMessages() {
     onItems(cs.items, { wildcard: d.wildcard, reroll: d.reroll, freeze: d.freeze, bomb: d.bomb })
     cs.items = { wildcard: d.wildcard, reroll: d.reroll, freeze: d.freeze, bomb: d.bomb }
     try {
-      cs.settings = JSON.parse(d.settings || '{}')
+      const saved = JSON.parse(d.settings || '{}')
+      if (saved.tutorialComplete === true) cs.tutorialSavePending = false
+      cs.settings = cs.tutorialSavePending ? { ...saved, tutorialComplete: true } : saved
     } catch (e) {
       cs.settings = {}
     }

@@ -12,6 +12,7 @@ import { Color3, Color4, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { placedProxy, isHolding } from './cubes'
 import { getSlotEntities, slotPosition } from './arena'
+import { cs } from './state'
 
 type Status = 'idle' | 'locked' | 'fail' | 'win'
 
@@ -154,7 +155,7 @@ export function framesSystem(dt: number) {
     }
 
     // empty frames glow gold while you hold a cube: that is where it goes
-    const wantReady = f.status === 'idle' && holding && !placedProxy.get(i)
+    const wantReady = f.status === 'idle' && holding && !placedProxy.get(i) && (!cs.tutorialActive || cs.practiceSlot === i)
     if (wantReady) {
       const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220)
       color = GOLD

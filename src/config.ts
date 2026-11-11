@@ -222,7 +222,8 @@ export const GAME_OFFSETS: [number, number, number][] = [
   [0, 0, 300],
   [260, 0, 0],
   [260, 0, 100],
-  [260, 0, 200]
+  [260, 0, 200],
+  [260, 0, 300] // private Cubby laboratory (no public pad)
 ]
 export const ARENA_LOAD_TIMEOUT = 10 // s to wait for a new arena's models before teleporting in anyway
 export const ARENA_KEEP_SECONDS = 4 // s an arena stays built after you stop needing it

@@ -25,6 +25,8 @@ import { SFX, playSfx } from './audio'
 import { BLOCK } from './ui/theme'
 import { stateOf, serverNow } from './gamestate'
 import { arenaReady, requestArena } from './arenas'
+import { PRACTICE_GAME } from '../shared/tutorial'
+import { startLocalPractice, stopLocalPractice } from './practice'
 
 const SCALE_STIFFNESS = 90
 const SCALE_DAMPING = 9 // under-damped: the lights overshoot a little and settle (soft bounce)
@@ -52,6 +54,10 @@ const flat = (a: Vector3, b: Vector3) => Math.hypot(a.x - b.x, a.z - b.z)
 
 function teleportToGame(game: number) {
   const o = envOrigin(game)
+  if (game === PRACTICE_GAME) {
+    void movePlayerTo({ newRelativePosition: Vector3.create(o.x - 5, o.y + C.FLOOR_Y + 0.5, o.z - 9), cameraTarget: Vector3.create(o.x, o.y + C.SLOT_Y, o.z) })
+    return
+  }
   const a = Math.random() * Math.PI * 2
   const x = o.x + Math.cos(a) * C.GAME_SPAWN_RADIUS
   const z = o.z + Math.sin(a) * C.GAME_SPAWN_RADIUS
@@ -91,7 +97,10 @@ export function returnToLobby() {
   if (!origin) return
   fallGrace = TELEPORT_LOCKOUT
   pendingTeleport = undefined
-  if (cs.game >= 0) leaveGame(cs.game)
+  if (cs.game === PRACTICE_GAME) stopLocalPractice()
+  else if (cs.game >= 0 || waitingFor >= 0) leaveGame(cs.game)
+  waitingFor = -1
+  waitTimer = 0
   cs.game = -1
   cs.inGame = false
   teleportToLobby(origin, padPos)
@@ -100,6 +109,13 @@ export function returnToLobby() {
 
 let waitingFor = -1 // the game a seat was requested for, until the server answers
 let waitTimer = 0
+
+export function requestPractice(lang: Lang) {
+  startLocalPractice(lang)
+  requestArena(PRACTICE_GAME)
+  pendingTeleport = { game: PRACTICE_GAME, left: C.ARENA_LOAD_TIMEOUT }
+  playSfx(SFX.teleport)
+}
 
 /** The server's answer to 'enter': teleport into the game, or tell the player it is full. */
 export function onEntered(game: number, ok: boolean) {
@@ -114,13 +130,14 @@ export function onEntered(game: number, ok: boolean) {
   requestArena(game)
   pendingTeleport = { game, left: C.ARENA_LOAD_TIMEOUT }
   playSfx(SFX.teleport)
-  showMessage(t('lobby.starting', { n: game + 1 }), 4)
+  if (game !== PRACTICE_GAME) showMessage(t('lobby.starting', { n: game + 1 }), 4)
 }
 
 let pendingTeleport: { game: number; left: number } | undefined
 
 /** The server found you in an arena without a seat. */
-export function onEjected() {
+export function onEjected(game: number = cs.game) {
+  if (cs.game === PRACTICE_GAME || cs.game < 0 || game !== cs.game) return // a delayed reply from a previous room is not an exit from this one
   if (waitingFor >= 0 || pendingTeleport) return // a seat was just requested: the answer is on its way
   const origin = lobbyOrigin()
   if (!origin) return
@@ -148,6 +165,16 @@ interface PadView {
   tallV: number
   spin: number
   angle: number
+  localY: number
+}
+
+const PAD_TOUR_ORDER = [0, 4, 2, 5, 1, 6, 3]
+let padTourTime: number | null = null
+export function setPadTour(time: number | null) { padTourTime = time }
+export function padTourReveal(game: number): number {
+  if (padTourTime === null) return 0
+  const progress = Math.max(0, Math.min(1, (padTourTime - 1.2 - PAD_TOUR_ORDER.indexOf(game) * 0.45) / 0.65))
+  return 1 - Math.pow(1 - progress, 3)
 }
 
 // The status line under a pad's title: outlined in the panels' dark violet, with a soft drop shadow.
@@ -177,7 +204,7 @@ function withPlate(text: Entity): Entity {
 
 // The white plate behind the status line (assets/images/sign_plate.png): a plane child of the text, just behind it, so it
 // turns to the camera and shows / hides with it. A little self-lit (PAD_PLATE_GLOW) so it does not go dark at night.
-function addPlate(text: Entity) {
+function addPlate(text: Entity): Entity {
   const plate = engine.addEntity()
   Transform.create(plate, {
     parent: text,
@@ -196,6 +223,17 @@ function addPlate(text: Entity) {
     roughness: 1,
     castShadows: false
   })
+  return plate
+}
+
+/** A runtime pad sign with the same outlined text, billboard and white plate as public rooms. */
+export function createPadSign(position: Vector3, text: string): { entity: Entity; dispose: () => void } {
+  const entity = makeText(text, 3.5, BLOCK.green)
+  const tr = Transform.getMutable(entity)
+  tr.position = position
+  tr.scale = Vector3.One()
+  const plate = addPlate(entity)
+  return { entity, dispose: () => { engine.removeEntity(plate); engine.removeEntity(entity) } }
 }
 
 // The language flag beside a pad's status line: a plane child of the line (so it turns to the camera with it), left of
@@ -339,7 +377,8 @@ export function setupLobby() {
       tall: 0,
       tallV: 0,
       spin: 0,
-      angle: 0
+      angle: 0,
+      localY: 0
     })
   }
   for (const pad of pads) makeFlag(pad.flag, pad.info)
@@ -364,6 +403,7 @@ export function setupLobby() {
         // The lights are created here (not in the editor) so the Creator Hub can't drop them. Same size as the pad.
         const pt = Transform.get(e)
         pad.baseScale = Vector3.create(pt.scale.x, pt.scale.y, pt.scale.z)
+        pad.localY = pt.position.y
         pad.lights = engine.addEntity()
         Transform.create(pad.lights, { position: pad.pos, scale: Vector3.create(pad.baseScale.x, 0, pad.baseScale.z) })
         GltfContainer.create(pad.lights, {
@@ -391,6 +431,7 @@ export function setupLobby() {
     const before = onPad
     onPad = -1
     if (me) for (const pad of pads) if (onPadNow(pad, me, before === pad.game)) onPad = pad.game
+    if (cs.tutorialActive) onPad = -1
     if (onPad >= 0) lit.add(onPad)
     if (onPad >= 0 && onPad !== before) cs.padLang = uiLang() // a new pad starts on your own language; the buttons change it
 
@@ -406,7 +447,8 @@ export function setupLobby() {
         if (cs.inGame && cs.game >= 0) teleportToGame(cs.game)
         else teleportToLobby(origin, padPos)
       } else if (!pendingTeleport && flat(me, origin) < C.LOBBY_RADIUS && Math.abs(me.y - origin.y) < C.PAD_HEIGHT_RANGE * 3) {
-        if (cs.game >= 0 || cs.inGame) leaveGame(cs.game)
+        if (cs.game === PRACTICE_GAME) stopLocalPractice()
+        else if (cs.game >= 0 || cs.inGame) leaveGame(cs.game)
         cs.game = -1
         cs.inGame = false
       } else if (cs.game >= 0 && arenaAt(me.x, me.y, me.z) === cs.game) {
@@ -416,6 +458,12 @@ export function setupLobby() {
 
     if (pendingTeleport) {
       pendingTeleport.left -= dt
+      if (pendingTeleport.game === PRACTICE_GAME && pendingTeleport.left <= 0 && !arenaReady(PRACTICE_GAME)) {
+        returnToLobby()
+        showMessage(t('tutorial.loadFailed'), 8)
+      }
+    }
+    if (pendingTeleport) {
       if (arenaReady(pendingTeleport.game) || pendingTeleport.left <= 0) {
         const game = pendingTeleport.game
         pendingTeleport = undefined
@@ -493,13 +541,16 @@ export function setupLobby() {
     time += dt
     for (const pad of pads) {
       if (!pad.entity || !pad.lights) continue
+      const tour = padTourTime !== null
+      const reveal = padTourReveal(pad.game)
+      Transform.getMutable(pad.entity).position.y = pad.localY + reveal * 1.2
       const mine = onPad === pad.game
       // Floating label: hidden while you stand on the pad or after you left for the game
-      const labelTarget = !mine && !cs.inGame && waitingFor < 0 ? 1 : 0
+      const labelTarget = tour ? (reveal > 0 ? 1 : 0) : !mine && !cs.inGame && waitingFor < 0 ? 1 : 0
       pad.labelShown += (labelTarget - pad.labelShown) * Math.min(1, 4 * dt)
       const lt = Transform.getMutable(pad.label)
-      const ls = pad.labelShown < 0.02 ? 0 : pad.labelShown
-      lt.position = Vector3.create(pad.pos.x, pad.pos.y + C.PAD_LABEL_HEIGHT + Math.sin(time * 2 + pad.game) * 0.2, pad.pos.z)
+      const ls = (pad.labelShown < 0.02 ? 0 : pad.labelShown) * (tour ? reveal : 1)
+      lt.position = Vector3.create(pad.pos.x, pad.pos.y + C.PAD_LABEL_HEIGHT + reveal * 4 + Math.sin(time * 2 + pad.game) * 0.2, pad.pos.z)
       lt.scale = Vector3.create(ls, ls, ls)
       if (ls > 0) lt.rotation = Quaternion.fromEulerDegrees(0, (time * C.PAD_NUMBER_SPIN + pad.game * 50) % 360, 0)
 
@@ -515,7 +566,7 @@ export function setupLobby() {
       it.scale = Vector3.create(ls, ls, ls)
 
       // Lights
-      const anyone = lit.has(pad.game)
+      const anyone = lit.has(pad.game) || (tour && reveal > 0)
       const counting_ = mine && counting
       const finalSeconds = counting_ && timer <= 3
       const sizeTarget = anyone && (!mine || lockout <= 0) ? 1 : 0
@@ -538,7 +589,7 @@ export function setupLobby() {
       const t = Transform.getMutable(pad.lights)
       const sc = Math.max(0, pad.size)
       // Appearing and disappearing is vertical only: width and depth stay put
-      const stretch = 1 + (C.LOBBY_LIGHTS_TALL - 1) * pad.tall
+      const stretch = 1 + (C.LOBBY_LIGHTS_TALL - 1) * pad.tall + reveal * 0.5
       t.scale =
         sc < 0.001 && sizeTarget === 0
           ? Vector3.create(pad.baseScale.x, 0, pad.baseScale.z)

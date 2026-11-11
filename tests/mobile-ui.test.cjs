@@ -23,6 +23,7 @@ function harness(phone, canvas) {
   const react = { default: { createElement }, UiEntity: 'UiEntity', Label: 'Label' }
   const noop = () => {}
   let currentGame = null
+  const tutorialStarts=[]
   const theme = { PAL: {}, Frame: 'Frame', OutlineLabel: 'OutlineLabel', PillButton: 'PillButton',
     LetterTile: 'LetterTile', CoinIcon: 'CoinIcon', c: noop,
     clamp: (n, min, max) => Math.min(max, Math.max(min, n)) }
@@ -31,7 +32,7 @@ function harness(phone, canvas) {
   const hud = loadTs('src/client/ui/hud.tsx', {
     '@dcl/sdk/react-ecs': react, '@dcl/sdk/ecs': { engine: { getEntitiesWith: () => currentGame ? [[0, currentGame]] : [] } },
     '../../shared/schemas': {}, '../gamestate': { myState: () => currentGame || undefined, boardText: () => '' }, '../state': state, '../cubes': { heldLetter: () => '' },
-    '../netstats': netstats,
+    '../netstats': netstats, '../tutorial': { startTutorial: () => tutorialStarts.push(true) },
     '../../config': config, '../../shared/messages': { room: { send: noop } },
     '../lobby': { returnToLobby: noop, gameLang: () => '' }, '../../shared/lang': loadTs('src/shared/lang.ts'),
     '../i18n': { t: (key, args) => loadI18n().format('en', key, args, phone), uiLang: () => 'en', pickUiLang: noop }, './flags': { Flag: 'Flag' }, '../arena': {}, './platform': platform,
@@ -39,7 +40,7 @@ function harness(phone, canvas) {
     './theme': theme, './debug': { dbg: { screen: 'game' }, debugWord: () => ({ answer: 'PARIS', question: 'Capital of France?' }) }, './rank': loadTs('src/client/ui/rank.ts', { '../../config': config }), '../ranktags': {}, '@dcl/sdk/players': {},
     '../../../assets/scene/entity-names': {}
   }, 'exports.testing = { WordPanel, SidePanel, ItemBar, VoteScreen, BottomArea, snapshot: () => ({ seenRound, prev, prevPhase, failAt, winAt, lastDifficulty, levelAt, myVote, votedRound }) }')
-  return { hud: hud.testing, module: hud, config, state, platform, react, theme, netstats, setGame: g => { currentGame = g } }
+  return { tutorialStarts, hud: hud.testing, module: hud, config, state, platform, react, theme, netstats, setGame: g => { currentGame = g } }
 }
 
 const longGame = { phase: 'playing', length: 14, masked: '_'.repeat(14), question: 'A long question '.repeat(10), hint: '', frozen: 0, difficulty: 1 }
@@ -295,3 +296,68 @@ for (const [name, phone, canvas] of [
     assert.equal(monitor.NetMonitor(), null)
   })
 }
+
+test('mobile detection recognizes the Godot phone emulator even with a desktop host platform', async () => {
+  const stubs=sdkStubs({width:1600,height:720,devicePixelRatio:1})
+  stubs['~system/Runtime'].getExplorerInformation=async()=>({platform:'desktop',agent:'Godot'})
+  const platform=loadTs('src/client/ui/platform.ts',stubs)
+  platform.resolvePlatform()
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(platform.mobile(),true)
+  assert.equal(platform.getUiRendererConfig().virtualWidth,1600)
+  for(const info of [{platform:'ios'},{platform:'Android'},{platform:'desktop',agent:'godot-explorer'}]) assert.equal(platform.isMobileExplorer(info),true)
+  for(const info of [{platform:'desktop',agent:'Unity'},{platform:'web',agent:'bevy'}]) assert.equal(platform.isMobileExplorer(info),false)
+})
+
+test('phone side safe insets select mobile layout before explorer metadata arrives', () => {
+  const platform=loadTs('src/client/ui/platform.ts',sdkStubs({width:1600,height:720,devicePixelRatio:1,screenInsetArea:{left:44,right:0,top:0,bottom:0}}))
+  assert.equal(platform.mobile(),true)
+  assert.equal(platform.getUiRendererConfig().screenInset,'device')
+})
+
+test('a failed platform lookup retries instead of keeping the phone on desktop layout', async () => {
+  const calls=[],systems=[]
+  const stubs=sdkStubs({width:1600,height:720,devicePixelRatio:1},calls)
+  stubs['@dcl/sdk/ecs'].engine.addSystem=fn=>systems.push(fn)
+  let attempts=0
+  stubs['~system/Runtime'].getExplorerInformation=async()=>{
+    if(++attempts===1) throw Error('temporary startup failure')
+    return {platform:'desktop',agent:'Godot'}
+  }
+  const platform=loadTs('src/client/ui/platform.ts',stubs)
+  platform.setupResponsiveUi(()=>null)
+  await new Promise(resolve=>setImmediate(resolve))
+  systems[0](1.1)
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(attempts,2)
+  assert.equal(platform.mobile(),true)
+  assert.equal(calls.at(-1).virtualWidth,1600)
+})
+
+
+for(const phone of [false,true]) test(`tutorial replay lives in How to Play (${phone?'mobile':'desktop'})`,()=>{
+  const h=harness(phone)
+  h.state.cs.showHowTo=true
+  assert.ok(!nodes(h.module.SettingsPanel()).some(n=>n.props.id==='settings-tutorial'))
+  const replay=nodes(h.module.HowToPlay()).find(n=>n.props.id==='howto-tutorial')
+  assert.ok(replay)
+  replay.props.onClick()
+  assert.equal(h.state.cs.showHowTo,false)
+  assert.equal(h.tutorialStarts.length,1)
+  h.state.cs.inGame=true
+  assert.ok(!nodes(h.module.HowToPlay()).some(n=>n.props.id==='howto-tutorial'))
+})
+
+
+for(const phone of [false,true]) test(`Cubby asks before replaying the tutorial (${phone?'mobile':'desktop'})`,()=>{
+  const h=harness(phone)
+  const prompt=()=>{h.state.cs.dialog={name:'Cubby',pages:['Replay the tutorial?'],page:0,replayTutorial:true}}
+  prompt()
+  nodes(h.module.NpcDialog()).find(n=>n.props.id==='npc-close').props.onClick()
+  assert.equal(h.state.cs.dialog,null)
+  assert.equal(h.tutorialStarts.length,0)
+  prompt()
+  nodes(h.module.NpcDialog()).find(n=>n.props.id==='npc-next').props.onClick()
+  assert.equal(h.state.cs.dialog,null)
+  assert.equal(h.tutorialStarts.length,1)
+})

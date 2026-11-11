@@ -4,6 +4,14 @@ import type { Lang } from '../shared/lang'
 // Client-only UI state. Game state itself comes from the server's synced components.
 export const cs = {
   myAddress: '',
+  tutorialActive: false,
+  tutorialSavePending: false,
+  tutorialCinematic: false,
+  cubbyHand: { x: 0, y: 0, z: 0 },
+  practiceLetter: '',
+  practiceCubeId: -1,
+  practiceSlot: -1,
+  practiceTouchReady: true,
   coins: 0,
   rating: 0, // your saved rating (the server sends it)
   items: { wildcard: 0, reroll: 0, freeze: 0, bomb: 0 } as Record<string, number>, // your inventory
@@ -19,7 +27,7 @@ export const cs = {
   earned: 0, // coins you got for the last finished word
   earnedRound: -1, // the round that was
   showHowTo: false, // the how-to-play card is open (only from the buttons)
-  dialog: null as null | { name: string; pages: string[]; page: number }, // open NPC conversation
+  dialog: null as null | { name: string; pages: string[]; page: number; replayTutorial?: boolean }, // open NPC conversation
   lockoutUntil: 0, // Date.now() time when you may place again (after you collapsed the word)
   lobbyCountdown: 0, // seconds left on the lobby start pad, 0 when not counting
   countdownTitle: '', // what the countdown leads to: "Game starts in" (shared start) or "Joining in" (your join)

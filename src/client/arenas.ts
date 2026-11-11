@@ -7,6 +7,7 @@ import * as C from '../config'
 import { envOrigin } from '../shared/env'
 import { addPassportBlocker, addArenaFence } from './arena'
 import { cs } from './state'
+import { PRACTICE_GAME } from '../shared/tutorial'
 
 interface BuiltArena {
   root: Entity
@@ -83,7 +84,7 @@ export function arenaReady(game: number): boolean {
   if (!a) return false
   return a.required.every((e) => {
     const s = GltfContainerLoadingState.getOrNull(e)?.currentState
-    return s === LoadingState.FINISHED || s === LoadingState.FINISHED_WITH_ERROR || s === LoadingState.NOT_FOUND
+    return s === LoadingState.FINISHED || (game !== PRACTICE_GAME && (s === LoadingState.FINISHED_WITH_ERROR || s === LoadingState.NOT_FOUND))
   })
 }
 

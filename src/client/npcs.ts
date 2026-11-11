@@ -11,6 +11,7 @@ import { talkSfx } from './audio'
 import { lobbyAnchors, worldPosition } from './lobby'
 import { RANK_NAMES } from './ui/rank'
 import { t, uiLang } from './i18n'
+import { PRACTICE_GAME, npcAvatarId } from '../shared/tutorial'
 
 const BASE = 'urn:decentraland:off-chain:base-avatars:'
 const LOOK = ['eyebrows_00', 'mouth_00', 'eyes_00', 'blue_tshirt', 'brown_pants', 'classic_shoes', 'short_hair'].map((w) => BASE + w)
@@ -18,12 +19,13 @@ const TALK_DISTANCE = 6
 
 interface NpcDef {
   id: string
-  talk: 'lexi' | 'cubby' // its name, prompt and lines in the UI language: npc.<talk>.* in shared/i18n
+  talk: 'lexi' | 'cubby' | 'bix' // its name, prompt and lines in the UI language: npc.<talk>.* in shared/i18n
   name: string // English name (for reading the code; the UI shows npc.<talk>.name)
   entityName: string // composite entity that overrides the position
   where: 'lobby' | 'arena'
   game?: number // arena vendors: which game's arena
   side: number // lobby: +1 / -1, which side of the path from the lobby centre to the pad
+  shirt?: string
   shop?: boolean // opens the shop instead of a conversation
   female: boolean
   hair: Color3
@@ -39,38 +41,52 @@ const NPCS: NpcDef[] = [
     name: 'Lexi, Keeper of Ranks',
     entityName: 'RankNpc',
     where: 'lobby',
-    side: 1,
+    side: 3,
     female: true,
     hair: Color3.create(0.55, 0.25, 0.7),
     skin: Color3.create(0.94, 0.8, 0.65),
     pages: []
   },
   {
-    id: 'wc-npc-vendor-lobby',
+    id: 'wc-npc-guide-lobby',
     talk: 'cubby',
-    name: 'Cubby, the Vendor',
+    name: 'Cubby, Your Guide',
     entityName: 'VendorNpc',
     where: 'lobby',
     side: -1,
-    shop: true,
     female: false,
     hair: Color3.create(0.9, 0.55, 0.1),
     skin: Color3.create(0.8, 0.6, 0.45),
     pages: []
   },
+  {
+    id: 'wc-npc-vendor-lobby',
+    talk: 'bix',
+    name: 'Bix, the Merchant',
+    entityName: 'RankNpc', // Bix takes Lexi's former lobby position
+    where: 'lobby',
+    side: 1,
+    shop: true,
+    shirt: 'red_tshirt',
+    female: false,
+    hair: Color3.create(0.15, 0.08, 0.04),
+    skin: Color3.create(0.65, 0.4, 0.25),
+    pages: []
+  },
   // the vendor of the first arena (game 0); the other arenas get theirs when they are built (spawnArenaVendor)
   {
     id: 'wc-npc-vendor-arena',
-    talk: 'cubby',
-    name: 'Cubby, the Vendor',
+    talk: 'bix',
+    name: 'Bix, the Merchant',
     entityName: 'VendorNpc_2', // the name the Creator Hub gave the second copy
     where: 'arena',
     game: 0,
     side: 0,
+    shirt: 'red_tshirt',
     shop: true,
     female: false,
-    hair: Color3.create(0.9, 0.55, 0.1),
-    skin: Color3.create(0.8, 0.6, 0.45),
+    hair: Color3.create(0.15, 0.08, 0.04),
+    skin: Color3.create(0.65, 0.4, 0.25),
     pages: []
   }
 ]
@@ -80,7 +96,19 @@ const spawned = new Map<string, Entity>()
 function standPosition(def: NpcDef): Vector3 | undefined {
   const named = engine.getEntityOrNullByName(def.entityName)
   // entities placed in the Creator Hub are usually children of Lobby or GameEnv, so use their world position
-  if (named && Transform.getOrNull(named)) return worldPosition(named)
+  if (named && Transform.getOrNull(named)) {
+    const position = worldPosition(named)
+    if (def.talk !== 'lexi') return position
+    // Extend the Cubby -> Bix line so Lexi stands four metres farther right.
+    const guide = engine.getEntityOrNullByName('VendorNpc')
+    if (guide && Transform.getOrNull(guide)) {
+      const from = worldPosition(guide)
+      const dx = position.x - from.x, dz = position.z - from.z
+      const distance = Math.hypot(dx, dz) || 1
+      return Vector3.create(position.x + dx / distance * 4, position.y, position.z + dz / distance * 4)
+    }
+    return Vector3.add(position, Vector3.create(-4, 0, 0))
+  }
   if (def.where === 'arena') {
     // fallback: inside the arena wall, on the side opposite the player spawn ring's first point
     const o = envOrigin(def.game ?? 0)
@@ -111,8 +139,14 @@ function setTalkPrompt(def: NpcDef, hit: Entity) {
   pointerEventsSystem.onPointerDown(
     { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.talk', { name: `@npc.${def.talk}.short` }), maxDistance: TALK_DISTANCE } },
     () => {
+      if (cs.tutorialActive) return
       talkSfx()
-      if (def.shop) cs.shop = true
+      if (def.talk === 'cubby') {
+        cs.shop = false
+        cs.showHowTo = false
+        cs.dialog = { name: t('npc.cubby.name'), pages: [t('npc.cubby.replayPrompt')], page: 0, replayTutorial: true }
+      }
+      else if (def.shop) cs.shop = true
       else cs.dialog = { name: t(`npc.${def.talk}.name`), pages: pagesOf(def), page: 0 }
     }
   )
@@ -133,10 +167,10 @@ function spawn(def: NpcDef, pos: Vector3): () => void {
   const npc = engine.addEntity()
   Transform.create(npc, { position: pos })
   AvatarShape.create(npc, {
-    id: def.id,
+    id: npcAvatarId(def.id),
     name: t(`npc.${def.talk}.name`),
     bodyShape: BASE + (def.female ? 'BaseFemale' : 'BaseMale'),
-    wearables: LOOK,
+    wearables: def.shirt ? LOOK.map(w => w === BASE + 'blue_tshirt' ? BASE + def.shirt : w) : LOOK,
     emotes: [],
     hairColor: def.hair,
     skinColor: def.skin
@@ -194,7 +228,18 @@ export function spawnArenaVendor(game: number): () => void {
     named && Transform.getOrNull(named)
       ? Vector3.add(worldPosition(named), Vector3.subtract(o, base))
       : Vector3.create(o.x - (C.ARENA_RADIUS - 1.8), o.y + C.FLOOR_Y, o.z)
+  if (game === PRACTICE_GAME) return spawn({ ...NPCS.find(d => d.talk === 'cubby')!, id: 'cubby-coach', shop: false, game }, Vector3.create(o.x - 4, o.y + C.FLOOR_Y, o.z - 4))
   return spawn({ ...def, id: `${def.id}-${game}`, game }, at)
+}
+
+export const cubbyEntity = (practice = false): Entity | undefined => spawned.get(practice ? 'cubby-coach' : 'wc-npc-guide-lobby')
+
+export function cubbyEmote(emote: string, practice = false) {
+  const e = cubbyEntity(practice)
+  if (e === undefined) return
+  const a = AvatarShape.getMutable(e)
+  a.expressionTriggerId = emote
+  a.expressionTriggerTimestamp = (a.expressionTriggerTimestamp ?? 0) + 1
 }
 
 export function setupNpcs() {
