@@ -6,9 +6,9 @@ import { buildSlots, clearSlots, disableArenaPassports, setSlotClickHandler } fr
 import { resetFrames, lockFrame, failFrames, winFrames, framesSystem } from './frames'
 import { cubesSystem, isHolding, setWordLength } from './cubes'
 import { predictSystem } from './predict'
-import { playThrowEmote } from './emotes'
+import { playThrowEmote, preloadGrabAssets } from './emotes'
 import { cs, showMessage, showPowerupToast, lockoutLeft } from './state'
-import { breakHeld, tossHeld } from './actions'
+import { breakHeld, tossHeld, throwAtFrame } from './actions'
 import { grassSystem } from './grass'
 import { setupUi } from './ui'
 import { setupLobby, onEntered, onEjected } from './lobby'
@@ -56,6 +56,7 @@ function clientSystem(dt: number) {
   const g = myState()
   if (cs.game !== lastGame) {
     lastGame = cs.game
+    if (cs.game >= 0) preloadGrabAssets() // emotes and cube models, before your first grab and throw (once)
     lastRound = -1
     lastLength = -1
     if (cs.game < 0) {
@@ -190,9 +191,7 @@ export function initClient() {
   setSlotClickHandler((slot) => {
     if (!isHolding()) return showMessage(t('msg.grabFirst'), 2)
     if (lockoutLeft() > 0) return showMessage(t('msg.lockedPlace', { s: lockoutLeft() }), 2)
-    playThrowEmote()
-    playSfx(SFX.throw)
-    room.send('place', { slot })
+    throwAtFrame(slot) // the cube leaves your hands now (guessed), the server confirms it
   })
 
   room.onMessage('toast', (d) => {

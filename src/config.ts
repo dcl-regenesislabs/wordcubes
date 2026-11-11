@@ -151,6 +151,13 @@ export const REFRESH_PER_SEND = 4 // resting cubes sent again with every moves m
 export const CUBE_SYNC_COOLDOWN = 1 // s: a player gets the full cube state at most this often
 export const CUBE_SMOOTH_RATE = 18 // 1/s: how fast a client's cube glides to the latest position it was sent
 export const CUBE_SNAP_DISTANCE = 3 // m: further than this and the cube jumps there instead of gliding
+// Your own grab and throw show at once (client/cubenet.ts guesses them); the server confirms a round trip later. With no
+// answer in this long, the guess was refused and the cube goes back to where the server has it.
+export const GUESS_CONFIRM_SECONDS = 1.5
+// A cube thrown away (F) flies from your hand on your screen at once; the server's cube takes over (gliding from where
+// yours is to where the server's is) once it has answered and yours has flown at least this long.
+export const TOSS_SHOW_SECONDS = THROW_RELEASE_DELAY + 0.6
+export const GUESS_PARK_Y = -30 // where a guessed grab hides the real cube until the server parks it there (as game.ts does)
 export const PUSH_LOOKAHEAD = 0.05 // seconds: pushers are predicted ahead to hide the player-position latency
 // Client-side smoothing of moving free cubes (hides the real cube and shows a local copy). Off: a copy created on the
 // fly can take a moment to load, so cubes blink out and pop back in. client/cubenet.ts glides the real cubes instead.

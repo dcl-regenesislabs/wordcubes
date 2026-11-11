@@ -521,7 +521,7 @@ function cubeClient(h) {
   const handlers = new Map()
   const out = []
   const room = { onMessage: (name, fn) => handlers.set(name, fn), send: (name, data) => out.push({ name, data }) }
-  const cs = { game: -1 }
+  const cs = { game: -1, myAddress: 'alice' }
   const Quaternion = { fromEulerDegrees: (x, y, z) => ({ y }), slerp: (a, b) => b }
   const mod = loadTs('src/client/cubenet.ts', {
     '@dcl/sdk/ecs': { engine, Transform }, '@dcl/sdk/math': { Vector3: h.Vector3, Quaternion }, '../config': h.config,
@@ -532,6 +532,9 @@ function cubeClient(h) {
   return {
     cs, out, Transform, CubeData,
     system: dt => mod.cubeNetSystem(dt),
+    guess: (id, mode, slot) => mod.guessMode(id, mode, slot),
+    takeUndone: (id) => mod.takeUndone(id),
+    slotTaken: (slot, except) => mod.slotTaken(slot, except),
     // hand the client every cube message the server sent to `addr` since last time (skip: drop some, like a lossy link)
     deliver(addr, skip = () => false) {
       for (; read < h.sent.length; read++) {
@@ -640,4 +643,100 @@ test('the player who presses Start game picks the language the game is played in
   assert.equal(state().lang, '', 'idle again: the next Start game picks again')
   h.send('start', { game: 3, lang: 'klingon' }, 'dave') // game 2's countdown still runs; try an untouched pad
   assert.equal(h.GameState.get(h.server.games[3].stateEntity).lang, 'en', 'an unknown language falls back to English')
+})
+
+test('your own grab and throw show at once, and the server word wins', () => {
+  const h = harness()
+  const c = cubeClient(h)
+  c.cs.game = 0
+  c.system(1 / 30)
+  c.forward('alice')
+  tickServer(h, 3)
+  c.deliver('alice')
+  c.system(1)
+  const mine = (id) => c.cubes().find(x => x.id === id)
+  const [a, b] = [...h.server.games[0].cubes.values()].filter(s => s.mode === 'free')
+
+  // a grab the server accepts: in your hands at once, and its confirmation changes nothing
+  c.guess(a.id, 'held', -1)
+  assert.equal(mine(a.id).mode, 'held', 'shown before any answer')
+  assert.equal(mine(a.id).holder, 'alice')
+  assert.ok(mine(a.id).pos.y < -10, 'the real cube is hidden where the server will park it')
+  h.grab(a)
+  tickServer(h, 0.2)
+  c.deliver('alice')
+  c.system(h.config.GUESS_CONFIRM_SECONDS + 0.5) // long after the guess would have run out
+  assert.equal(mine(a.id).mode, 'held', 'confirmed: it stays in your hands')
+
+  // a throw at a frame before the grab's answer came back keeps flying when that old answer lands
+  const slot = 0
+  c.guess(a.id, 'flying', slot)
+  h.send('place', { slot })
+  tickServer(h, 0.2)
+  c.deliver('alice')
+  assert.equal(mine(a.id).mode, 'flying')
+
+  // a grab the server refuses (someone else's cube, or too far): back where it was, without a throw
+  const before = { ...mine(b.id).pos }
+  c.guess(b.id, 'held', -1)
+  c.system(h.config.GUESS_CONFIRM_SECONDS + 0.1)
+  assert.equal(mine(b.id).mode, 'free', 'given up after the wait')
+  assert.ok(Math.abs(mine(b.id).pos.x - before.x) < 1e-6 && Math.abs(mine(b.id).pos.y - before.y) < 1e-6, 'back in its spot')
+  assert.equal(c.takeUndone(b.id), true, 'cubes.ts ends the carry pose quietly')
+})
+
+test('a cube thrown away flies at once and then hands over to the server cube', () => {
+  const h = harness()
+  const c = cubeClient(h)
+  c.cs.game = 0
+  c.system(1 / 30)
+  c.forward('alice')
+  tickServer(h, 3)
+  c.deliver('alice')
+  c.system(1)
+  const mine = (id) => c.cubes().find(x => x.id === id)
+  const a = [...h.server.games[0].cubes.values()].find(s => s.mode === 'free')
+  h.grab(a)
+  tickServer(h, 0.2)
+  c.deliver('alice')
+  assert.equal(mine(a.id).mode, 'held')
+
+  c.guess(a.id, 'tossing', -1)
+  assert.equal(mine(a.id).mode, 'tossing', 'leaves your hands before any answer')
+  h.send('toss')
+  tickServer(h, 0.5) // the server releases it and it flies
+  c.deliver('alice')
+  c.system(0.1)
+  assert.equal(mine(a.id).mode, 'tossing', 'your copy keeps flying a moment after the server answered')
+  c.system(h.config.TOSS_SHOW_SECONDS)
+  assert.equal(mine(a.id).mode, 'free', 'then the server cube takes over')
+  assert.equal(mine(a.id).holder, '')
+})
+
+test('a guess the server never answers asks for the full state, and a lost toss answer leaves the cube down', () => {
+  const h = harness()
+  const c = cubeClient(h)
+  c.cs.game = 0
+  c.system(1 / 30)
+  c.forward('alice')
+  tickServer(h, 3)
+  c.deliver('alice')
+  c.system(1)
+  const mine = (id) => c.cubes().find(x => x.id === id)
+  const [a, b] = [...h.server.games[0].cubes.values()].filter(s => s.mode === 'free')
+  h.grab(a)
+  tickServer(h, 0.2)
+  c.deliver('alice')
+
+  // a frame with someone else's cube on its way is taken; your own cube does not count
+  assert.equal(c.slotTaken(0, a.id), false)
+  c.guess(b.id, 'flying', 0) // stands in for another player's cube flying to frame 0
+  assert.equal(c.slotTaken(0, a.id), true, 'a cube flying to the frame takes it')
+
+  // the server's answer to the toss is lost: no jump back into your hands, and the full state is asked for
+  c.out.length = 0
+  c.guess(a.id, 'tossing', -1)
+  c.system(h.config.GUESS_CONFIRM_SECONDS + h.config.TOSS_SHOW_SECONDS + 0.1)
+  assert.equal(mine(a.id).mode, 'free', 'it stays where it fell on your screen')
+  assert.ok(c.out.some(m => m.name === 'cubeSync'), 'the full state settles it')
 })

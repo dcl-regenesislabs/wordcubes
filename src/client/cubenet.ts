@@ -4,6 +4,10 @@
 //
 // Positions are absolute, so every message stands on its own. A gap in cubeState's sequence (a lost message), or
 // entering a game, asks the server for the full state (cubeSync).
+//
+// Your own grab and throw at a frame are guessed (guessMode): the cube goes to your hands, or flies, the moment you
+// click, instead of a round trip later. The server's word always wins: its confirmation changes nothing, anything else
+// it says replaces the guess, and a guess it never confirms is undone after GUESS_CONFIRM_SECONDS.
 import { engine, Transform } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
@@ -26,6 +30,18 @@ let wantSync = false
 let sinceAsk = Infinity
 let fullSet: Set<number> | null = null // ids listed so far by a full state that is still arriving
 
+interface Guess {
+  mode: string
+  slot: number
+  left: number // seconds until it is given up
+  age: number
+  // a throw away (F): the server's free cube, once it said so, and where it is now (it takes over after TOSS_SHOW_SECONDS)
+  landed?: Target
+  base: { mode: string; slot: number; holder: string; pos: Vector3; rot: Quaternion } // the server's state before it
+}
+const guesses = new Map<number, Guess>()
+const undone = new Set<number>() // guesses just given up: cubes.ts ends the carry pose quietly (takeUndone)
+
 /** DEV ONLY (NET_STATS): what the live monitor shows about your game's cubes. */
 export const cubeNetStats = { gaps: 0, syncAsks: 0, fulls: 0, states: 0, moves: 0, lastMoveAt: 0, moveGap: 0 }
 export const cubeNetView = () => ({ game, seq: lastSeq, cubes: entities.size, gliding: targets.size, waitingFull: lastSeq < 0 || wantSync })
@@ -36,6 +52,8 @@ function clear() {
   for (const e of entities.values()) engine.removeEntity(e)
   entities.clear()
   targets.clear()
+  guesses.clear()
+  undone.clear()
   fullSet = null
 }
 
@@ -44,6 +62,74 @@ function remove(id: number) {
   if (e !== undefined) engine.removeEntity(e)
   entities.delete(id)
   targets.delete(id)
+  guesses.delete(id)
+}
+
+/** Show your own grab ('held'), throw at a frame ('flying', slot) or throw away ('tossing') now, before the server
+ *  confirms it. */
+export function guessMode(id: number, mode: 'held' | 'flying' | 'tossing', slot: number): boolean {
+  const e = entities.get(id)
+  if (e === undefined || !cs.myAddress) return false
+  const data = CubeData.getMutable(e)
+  const tr = Transform.getMutable(e)
+  const base = guesses.get(id)?.base ?? { mode: data.mode, slot: data.slot, holder: data.holder, pos: Vector3.create(tr.position.x, tr.position.y, tr.position.z), rot: tr.rotation }
+  guesses.set(id, { mode, slot, left: C.GUESS_CONFIRM_SECONDS + (mode === 'tossing' ? C.TOSS_SHOW_SECONDS : 0), age: 0, base })
+  data.mode = mode
+  data.slot = slot
+  data.holder = cs.myAddress
+  // the real cube goes where the server will park it (cubes.ts draws a copy in your hands or in flight)
+  tr.position = Vector3.create(tr.position.x, C.GUESS_PARK_Y, tr.position.z)
+  targets.delete(id)
+  return true
+}
+
+/** The local cube entity of an id in your game. */
+export const cubeEntity = (id: number): Entity | undefined => entities.get(id)
+
+/** The id of the cube in your hands (guessed or confirmed), -1 if none. */
+export function myHeldCubeId(): number {
+  for (const [id, e] of entities) {
+    const d = CubeData.get(e)
+    if (d.mode === 'held' && d.holder === cs.myAddress) return id
+  }
+  return -1
+}
+
+/** A cube other than `except` is in that frame or flying to it. */
+export function slotTaken(slot: number, except: number): boolean {
+  for (const [id, e] of entities) {
+    if (id === except) continue
+    const d = CubeData.get(e)
+    if ((d.mode === 'flying' || d.mode === 'placed') && d.slot === slot) return true
+  }
+  return false
+}
+
+/** True once for a cube whose guess was just given up (no throw animation for a grab that never happened). */
+export function takeUndone(id: number): boolean {
+  return undone.delete(id)
+}
+
+/** A state record for a guessed cube: true when it should not overwrite the guess. */
+function keepsGuess(id: number, mode: string, slot: number, holder: string, t: Target): boolean {
+  const g = guesses.get(id)
+  if (!g) return false
+  if (mode === g.mode && slot === g.slot && holder === cs.myAddress) {
+    guesses.delete(id) // confirmed
+    return false
+  }
+  // thrown away: the server's cube is free now; yours keeps flying a moment, then glides over to it (cubeNetSystem)
+  if (g.mode === 'tossing' && mode === 'free') {
+    g.landed = t
+    return true
+  }
+  // you threw it before your grab's confirmation came back: that one is now the state to fall back to
+  if ((g.mode === 'flying' || g.mode === 'tossing') && mode === 'held' && holder === cs.myAddress) {
+    g.base = { mode, slot, holder, pos: t.pos, rot: rot(t.yaw) }
+    return true
+  }
+  guesses.delete(id) // anything else: the server's state replaces the guess
+  return false
 }
 
 function at(o: Vector3, d: number[], i: number): Target {
@@ -62,6 +148,7 @@ function applyState(o: Vector3, born: number, holders: string[], d: number[]) {
     const holder = d[i + 4] >= 0 ? holders[d[i + 4]] ?? '' : ''
     const t = at(o, d, i + 5)
     fullSet?.add(id)
+    if (keepsGuess(id, mode, slot, holder, t)) continue
     let e = entities.get(id)
     if (e === undefined) {
       e = engine.addEntity()
@@ -86,6 +173,11 @@ function applyState(o: Vector3, born: number, holders: string[], d: number[]) {
 function applyMoves(o: Vector3, d: number[]) {
   for (let i = 0; i + MOVE_FIELDS <= d.length; i += MOVE_FIELDS) {
     if (!entities.has(d[i])) continue
+    const g = guesses.get(d[i])
+    if (g) {
+      if (g.landed) g.landed = at(o, d, i + 1) // a thrown-away cube: where the server's one is now
+      continue // a guessed cube waits for the server's state
+    }
     targets.set(d[i], at(o, d, i + 1))
   }
 }
@@ -139,6 +231,45 @@ export function cubeNetSystem(dt: number) {
     sinceAsk = Infinity
   }
   if (game < 0) return
+
+  // guesses the server never confirmed: back to its state
+  for (const [id, g] of Array.from(guesses.entries())) {
+    g.left -= dt
+    g.age += dt
+    if (g.landed && g.age >= C.TOSS_SHOW_SECONDS) {
+      // hand over to the server's cube: cubes.ts puts the real cube where your copy is, and it glides to the server's spot
+      guesses.delete(id)
+      const e = entities.get(id)
+      if (e === undefined) continue
+      const data = CubeData.getMutable(e)
+      data.mode = 'free'
+      data.slot = -1
+      data.holder = ''
+      targets.set(id, g.landed)
+      continue
+    }
+    if (g.left > 0) continue
+    guesses.delete(id)
+    // no answer in time: refused, or its answer got lost. Either way the full state settles it.
+    wantSync = true
+    const e = entities.get(id)
+    if (e === undefined) continue
+    const data = CubeData.getMutable(e)
+    if (g.mode === 'tossing') {
+      // it left your hands on your screen: let it lie where your copy is (cubes.ts) rather than jump back into them
+      data.mode = 'free'
+      data.slot = -1
+      data.holder = ''
+      continue
+    }
+    if (data.mode === 'held' && g.base.mode === 'free') undone.add(id)
+    data.mode = g.base.mode
+    data.slot = g.base.slot
+    data.holder = g.base.holder
+    const tr = Transform.getMutable(e)
+    tr.position = g.base.pos
+    tr.rotation = g.base.rot
+  }
 
   sinceAsk += dt
   if ((wantSync || lastSeq < 0) && sinceAsk >= C.CUBE_SYNC_COOLDOWN) {
