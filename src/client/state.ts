@@ -21,6 +21,7 @@ export const cs = {
   showHowTo: false, // the how-to-play card is open (only from the buttons)
   dialog: null as null | { name: string; pages: string[]; page: number }, // open NPC conversation
   lockoutUntil: 0, // Date.now() time when you may place again (after you collapsed the word)
+  lockoutTotal: 0, // seconds that lockout lasts in all (the banner's bar runs down over it)
   lobbyCountdown: 0, // seconds left on the lobby start pad, 0 when not counting
   countdownTitle: '', // what the countdown leads to: "Game starts in" (shared start) or "Joining in" (your join)
   padAction: '' as '' | 'start' | 'join' | 'full', // the button the pad you stand on offers ('' off the pad or counting)

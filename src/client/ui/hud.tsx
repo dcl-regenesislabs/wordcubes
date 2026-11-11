@@ -434,6 +434,24 @@ export function Toast(props: { text: string; plain?: boolean; shift?: number }) 
   )
 }
 
+// You threw a wrong letter and the word fell apart: one line with the reason and the seconds left, and a bar that runs
+// down. It stays the whole lockout (a toast would be gone long before the 25 s are).
+function LockoutBanner() {
+  const w = fit(S(460))
+  const total = Math.max(1, cs.lockoutTotal || C.COLLAPSE_LOCKOUT_SECONDS)
+  const left = Math.max(0, (cs.lockoutUntil - Date.now()) / 1000)
+  const barW = w - S(48)
+  const fill = Math.round(barW * Math.min(1, left / total))
+  return (
+    <Frame width={w} height={S(84)} edge={PAL.pink} fill={PAL.violetDark} radius={S(22)} border={S(4)} pad={S(8)} align="center" justify="center" margin={{ bottom: S(10) }}>
+      <Label value={t('lock.line', { s: Math.ceil(left) })} fontSize={S(24)} font="sans-serif" color={PAL.pink} textAlign="middle-center" uiTransform={{ width: '100%', height: S(34) }} />
+      <UiEntity uiTransform={{ width: barW, height: S(10), margin: { top: S(4) }, borderRadius: S(5), pointerFilter: 'none' }} uiBackground={{ color: c(1, 1, 1, 0.15) }}>
+        <UiEntity uiTransform={{ width: fill, height: '100%', borderRadius: S(5), pointerFilter: 'none' }} uiBackground={{ color: PAL.pink }} />
+      </UiEntity>
+    </Frame>
+  )
+}
+
 // What you are holding and one line of help, centred at the bottom.
 function BottomArea() {
   const held = heldLetter()
@@ -443,20 +461,19 @@ function BottomArea() {
   const heldSize = S(76)
   return (
     <Layer justify="flex-end" pad={{ bottom: S(36) + BOTTOM_RESERVE() }}>
-      {lockoutLeft() > 0 && (
-        <Frame width={S(420)} height={S(52)} edge={PAL.pink} fill={PAL.violetDark} radius={S(26)} align="center" justify="center" margin={{ bottom: S(8) }}>
-          <Label value={t('hud.lockedOut', { s: lockoutLeft() })} fontSize={S(28)} font="sans-serif" color={PAL.pink} uiTransform={{ width: '100%', height: '100%' }} />
-        </Frame>
-      )}
+      {lockoutLeft() > 0 && <LockoutBanner />}
       {held !== '' && (
         <UiEntity uiTransform={{ width: heldSize + S(190), height: heldSize, margin: { bottom: S(10) }, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
           <OutlineLabel value={held === '*' ? t('hud.wildcard') : t('hud.holding')} fontSize={S(26)} color={held === '*' ? PAL.yellow : PAL.text} width={S(130)} height={heldSize} />
           <LetterTile size={heldSize} index={held.charCodeAt(0)} letter={held === '*' ? '?' : held} state="locked" />
         </UiEntity>
       )}
-      <Frame width={helpW} height={S(40)} edge={c(0, 0, 0, 0)} fill={c(0.2, 0.1, 0.4, 0.6)} radius={S(20)} border={0} align="center" justify="center">
-        <Label value={help} fontSize={helpFont} font="sans-serif" color={PAL.dim} textWrap="nowrap" uiTransform={{ width: '100%', height: '100%' }} />
-      </Frame>
+      {/* locked out: the banner says it all; "tap a cube to grab it" would be wrong for its whole length */}
+      {lockoutLeft() <= 0 && (
+        <Frame width={helpW} height={S(40)} edge={c(0, 0, 0, 0)} fill={c(0.2, 0.1, 0.4, 0.6)} radius={S(20)} border={0} align="center" justify="center">
+          <Label value={help} fontSize={helpFont} font="sans-serif" color={PAL.dim} textWrap="nowrap" uiTransform={{ width: '100%', height: '100%' }} />
+        </Frame>
+      )}
     </Layer>
   )
 }
@@ -1065,6 +1082,7 @@ export function setupHudMessages() {
   })
   room.onMessage('lockout', (d) => {
     cs.lockoutUntil = Date.now() + d.seconds * 1000
+    cs.lockoutTotal = d.seconds
   })
 }
 

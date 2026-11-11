@@ -34,6 +34,8 @@ function grabLooksOk(id: number): boolean {
 
 /** Click on a cube: ask the server, and put it in your hands right away when it should say yes. */
 export function grabCube(id: number) {
+  // locked out: say so here, no need to ask the server to refuse it
+  if (lockoutLeft() > 0) return showMessage(t('msg.locked', { s: lockoutLeft() }), 2)
   room.send('grab', { cubeId: id })
   if (grabLooksOk(id)) guessMode(id, 'held', -1)
 }

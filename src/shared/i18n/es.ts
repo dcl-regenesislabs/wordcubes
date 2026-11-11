@@ -26,7 +26,7 @@ export const ES: Record<string, string> = {
   'hud.help.held.mobile': 'Toca un marco para colocarlo',
   'hud.help.empty': 'Haz clic en un cubo para agarrarlo',
   'hud.help.empty.mobile': 'Toca un cubo para agarrarlo',
-  'hud.lockedOut': 'Bloqueado  {s}s',
+  'lock.line': 'Letra equivocada · bloqueado {s}s',
   'hud.wildcard': 'Comodín',
   'hud.holding': 'Tienes',
   'toast.holdingWord': 'Tienes',
@@ -140,7 +140,7 @@ export const ES: Record<string, string> = {
   'msg.nothingToBreak.mobile': 'No hay nada para romper. Primero toca un cubo para agarrarlo.',
   'msg.locked': 'Bloqueado: faltan {s}s.',
 
-  'srv.lockedOut': 'Bloqueado: faltan {s}s. Igual puedes tirar el cubo que tienes.',
+  'srv.lockedOut': 'Bloqueado: faltan {s}s.',
   'srv.newRound': '¡Nueva ronda! Encuentra las letras.',
   'srv.newGame': '¡Un juego nuevo! Encuentra las letras.',
   'srv.levelChanged': '¡Nivel {n} ({dir})! Encuentra las letras.',
