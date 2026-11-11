@@ -138,6 +138,9 @@ function enterMode(entity: Entity, c: ClientCube, mode: string, holder: string, 
   }
   // a grab the server refused never really happened: just end the carry pose, no throw
   if (c.mode === 'held' && c.holder === cs.myAddress && mode === 'free') quiet ? stopHoldEmoteQuietly() : stopHoldEmote()
+  // someone else won the race for this cube (your guessed grab lost): end your carry pose without a throw. Your own
+  // throws (flying / tossing) are left out: throwAtFrame / tossHeld play the one-shot that replaces the loop.
+  if (c.mode === 'held' && c.holder === cs.myAddress && mode === 'held' && holder !== cs.myAddress) stopHoldEmoteQuietly()
   removeSmooth(entity, c)
   c.lastPos = null
   dropProxy(c)
@@ -283,7 +286,8 @@ function forgetCube(entity: Entity, c: ClientCube, alive: boolean) {
 }
 
 // Thrown away (F), on your screen: in the hand until the release, then off forward at the server's toss speed (TOSS_SPEED,
-// TOSS_UP) under gravity, resting on the floor. The server's cube follows the same arc a round trip later.
+// TOSS_UP) under gravity, resting on the floor. An approximation: the server's sim also has air drag, bounces and
+// friction, so its cube lands a little elsewhere; the hand-over glides from yours to it (cubenet.ts).
 function drawToss(c: ClientCube) {
   if (!c.proxy) return
   const t = Transform.getMutable(c.proxy)

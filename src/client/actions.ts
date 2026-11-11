@@ -7,7 +7,7 @@ import { room } from '../shared/messages'
 import { CubeData } from '../shared/schemas'
 import { envOrigin } from '../shared/env'
 import { isHolding } from './cubes'
-import { cubeEntity, guessMode, myHeldCubeId } from './cubenet'
+import { cubeEntity, guessMode, myHeldCubeId, slotTaken } from './cubenet'
 import { myState } from './gamestate'
 import { cs } from './state'
 import { SFX, playSfx } from './audio'
@@ -15,9 +15,15 @@ import { playThrowEmote } from './emotes'
 import { lockoutLeft, showMessage } from './state'
 import { t } from './i18n'
 
-/** The checks the server makes before a grab (game.ts on_grab), so a guessed grab is almost never refused. */
+/**
+ * Most of the checks the server makes before a grab (game.ts on_grab), so a guessed grab is rarely refused. Not full
+ * parity: the server also wants you standing in the arena (canPlay) and measures the reach from your last position it
+ * received, while this uses your live one, so a grab while running can still be refused (and undone after
+ * GUESS_CONFIRM_SECONDS). Holding is read from the live cube state guessMode writes, not from cubes.ts's per-frame view,
+ * so two clicks in one frame cannot both guess a grab.
+ */
 function grabLooksOk(id: number): boolean {
-  if (!cs.inGame || cs.game < 0 || myState()?.phase !== 'playing' || lockoutLeft() > 0 || isHolding()) return false
+  if (!cs.inGame || cs.game < 0 || myState()?.phase !== 'playing' || lockoutLeft() > 0 || myHeldCubeId() >= 0) return false
   const e = cubeEntity(id)
   const me = Transform.getOrNull(engine.PlayerEntity)?.position
   if (e === undefined || !me || CubeData.get(e).mode !== 'free') return false
@@ -39,7 +45,9 @@ export function throwAtFrame(slot: number) {
   room.send('place', { slot })
   const id = myHeldCubeId()
   const g = myState()
-  const free = g && g.phase === 'playing' && (g.masked[slot] ?? '_') === '_'
+  // the server refuses a frame with a cube in it or on its way to it; GameState only shows the placed ones, the cubes of
+  // your game (cubenet.ts) show the ones in flight too
+  const free = g && g.phase === 'playing' && (g.masked[slot] ?? '_') === '_' && !slotTaken(slot, id)
   if (id >= 0 && free) guessMode(id, 'flying', slot)
 }
 

@@ -56,6 +56,7 @@ function clientSystem(dt: number) {
   const g = myState()
   if (cs.game !== lastGame) {
     lastGame = cs.game
+    if (cs.game >= 0) preloadGrabAssets() // emotes and cube models, before your first grab and throw (once)
     lastRound = -1
     lastLength = -1
     if (cs.game < 0) {
@@ -173,7 +174,6 @@ function syncTouchButtons(holding: boolean, inGame: boolean, items: boolean) {
 export function initClient() {
   syncTouchButtons(false, false, false)
   preloadSfx()
-  preloadGrabAssets() // emotes and cube models, so the first grab and throw do not wait for a download
   setupLocalization()
   setupConnection()
   setupCubeNet()

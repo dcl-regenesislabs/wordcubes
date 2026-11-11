@@ -8,9 +8,13 @@ import { modelFor } from '../shared/schemas'
 /**
  * Ask the renderer to load what a grab and a throw use before the first one: the two emotes, every letter cube (the
  * copy in your hands, in flight and in the frame is a new entity of that model) and the frame. Otherwise the first
- * grab of a letter waits for its download, which reads as lag on Bevy.
+ * grab of a letter waits for its download, which reads as lag on Bevy. It is ~14 MB, so only once you enter a game
+ * (not for players who only cross the lobby), and only once.
  */
+let preloaded = false
 export function preloadGrabAssets(): void {
+  if (preloaded) return
+  preloaded = true
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ*'.split('')
   AssetLoad.create(engine.addEntity(), {
     assets: [HOLD_EMOTE, THROW_EMOTE, 'assets/models/CubeFrame.glb', ...letters.map(modelFor)]

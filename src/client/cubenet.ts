@@ -95,6 +95,16 @@ export function myHeldCubeId(): number {
   return -1
 }
 
+/** A cube other than `except` is in that frame or flying to it. */
+export function slotTaken(slot: number, except: number): boolean {
+  for (const [id, e] of entities) {
+    if (id === except) continue
+    const d = CubeData.get(e)
+    if ((d.mode === 'flying' || d.mode === 'placed') && d.slot === slot) return true
+  }
+  return false
+}
+
 /** True once for a cube whose guess was just given up (no throw animation for a grab that never happened). */
 export function takeUndone(id: number): boolean {
   return undone.delete(id)
@@ -240,9 +250,18 @@ export function cubeNetSystem(dt: number) {
     }
     if (g.left > 0) continue
     guesses.delete(id)
+    // no answer in time: refused, or its answer got lost. Either way the full state settles it.
+    wantSync = true
     const e = entities.get(id)
     if (e === undefined) continue
     const data = CubeData.getMutable(e)
+    if (g.mode === 'tossing') {
+      // it left your hands on your screen: let it lie where your copy is (cubes.ts) rather than jump back into them
+      data.mode = 'free'
+      data.slot = -1
+      data.holder = ''
+      continue
+    }
     if (data.mode === 'held' && g.base.mode === 'free') undone.add(id)
     data.mode = g.base.mode
     data.slot = g.base.slot
