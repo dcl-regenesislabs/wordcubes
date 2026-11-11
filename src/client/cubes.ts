@@ -22,7 +22,9 @@ import { CubeData, modelFor, letterLabel } from '../shared/schemas'
 import { room } from '../shared/messages'
 import { slotPosition } from './arena'
 import { envOrigin } from '../shared/env'
-import { playHoldEmote, stopHoldEmote } from './emotes'
+import { playHoldEmote, stopHoldEmote, stopHoldEmoteQuietly } from './emotes'
+import { grabCube } from './actions'
+import { takeUndone } from './cubenet'
 import { cs } from './state'
 import { SFX, playSfx } from './audio'
 import { isPredicted } from './predict'
@@ -49,6 +51,7 @@ interface ClientCube {
   hit: Entity
   hitOn: boolean
   fall: Entity | null // copy playing a fresh pile's fall (the real cube is hidden and not clickable until it lands)
+  tossVel: Vector3 | null // thrown away (F): the copy's launch speed, set at the release
 }
 
 const known = new Map<Entity, ClientCube>()
@@ -125,8 +128,16 @@ function removeSmooth(entity: Entity, c: ClientCube) {
   }
 }
 
-function enterMode(entity: Entity, c: ClientCube, mode: string, holder: string, slot: number) {
-  if (c.mode === 'held' && c.holder === cs.myAddress && mode === 'free') stopHoldEmote()
+function enterMode(entity: Entity, c: ClientCube, mode: string, holder: string, slot: number, quiet = false) {
+  // a cube you threw away lands where your copy of it is; cubenet.ts then glides it to the server's spot
+  if (c.mode === 'tossing' && mode === 'free' && c.proxy) {
+    const p = Transform.get(c.proxy)
+    const tr = Transform.getMutable(entity)
+    tr.position = Vector3.create(p.position.x, p.position.y, p.position.z)
+    tr.rotation = p.rotation
+  }
+  // a grab the server refused never really happened: just end the carry pose, no throw
+  if (c.mode === 'held' && c.holder === cs.myAddress && mode === 'free') quiet ? stopHoldEmoteQuietly() : stopHoldEmote()
   removeSmooth(entity, c)
   c.lastPos = null
   dropProxy(c)
@@ -144,6 +155,10 @@ function enterMode(entity: Entity, c: ClientCube, mode: string, holder: string, 
       playHoldEmote()
       playSfx(SFX.grab)
     }
+  } else if (mode === 'tossing') {
+    c.proxy = makeProxy(c.letter)
+    c.tossVel = null
+    Transform.getMutable(c.proxy).position = handPos(holder)
   } else if (mode === 'flying') {
     c.proxy = makeProxy(c.letter)
     c.from = handPos(holder)
@@ -221,9 +236,9 @@ function adopt(entity: Entity, letter: string, id: number): ClientCube {
   MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
   pointerEventsSystem.onPointerDown(
     { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.grab', { letter: letterArg(letter) }), maxDistance: C.PICKUP_DISTANCE } },
-    () => room.send('grab', { cubeId: id })
+    () => grabCube(id)
   )
-  return { mode: 'free', holder: '', slot: -1, letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true, fall: null }
+  return { mode: 'free', holder: '', slot: -1, letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true, fall: null, tossVel: null }
 }
 
 // A fresh pile: the server created it already at rest, so this client plays the fall itself. A copy drops from the
@@ -267,6 +282,38 @@ function forgetCube(entity: Entity, c: ClientCube, alive: boolean) {
   known.delete(entity)
 }
 
+// Thrown away (F), on your screen: in the hand until the release, then off forward at the server's toss speed (TOSS_SPEED,
+// TOSS_UP) under gravity, resting on the floor. The server's cube follows the same arc a round trip later.
+function drawToss(c: ClientCube) {
+  if (!c.proxy) return
+  const t = Transform.getMutable(c.proxy)
+  if (c.t < C.THROW_RELEASE_DELAY) {
+    t.position = handPos(c.holder)
+    c.from = t.position
+    return
+  }
+  if (!c.tossVel) {
+    const rot = Transform.getOrNull(engine.PlayerEntity)?.rotation ?? Quaternion.Identity()
+    const fwd = Vector3.rotate(Vector3.Forward(), rot)
+    c.tossVel = Vector3.create(fwd.x * C.TOSS_SPEED, C.TOSS_UP, fwd.z * C.TOSS_SPEED)
+    c.from = handPos(c.holder)
+  }
+  const k = c.t - C.THROW_RELEASE_DELAY
+  const floor = envOrigin(Math.max(0, cs.game)).y + C.FLOOR_Y + C.CUBE_HALF
+  const y = c.from.y + c.tossVel.y * k + 0.5 * C.GRAVITY * k * k
+  const flying = y > floor
+  // once it is down it stops where it landed
+  const kx = flying ? k : landTime(c.from.y - floor, c.tossVel.y)
+  t.position = Vector3.create(c.from.x + c.tossVel.x * kx, Math.max(floor, y), c.from.z + c.tossVel.z * kx)
+  if (flying) t.rotation = Quaternion.fromEulerDegrees(k * 420, k * 240, 0)
+}
+
+/** Seconds until something launched upward at vy from height h above the floor touches it. */
+function landTime(h: number, vy: number): number {
+  const g = -C.GRAVITY
+  return (vy + Math.sqrt(Math.max(0, vy * vy + 2 * g * h))) / g
+}
+
 export function cubesSystem(dt: number) {
   trackServerClock()
   const seen = new Set<Entity>()
@@ -282,7 +329,7 @@ export function cubesSystem(dt: number) {
       c = adopt(entity, data.letter, data.id)
       known.set(entity, c)
     }
-    if (data.mode !== c.mode || data.holder !== c.holder || data.slot !== c.slot) enterMode(entity, c, data.mode, data.holder, data.slot)
+    if (data.mode !== c.mode || data.holder !== c.holder || data.slot !== c.slot) enterMode(entity, c, data.mode, data.holder, data.slot, takeUndone(data.id))
     const age = c.mode === 'free' ? dropAge(data.id, data.born) : null
     if (age !== null) drawFall(entity, c, data.id, age)
     else endFall(entity, c, true)
@@ -298,6 +345,7 @@ export function cubesSystem(dt: number) {
       else MeshCollider.deleteFrom(c.hit)
     }
     if (c.mode === 'free' && C.SMOOTH_FREE_CUBES && !predicted) smoothFree(entity, c, dt)
+    if (c.mode === 'tossing' && c.proxy) drawToss(c)
     if (c.mode === 'flying' && c.proxy) {
       const delay = C.THROW_RELEASE_DELAY
       const u = Math.max(0, Math.min(1, (c.t - delay) / C.THROW_FLIGHT_TIME))
