@@ -11,7 +11,7 @@ import { createGame } from './game'
 import { toLang, LANGS } from '../shared/lang'
 import { say } from './say'
 import type { Args } from '../shared/i18n'
-import { setupNetStats, recordTick, netAccessTick, forgetNetAccess } from './netstats'
+import { setupNetStats, recordTick, netAccessTick, forgetNetAccess, isPreview } from './netstats'
 import type { Game } from './game'
 import { PRACTICE_GAME } from '../shared/tutorial'
 
@@ -86,6 +86,19 @@ const isRunning = (game: Game) => GameState.get(game.stateEntity).active !== 0 &
 /** Milliseconds left on a game's start countdown (negative once it has ended, 0 when none runs). */
 const countdownLeft = (g: State) => (Number(g.startAt) > 0 ? Number(g.startAt) - Date.now() : 0)
 
+// ---------- local-preview test coins ----------
+// Local preview only (never a deployed world): the owner's test wallets start with plenty of coins so every power-up
+// can be bought while testing. The grant is not saved on its own; purchases save as usual in the preview.
+const TEST_WALLET_SUFFIX = '4a5d'
+const TEST_WALLETS = new Set(['0x9cb0d44ee1dad61cf3f4d5e1550c4edb25a704b8'])
+const TEST_COINS = 99999
+function grantTestCoins(addr: string) {
+  const wallet = addr.toLowerCase()
+  if (!isPreview() || !(wallet.endsWith(TEST_WALLET_SUFFIX) || TEST_WALLETS.has(wallet))) return
+  const p = profileOf(addr)
+  if (p && p.coins < TEST_COINS) p.coins = TEST_COINS
+}
+
 // ---------- messages ----------
 
 function init() {
@@ -93,7 +106,7 @@ function init() {
     if (!ctx) return
     const addr = ctx.from.toLowerCase()
     if (C.NET_STATS) forgetNetAccess(addr)
-    void retain(addr).then(() => sendProfile(addr))
+    void retain(addr).then(() => { grantTestCoins(addr); sendProfile(addr) })
   })
 
   // Start game on the pad of a game nobody plays: one countdown for everyone on that pad. The server only writes when it
@@ -199,8 +212,8 @@ function serverSystem(dt: number) {
     housekeepAcc = 0
     const list = players()
     const present = new Set(list.map((p) => p.address))
-    // a player who left the scene gives up their seat
-    for (const g of games) for (const addr of Array.from(g.seats.keys())) if (!present.has(addr)) g.leaveSeat(addr)
+    // Seat expiry belongs to game.tick(): a missing presence/Transform can be temporary during a reconnect.
+    // Dropping seats here bypassed SEAT_LEAVE_SECONDS and shut down an occupied room after a single missing sample.
     for (const g of games) g.housekeep()
     // a start countdown that ended a while ago is over: the players who were on the pad are in (or nobody stayed)
     for (const g of games) {
@@ -223,7 +236,9 @@ function serverSystem(dt: number) {
     for (const addr of present) {
       const loaded = profileOf(addr) !== undefined
       void retain(addr).then(() => {
-        if (!loaded) sendProfile(addr)
+        if (loaded) return
+        grantTestCoins(addr)
+        sendProfile(addr)
       })
     }
     for (const [addr] of allCached()) {

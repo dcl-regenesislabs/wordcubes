@@ -69,7 +69,8 @@ function refreshAllowed() {
     })
 }
 
-const isPreview = () => RealmInfo.getOrNull(engine.RootEntity)?.isPreview === true
+/** True in a local preview (npm run start), never on a deployed world. */
+export const isPreview = () => RealmInfo.getOrNull(engine.RootEntity)?.isPreview === true
 
 export function canMonitor(address: string): boolean {
   return isPreview() || allowed.has(address.toLowerCase())

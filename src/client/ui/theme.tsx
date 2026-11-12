@@ -87,6 +87,9 @@ export const hover = (id: string) => ({
 export type Edges = { top?: number; left?: number; right?: number; bottom?: number }
 
 // A rounded card with a coloured rim: the rim is the outer entity's padding, the fill sits inside.
+// Opaque cards with a rim of 3 px or more get the cartoon look of the UI kit inside the same rim thickness: a dark
+// outline, the coloured rim with a light top highlight and a darker bottom lip. Size and content area never change.
+export const OUTLINE = c(0.16, 0.08, 0.31, 1) // #2a1450, the kit's ink outline
 export const Frame = (props: {
   width: number | `${number}%`
   height: number | `${number}%`
@@ -106,66 +109,47 @@ export const Frame = (props: {
 }) => {
   const r = props.radius ?? S(18)
   const b = props.border ?? S(4)
-  return (
+  const filter: 'block' | 'none' = props.block ? 'block' : 'none'
+  const inner = (bg: Color4) => (
     <UiEntity
       uiTransform={{
-        positionType: props.at ? 'absolute' : 'relative',
-        position: props.at,
-        margin: props.margin,
-        width: props.width,
-        height: props.height,
-        padding: b,
-        borderRadius: r,
-        pointerFilter: props.block ? 'block' : 'none'
+        width: '100%',
+        height: '100%',
+        borderRadius: Math.max(2, r - b),
+        flexDirection: props.dir ?? 'column',
+        alignItems: props.align,
+        justifyContent: props.justify,
+        padding: props.pad ?? 0,
+        pointerFilter: filter
       }}
-      uiBackground={{ color: props.edge }}
+      uiBackground={{ color: bg }}
     >
-      <UiEntity
-        uiTransform={{
-          width: '100%',
-          height: '100%',
-          borderRadius: Math.max(2, r - b),
-          flexDirection: props.dir ?? 'column',
-          alignItems: props.align,
-          justifyContent: props.justify,
-          padding: props.pad ?? 0,
-          pointerFilter: props.block ? 'block' : 'none'
-        }}
-        uiBackground={{ color: props.fill }}
-      >
-        {props.children}
+      {props.children}
+    </UiEntity>
+  )
+  const outer = { positionType: props.at ? 'absolute' as const : 'relative' as const, position: props.at, margin: props.margin, width: props.width, height: props.height, borderRadius: r, pointerFilter: filter }
+  // Cards with a see-through rim or a mostly see-through fill keep the plain look (stacked translucent layers band
+  // on mobile). Dark HUD panels and glass cards (fill alpha 0.75+) get the cartoon rim with their fill made opaque.
+  if (props.edge.a < 0.99 || props.fill.a < 0.75 || b < 3) {
+    return <UiEntity uiTransform={{ ...outer, padding: b }} uiBackground={{ color: props.edge }}>{inner(props.fill)}</UiEntity>
+  }
+  const fill = c(props.fill.r, props.fill.g, props.fill.b, 1)
+  const o = Math.max(2, Math.round(b * 0.35))
+  const rim = b - o
+  const shine = Math.max(1, Math.round(rim * 0.4))
+  const lip = Math.max(1, Math.round(rim * 0.5))
+  return (
+    <UiEntity uiTransform={{ ...outer, padding: o }} uiBackground={{ color: OUTLINE }}>
+      <UiEntity uiTransform={{ width: '100%', height: '100%', padding: rim, borderRadius: Math.max(2, r - o), pointerFilter: filter }} uiBackground={{ color: props.edge }}>
+        <UiEntity key="rim-shine" uiTransform={{ positionType: 'absolute', position: { top: Math.max(1, Math.round(rim * 0.2)), left: r, right: r }, height: shine, borderRadius: shine / 2, pointerFilter: 'none' }} uiBackground={{ color: lighten(props.edge, 0.22) }} />
+        <UiEntity key="rim-lip" uiTransform={{ positionType: 'absolute', position: { bottom: 0, left: Math.round(r / 2), right: Math.round(r / 2) }, height: lip, borderRadius: lip / 2, pointerFilter: 'none' }} uiBackground={{ color: darken(props.edge, 0.28) }} />
+        {inner(fill)}
       </UiEntity>
     </UiEntity>
   )
 }
 
-// Text with a dark outline so it stays readable over the 3D world.
-const OFF = () => {
-  const d = Math.max(1, S(2))
-  return [
-    { left: -d, top: 0 },
-    { left: d, top: 0 },
-    { left: 0, top: -d },
-    { left: 0, top: d }
-  ]
-}
-// soft: a smoother outline for text over the world. 8 directions instead of 4 (no jagged corners), thinner, in the top bar's
-// violet, with a faint shadow underneath. UiText has no native outline or shadow, so both are copies of the text.
-const SOFT_OFF = () => {
-  const d = Math.max(1, Math.round(S(1.5)))
-  const k = Math.max(1, Math.round(d * 0.7))
-  return [
-    { left: -d, top: 0 },
-    { left: d, top: 0 },
-    { left: 0, top: -d },
-    { left: 0, top: d },
-    { left: -k, top: -k },
-    { left: k, top: -k },
-    { left: -k, top: k },
-    { left: k, top: k }
-  ]
-}
-const SOFT_SHADOW = () => [{ left: S(1), top: S(4) }]
+// Text with a dark drop shadow so it stays readable over the 3D world (UiText has no native shadow: it is a copy).
 const SHADOW = c(0.08, 0.02, 0.16, 0.45)
 
 export const OutlineLabel = (props: {
@@ -181,9 +165,12 @@ export const OutlineLabel = (props: {
 }) => {
   const align = props.align ?? 'middle-center'
   const wrap = props.wrap ? 'wrap' : 'nowrap'
+  // A clean drop shadow, as candy-style games do: copies offset in every direction drew jagged letter edges.
+  // soft keeps a lighter, wider shadow for text over the world.
+  const d = Math.max(1, S(props.soft ? 3 : 2))
   const copies = props.soft
-    ? [...SOFT_SHADOW().map((o) => ({ o, color: SHADOW })), ...SOFT_OFF().map((o) => ({ o, color: PAL.violetDark }))]
-    : OFF().map((o) => ({ o, color: PAL.outline }))
+    ? [{ o: { left: 0, top: d }, color: SHADOW }, { o: { left: 0, top: Math.max(1, Math.round(d / 2)) }, color: PAL.violetDark }]
+    : [{ o: { left: 0, top: d }, color: PAL.outline }]
   return (
     <UiEntity uiTransform={{ width: props.width, height: props.height, pointerFilter: 'none' }}>
       {copies.map(({ o, color }, i) => (
@@ -211,27 +198,45 @@ export const OutlineLabel = (props: {
   )
 }
 
-// A gold coin drawn from rounded boxes (no image needed): dark rim, bright face, a small highlight.
-export const CoinIcon = (props: { size: number; margin?: Edges; key?: string }) => {
-  const s = props.size
-  return (
-    <UiEntity uiTransform={{ width: s, height: s, margin: props.margin, padding: Math.max(2, Math.round(s * 0.09)), borderRadius: s / 2, pointerFilter: 'none' }} uiBackground={{ color: c(0.72, 0.45, 0.08, 1) }}>
-      <UiEntity
-        uiTransform={{ width: '100%', height: '100%', borderRadius: s / 2, padding: Math.round(s * 0.18), pointerFilter: 'none' }}
-        uiBackground={{ color: c(1, 0.84, 0.25, 1) }}
-      >
-        <UiEntity
-          uiTransform={{ width: '100%', height: '100%', borderRadius: s / 2, padding: Math.round(s * 0.12), pointerFilter: 'none' }}
-          uiBackground={{ color: c(0.95, 0.68, 0.12, 1) }}
-        >
-          <UiEntity uiTransform={{ width: Math.round(s * 0.2), height: Math.round(s * 0.2), borderRadius: s, pointerFilter: 'none' }} uiBackground={{ color: c(1, 0.96, 0.7, 1) }} />
-        </UiEntity>
-      </UiEntity>
-    </UiEntity>
-  )
-}
+// The game's cartoon coin.
+export const CoinIcon = (props: { size: number; margin?: Edges; key?: string }) => (
+  <UiEntity
+    uiTransform={{ width: props.size, height: props.size, margin: props.margin, pointerFilter: 'none' }}
+    uiBackground={{ texture: { src: 'assets/images/ui/cartoon-coin.png', filterMode: 'tri-linear', wrapMode: 'clamp' }, textureMode: 'stretch' }}
+  />
+)
 
-// A pill button with hover and press feedback. Wood by default, candy-coloured when `tint` is set.
+// A pill button with hover and press feedback, drawn with the UI kit's candy buttons (assets/images/ui-kit, 720x280).
+// Each button is cut in three: the two rounded ends keep their shape (each half the button's height wide) and only
+// the flat middle stretches, so any width and height the layout asks for draws without deforming the art.
+const BUTTON_ART: Record<string, string> = {
+  green: 'assets/images/ui-kit/btn-green.png', violet: 'assets/images/ui-kit/btn-violet.png', blue: 'assets/images/ui-kit/btn-blue.png',
+  pink: 'assets/images/ui-kit/btn-pink.png', yellow: 'assets/images/ui-kit/btn-yellow.png', red: 'assets/images/ui-kit/btn-red.png',
+  grey: 'assets/images/ui-kit/btn-grey.png', cream: 'assets/images/ui-kit/btn-cream.png'
+}
+const BUTTON_TINTS: [string, Color4][] = [
+  ['green', BLOCK.green], ['pink', BLOCK.pink], ['blue', c(0.16, 0.7, 0.9, 1)], ['yellow', c(1, 0.85, 0.25, 1)],
+  ['red', BLOCK.red], ['yellow', BLOCK.orange], ['violet', c(0.72, 0.55, 0.97, 1)], ['violet', BLOCK.purple], ['grey', c(0.6, 0.55, 0.7, 1)],
+  ['cream', c(1, 0.97, 0.86, 1)]
+]
+/** The kit button whose colour is closest to a PillButton tint (violet when none is given). */
+export function buttonArt(tint?: Color4): string {
+  if (!tint) return 'violet'
+  let best = 'violet'
+  let dist = Infinity
+  for (const [name, col] of BUTTON_TINTS) {
+    const d = (col.r - tint.r) ** 2 + (col.g - tint.g) ** 2 + (col.b - tint.b) ** 2
+    if (d < dist) { dist = d; best = name }
+  }
+  return best
+}
+// uvs: bottom-left, top-left, top-right, bottom-right. The ends are 140 px of the 720 px art; the middle samples the
+// flat centre of the button.
+const CAP_U = 140 / 720
+const UV_LEFT = [0, 0, 0, 1, CAP_U, 1, CAP_U, 0]
+const UV_MID = [0.45, 0, 0.45, 1, 0.55, 1, 0.55, 0]
+const UV_RIGHT = [1 - CAP_U, 0, 1 - CAP_U, 1, 1, 1, 1, 0]
+
 export const PillButton = (props: {
   id: string
   label: string
@@ -240,7 +245,7 @@ export const PillButton = (props: {
   border?: number
   font?: number
   tint?: Color4
-  active?: boolean // e.g. the option you picked: gold rim and bright text
+  active?: boolean // e.g. the option you picked: the gold button
   cost?: number // shows a coin and this price after the label
   onClick: () => void
   at?: Edges
@@ -248,14 +253,24 @@ export const PillButton = (props: {
   key?: string
 }) => {
   const hov = !!hovered[props.id]
-  const k = popFactor(props.id, 0.08)
+  const k = popFactor(props.id, 0.08) * (hov ? 1.03 : 1)
   const w = Math.round(props.width * k)
   const h = Math.round(props.height * k)
-  const rim = props.tint ?? PAL.violetLight
-  const p = props.border ?? S(4) // rim thickness
+  const art = props.active ? 'yellow' : buttonArt(props.tint)
+  const src = BUTTON_ART[art]
+  const cap = Math.min(Math.round(h / 2), Math.floor(w / 2))
+  // the middle runs under both ends by `seam` px, so pixel rounding never opens a hairline gap between the slices
+  const seam = Math.min(3, Math.max(1, Math.round(h * 0.04)))
   const font = props.font ?? S(24)
-  const innerW = w - 3 * p
-  const innerH = Math.max(S(20), h - 3 * p)
+  const p = props.border ?? S(4)
+  const lip = Math.round(h * 0.08) // the art's bottom lip: centre the text on the face above it
+  const light = art === 'yellow' || art === 'cream'
+  const text = light ? PAL.ink : hov ? PAL.yellow : PAL.text
+  const innerW = w - 2 * cap + Math.round(cap * 1.2)
+  const innerH = Math.max(S(20), h - lip - 2 * p)
+  const label = (width: number) => light
+    ? <Label value={props.label} fontSize={font} font="sans-serif" color={text} textAlign="middle-center" textWrap="nowrap" uiTransform={{ width, height: innerH }} />
+    : <OutlineLabel value={props.label} fontSize={font} color={text} width={width} height={innerH} />
   return (
     <UiEntity
       uiTransform={{
@@ -264,11 +279,9 @@ export const PillButton = (props: {
         margin: props.margin,
         width: w,
         height: h,
-        padding: p,
-        borderRadius: h / 2,
+        flexDirection: 'row',
         pointerFilter: 'block'
       }}
-      uiBackground={{ color: props.active ? PAL.yellow : hov ? lighten(rim, 0.12) : rim }}
       onMouseDown={() => {
         popPress(props.id)
         playSfx(SFX.click, 0.5)
@@ -276,17 +289,17 @@ export const PillButton = (props: {
       }}
       {...hover(props.id)}
     >
-      <UiEntity
-        uiTransform={{ width: '100%', height: '100%', borderRadius: h / 2 - p, justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}
-        uiBackground={{ color: hov ? PAL.violet : PAL.violetDark }}
-      >
+      <UiEntity key="mid" uiTransform={{ positionType: 'absolute', position: { left: cap - seam, top: 0 }, width: w - 2 * cap + 2 * seam, height: h, pointerFilter: 'none' }} uiBackground={{ texture: { src, wrapMode: 'clamp', filterMode: 'bi-linear' }, textureMode: 'stretch', uvs: UV_MID }} />
+      <UiEntity key="cap-l" uiTransform={{ positionType: 'absolute', position: { left: 0, top: 0 }, width: cap, height: h, pointerFilter: 'none' }} uiBackground={{ texture: { src, wrapMode: 'clamp', filterMode: 'bi-linear' }, textureMode: 'stretch', uvs: UV_LEFT }} />
+      <UiEntity key="cap-r" uiTransform={{ positionType: 'absolute', position: { left: w - cap, top: 0 }, width: cap, height: h, pointerFilter: 'none' }} uiBackground={{ texture: { src, wrapMode: 'clamp', filterMode: 'bi-linear' }, textureMode: 'stretch', uvs: UV_RIGHT }} />
+      <UiEntity key="face" uiTransform={{ positionType: 'absolute', position: { left: 0, top: 0 }, width: w, height: h - lip, justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
         {props.cost === undefined ? (
-          <Label value={props.label} fontSize={font} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textAlign="middle-center" textWrap="nowrap" uiTransform={{ width: innerW, height: innerH }} />
+          label(innerW)
         ) : (
           <UiEntity uiTransform={{ width: innerW, height: innerH, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }}>
-            <Label value={props.label} fontSize={font} font="sans-serif" color={hov || props.active ? PAL.yellow : PAL.text} textAlign="middle-center" textWrap="nowrap" uiTransform={{ width: Math.round(font * 2.3), height: innerH }} />
+            {label(Math.round(font * 2.3))}
             <CoinIcon size={Math.round(font * 0.95)} margin={{ left: p, right: p }} />
-            <Label value={`${props.cost}`} fontSize={font} font="sans-serif" color={PAL.yellow} textWrap="nowrap" uiTransform={{ width: Math.round(font * 1.2), height: innerH }} />
+            <OutlineLabel value={`${props.cost}`} fontSize={font} color={PAL.yellow} width={Math.round(font * 1.2)} height={innerH} />
           </UiEntity>
         )}
       </UiEntity>

@@ -95,6 +95,19 @@ test('every practice frame has a full pointer collider reachable from the first-
   }
   h.pointers.get(hits[0][0]).fn()
   assert.equal(clicked,0)
+  h.cs.tutorialActive=true
+  h.cs.practiceUiOnly=true
+  clicked=-1
+  const lastFrame=h.arena.getSlotEntities()[2]
+  h.pointers.get(lastFrame).fn()
+  h.pointers.get(hits[2][0]).fn()
+  assert.equal(clicked,-1,'neither the 3D frame nor its hitbox can bypass the UI lesson')
+  h.arena.clickSlot(2)
+  assert.equal(clicked,2,'the HUD tile still places the letter')
+  h.cs.practiceUiOnly=false
+  clicked=-1
+  h.pointers.get(lastFrame).fn()
+  assert.equal(clicked,2,'world placement resumes after the UI lesson')
   h.arena.clearSlots()
   assert.equal(h.pointers.size,0,'handlers are removed with the word')
 })

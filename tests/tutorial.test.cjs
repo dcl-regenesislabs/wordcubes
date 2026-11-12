@@ -2,7 +2,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { loadTs, loadI18n } = require('./load-ts.cjs')
 
-function harness(phone = false, canvas) {
+function harness(phone = false, canvas, opts = {}) {
   const config = loadTs('src/config.ts')
   const { cs } = loadTs('src/client/state.ts', { '../config': config })
   cs.myAddress = 'alice'
@@ -56,7 +56,7 @@ function harness(phone = false, canvas) {
   const mod = loadTs('src/client/tutorial.ts', {
     '@dcl/sdk/ecs': { engine, AvatarShape, Transform, MainCamera, VirtualCamera, InputModifier, PointerLock, TextShape, PointerEvents: extra[3], UiTransform: extra[4],
       ColliderLayer: { CL_PHYSICS: 1, CL_POINTER: 2 }, GltfContainer: extra[0], Billboard: extra[1], BillboardMode: { BM_Y: 1 },
-      MeshRenderer: { setSphere: noop }, Material: { setPbrMaterial: noop }, AvatarModifierArea: extra[2], AvatarModifierType: { AMT_HIDE_AVATARS: 1 } },
+      MeshRenderer: { setSphere: noop }, Material: { setPbrMaterial: noop }, AvatarModifierArea: extra[2], AvatarModifierType: { AMT_HIDE_AVATARS: 1 }, RealmInfo: { getOrNull: () => ({ isPreview: !!opts.isPreview }) } },
     '@dcl/sdk/math': { Vector3, Quaternion: quaternion, Color3: { create: vec }, Color4: { create: (r,g,b,a) => ({r,g,b,a}) } },
     '~system/RestrictedActions': { movePlayerTo: p => { teleports.push(p); return Promise.resolve() } },
     '../config': config, '../shared/tutorial': tutorial, '../shared/schemas': { GameState, CubeData }, '../shared/messages': { room },
@@ -72,7 +72,7 @@ function harness(phone = false, canvas) {
     './cubenet': { cubeEntity: id => id, cubeGuessPending: () => false, myHeldCubeId: () => held },
     './gamestate': { myState: () => [...GameState.data.values()].find(g => g.game === cs.game) },
     './audio': { talkSfx: noop }, './ui/platform': platform, '../ui/TutorialOverlay': { state: overlay }
-  }, 'exports.testing = { step: () => step, padPosition: () => padPosition, cameras: () => cameras, setStage: v => { stage = v } }')
+  }, 'exports.testing = { setStep: v => { step = v; age = 0 }, step: () => step, padPosition: () => padPosition, cameras: () => cameras, setStage: v => { stage = v } }')
   mod.setupTutorial()
   const tick = (dt = 1) => mod.tutorialSystem(dt)
   const advance = () => { tick(['rooms', 'outro'].includes(mod.testing.step()) ? 6 : 1); mod.nextTutorial() }
@@ -255,19 +255,61 @@ test('laboratory pad enables its existing 3D collider and skipping resets the pu
   assert.equal(h.padTour.at(-1), null)
 })
 
-test('tutorial dialogue shares Cubby cream Frame and the existing green Next button', () => {
-  const react = { default: { createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat() }) }, Label: 'Label', UiEntity: 'UiEntity' }
-  const PAL = { violet: 'violet', cream: 'cream', ink: 'ink', green: 'green' }
-  const ui = loadTs('src/ui/TutorialOverlay.tsx', { '@dcl/sdk/react-ecs': react, '../client/arena': { clickSlot() {} }, '../client/ui/theme': { Frame: 'Frame', PillButton: 'PillButton', PAL } })
-  ui.state.display = 'flex'
-  const tree = ui.TutorialOverlay({ onNext() {} })
-  const nodes = []
-  const visit = n => { if (n && typeof n === 'object') { nodes.push(n); for (const c of n.children ?? []) visit(c) } }
-  visit(tree)
-  const frame = nodes.find(n => n.type === 'Frame')
-  assert.equal(frame.props.fill, PAL.cream)
-  assert.equal(frame.props.edge, PAL.violet)
-  assert.equal(nodes.find(n => n.props.id === 'tutorial-next').props.tint, PAL.green)
+const renderOverlay=(state,props={})=>{
+  const react={default:{createElement:(type,props,...children)=>({type,props:props??{},children:children.flat()})},Label:'Label',UiEntity:'UiEntity'}
+  const ui=loadTs('src/ui/TutorialOverlay.tsx',{'@dcl/sdk/react-ecs':react,'../client/arena':{clickSlot:props.clickSlot??(()=>{})},'../client/ui/theme':{Frame:'Frame',PillButton:'PillButton',LetterTile:'LetterTile',OutlineLabel:'OutlineLabel',PAL:{}}})
+  Object.assign(ui.state,state)
+  const nodes=[]
+  const visit=n=>{if(n&&typeof n==='object'){if(typeof n.type==='function'){visit(n.type(n.props));return}nodes.push(n);for(const c of n.children??[])visit(c)}}
+  visit(ui.TutorialOverlay({onNext:props.onNext??(()=>{}),onGrab:props.onGrab??(()=>{})}))
+  return nodes
+}
+const ART={'assets/images/ui-kit/hand.png':184/216}
+const assertNativeAspect=nodes=>{for(const n of nodes){const src=n.props.uiBackground?.texture?.src;if(!src||n.props.uiTransform?.display==='none')continue;const {width,height}=n.props.uiTransform;assert.ok(ART[src],`unexpected image ${src}`);assert.ok(Math.abs(width/height-ART[src])<0.01*ART[src],`${src} drawn at ${width}x${height} keeps its aspect`)}}
+
+for (const phone of [false,true]) test(`only the hand animates: the strip and button hold still (${phone?'mobile':'desktop'})`, () => {
+  const h = harness(phone)
+  const o = h.overlay, seen = new Set(), hands = new Set()
+  h.tick()
+  for (let i = 0; i < 12; i++) { h.tick(0.07); seen.add([o.stripLeft,o.stripBottom,o.stripW,o.actionLeft,o.actionBottom,o.tabBottom,o.dotsBottom].join()); hands.add(o.handBottom) }
+  assert.equal(seen.size, 1, 'the dialogue does not move frame to frame')
+  assert.ok(hands.size > 1, 'the hand taps')
+  if (phone) assert.ok(o.stripW <= h.platform.view().w * 0.5 + 1, 'the phone strip takes about half the screen')
+})
+
+test('desktop tutorial uses the kit card, candy button and hand, right of the chat column', () => {
+  const h = harness()
+  h.tick()
+  const o = h.overlay, {w,h:height} = h.platform.view()
+  assert.equal(o.mode,'talk')
+  assert.ok(o.stripLeft>=0&&o.actionLeft+o.actionW<=w&&o.stripBottom>=0&&o.stripBottom+o.stripH<height*0.5,'Cubby talks from the bottom of the screen')
+  let nexts=0
+  const nodes = renderOverlay(o,{onNext:()=>nexts++})
+  assertNativeAspect(nodes)
+  const images=[...new Set(nodes.map(n=>n.props.uiBackground?.texture?.src).filter(Boolean))].sort()
+  assert.deepEqual(images,['assets/images/ui-kit/hand.png'],'cards and buttons come from the kit pieces; the hand is the only image here')
+  const crisp=nodes.find(n=>n.props.key==='crisp-strip')
+  assert.equal(crisp.props.uiTransform.width,o.stripW)
+  assert.equal(crisp.props.uiTransform.height,o.stripH)
+  assert.ok(o.handLeft>o.actionLeft+o.actionW*0.7,'the hand points at the corner, not the label')
+  assert.ok(o.stripLeft>=h.platform.LEFT_RESERVE(),'the dialogue starts right of the desktop chat column')
+  assert.ok(o.stripH<=height*0.13,'a compact strip on desktop')
+  assert.ok(o.handBottom>=0&&o.handLeft+o.handW<=w&&o.actionLeft+o.actionW<=w,'button and hand are fully on screen')
+  nodes.find(n=>n.type==='PillButton'&&n.props.id==='tutorial-action').props.onClick()
+  assert.equal(nexts,1)
+  h.advance(); h.advance(); h.advance(); h.tick()
+  assert.equal(h.mod.testing.step(),'walk')
+  assert.equal(o.mode,'action')
+  assert.ok(o.stripBottom+o.stripH<height*0.5,'the mission stays in the bottom strip')
+  assert.ok(o.actionDisplay==='none'||o.actionLeft>=o.stripLeft+o.stripW,'the desktop action sits beside the strip')
+})
+
+test('the local preview does not force the tutorial; deployed worlds do', () => {
+  for (const isPreview of [true, false]) {
+    const h = harness(false, undefined, { isPreview })
+    h.tick()
+    assert.equal(h.cs.tutorialActive, !isPreview)
+  }
 })
 
 test('previously skipped or interrupted players must finish the tutorial on their next entry', () => {
@@ -287,58 +329,58 @@ test('walking to the pad keeps it visible and the tutorial has no Skip button', 
   h.tick(1)
   assert.equal(h.cs.tutorialActive, true)
   assert.ok([...h.GltfContainer.data.values()].some(d => d.src.endsWith('/StartPad.glb')))
-  const react = { default: { createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat() }) }, Label: 'Label', UiEntity: 'UiEntity' }
-  const ui = loadTs('src/ui/TutorialOverlay.tsx', { '@dcl/sdk/react-ecs': react, '../client/arena': { clickSlot() {} }, '../client/ui/theme': { Frame: 'Frame', PillButton: 'PillButton', PAL: {} } })
-  const ids = []
-  const visit = n => { if (n && typeof n === 'object') { if (n.props?.id) ids.push(n.props.id); for (const c of n.children ?? []) visit(c) } }
-  visit(ui.TutorialOverlay({ onNext() {} }))
-  assert.ok(ids.includes('tutorial-next'))
-  assert.ok(!ids.includes('tutorial-skip'))
+  const keys = renderOverlay(h.overlay).map(n => n.props.key ?? n.props.id).filter(Boolean)
+  assert.ok(keys.includes('mobile-tutorial-strip'))
+  assert.ok(!keys.includes('tutorial-skip'))
 })
 
 for (const canvas of [
   { width:1600,height:720,devicePixelRatio:1 },
   { width:2400,height:1080,devicePixelRatio:3,screenInsetArea:{left:80,right:40,top:15,bottom:25} },
   { width:720,height:1600,devicePixelRatio:1,screenInsetArea:{left:10,right:10,top:35,bottom:25} }
-]) test(`mobile cinematic and playable captions avoid controls on ${canvas.width}x${canvas.height}`, () => {
+]) test(`mobile strip, button and hand stay on screen on ${canvas.width}x${canvas.height}`, () => {
   const h = harness(true, canvas)
-  const check = () => {
-    const {w,h:height} = h.platform.view(), o=h.overlay
-    assert.ok(o.left >= h.platform.EDGE())
-    assert.ok(o.left+o.width <= w-(w >= height*1.2 ? h.platform.RIGHT_RESERVE() : h.platform.EDGE()))
-    assert.ok(o.bottom >= h.platform.BOTTOM_RESERVE())
-    assert.ok(o.bottom+o.height <= height-h.platform.TOP_RESERVE())
-    assert.ok(o.buttonHeight >= height * 0.024, 'button remains a deliberate touch target')
-    assert.ok(o.barHeight === 0, 'no cinematic bars on mobile')
-  }
-  h.tick(); check()
-  h.enter(); check()
-  h.advance();h.advance();h.tick();check() // grab prompt
-  let top=h.platform.view().h-h.overlay.bottom-h.overlay.height
-  assert.ok(top >= h.platform.TOP_RESERVE())
-  assert.ok(top > h.platform.view().h * 0.5, 'playable prompt stays at the bottom')
-  assert.ok(h.overlay.height < h.platform.view().h * 0.25, 'dialogue remains compact')
+  const {w,h:height} = h.platform.view(), o=h.overlay
+  const inside = (l,b,wd,ht) => l >= 0 && l + wd <= w && b >= 0 && b + ht <= height
+  h.tick()
+  assert.equal(o.mode,'talk','Cubby talks while the camera is cinematic')
+  assert.ok(inside(o.stripLeft,o.stripBottom,o.stripW,o.stripH))
+  assert.ok(inside(o.actionLeft,o.actionBottom,o.actionW,o.actionH),'the Next button is on screen')
+  assert.ok(inside(o.handLeft,o.handBottom,o.handW,o.handH),'the tapping hand is not cut by the screen edge')
+  assert.ok(o.stripBottom + o.stripH < height * 0.5, 'Cubby talks from the bottom, leaving the scene visible')
+  assertNativeAspect(renderOverlay(o))
+  assert.equal(o.barHeight, 0, 'no cinematic bars on mobile')
+  h.enter(); h.advance(); h.advance(); h.tick() // grab prompt
+  assert.equal(h.mod.testing.step(),'grab')
+  assert.equal(o.mode,'action')
+  assert.ok(inside(o.stripLeft,o.stripBottom,o.stripW,o.stripH))
+  assert.ok(o.stripBottom + o.stripH < height * 0.5, 'Cubby keeps talking from the bottom while you play')
+  assert.ok(o.stripLeft + o.stripW < o.actionLeft || o.actionBottom > o.stripBottom + o.stripH, 'the strip never sits under the action button')
+  assert.equal(o.goalDisplay,'flex')
+  assert.equal(o.goalLetter,'S')
+  assert.equal(o.actionDisplay,'flex')
+  assert.ok(inside(o.actionLeft,o.actionBottom,o.actionW,o.actionH))
+  assert.ok(o.actionBottom >= height * 0.3, 'the action button sits above the native jump and E buttons')
+  assert.ok(o.actionH >= Math.min(w,height) * 0.1, 'a deliberate touch target')
+  assert.equal(o.handDisplay,'flex')
+  assert.ok(o.handBottom < o.actionBottom, 'the hand taps the button from below')
+  assert.ok(inside(o.handLeft,o.handBottom,o.handW,o.handH),'the tapping hand is not cut by the screen edge')
+  assertNativeAspect(renderOverlay(o))
   h.CubeData.create(70,{game:7,letter:'S',mode:'held',holder:'alice'})
-  h.setHeld(70);h.tick();h.advance();h.tick();check()
-  assert.equal(h.overlay.framesDisplay,'none')
-  assert.equal(h.overlay.targetSlot,0)
-  assert.ok(h.overlay.tileSize > 0)
-  assert.equal(h.overlay.buttonRowHeight,0,'interactive controls do not leave an empty Next row')
-  assert.match(h.overlay.text,/tocá/i)
-  assert.ok(!/clic|click|Press|presion/i.test(h.overlay.text))
+  h.setHeld(70);h.tick();h.advance();h.tick()
+  assert.equal(o.mode,'action')
+  assert.equal(o.actionDisplay,'none','placing happens on the world frame')
+  assert.equal(o.handDisplay,'none')
+  assert.equal(o.framesDisplay,'none')
+  assert.match(o.text,/tocá/i)
+  assert.ok(!/clic|click|Press|presion/i.test(o.text))
 })
 
 test('tutorial places letters only through world frames, without dialogue tiles', () => {
   const h=harness(true)
   h.tick(); h.advance(); h.advance(); h.advance(); h.tick()
   assert.equal(h.overlay.framesDisplay,'none')
-  const react={default:{createElement:(type,props,...children)=>({type,props:props??{},children:children.flat()})},Label:'Label',UiEntity:'UiEntity'}
-  const ui=loadTs('src/ui/TutorialOverlay.tsx',{'@dcl/sdk/react-ecs':react,'../client/arena':{clickSlot(){}},'../client/ui/theme':{Frame:'Frame',PillButton:'PillButton',LetterTile:'LetterTile',PAL:{}}})
-  Object.assign(ui.state,h.overlay)
-  const nodes=[]
-  const visit=n=>{if(n&&typeof n==='object'){if(typeof n.type==='function'){visit(n.type(n.props));return}nodes.push(n);for(const c of n.children??[])visit(c)}}
-  visit(ui.TutorialOverlay({onNext(){}}))
-  assert.ok(!nodes.some(n=>n.type==='LetterTile'))
+  assert.ok(!renderOverlay(h.overlay).some(n=>n.type==='LetterTile'&&n.props.onClick),'no clickable dialogue frame')
 })
 
 test('mobile native controls hide for cinematics, return for actions, and reset on exit', () => {
@@ -366,28 +408,31 @@ test('mobile native controls hide for cinematics, return for actions, and reset 
   assert.equal(writes.at(-1).touchInputs.find(i=>i.inputAction==='IA_PRIMARY').hide,false)
 })
 
-test('redesigned mobile dialogue has no black bars, stays below the scene and uses a compact inline action', () => {
+test('mobile talk uses the kit card, the candy button and the tapping hand, and both advance', () => {
   const h=harness(true)
   h.tick()
-  const welcomeBottom=h.overlay.bottom
-  assert.equal(h.overlay.mobile,true)
-  assert.equal(h.overlay.barHeight,0)
-  assert.ok(h.overlay.width<=h.platform.view().w*0.58)
-  assert.ok(h.overlay.height<h.platform.view().h*0.2)
-  assert.ok(h.overlay.font<h.overlay.titleFont)
-  assert.ok(h.overlay.font>=h.platform.view().h/30, 'readable body text on landscape mobile')
-  const react={default:{createElement:(type,props,...children)=>({type,props:props??{},children:children.flat()})},Label:'Label',UiEntity:'UiEntity'}
-  const ui=loadTs('src/ui/TutorialOverlay.tsx',{'@dcl/sdk/react-ecs':react,'../client/arena':{clickSlot(){}},'../client/ui/theme':{Frame:'Frame',PillButton:'PillButton',LetterTile:'LetterTile',PAL:{}}})
-  Object.assign(ui.state,h.overlay)
-  const nodes=[]
-  const visit=n=>{if(n&&typeof n==='object'){if(typeof n.type==='function'){visit(n.type(n.props));return}nodes.push(n);for(const c of n.children??[])visit(c)}}
-  visit(ui.TutorialOverlay({onNext(){}}))
-  assert.ok(!nodes.some(n=>n.props.uiBackground),'mobile never instantiates the letterbox rectangles, even at zero height')
-  assert.ok(nodes.some(n=>n.props.id==='tutorial-next'))
+  const o=h.overlay
+  assert.equal(o.mobile,true)
+  assert.equal(o.mode,'talk')
+  assert.equal(o.tabName,'Cubby')
+  assert.equal(o.actionDisplay,'flex')
+  assert.equal(o.handDisplay,'flex')
+  assert.ok(o.stripFont>=h.platform.view().h/36, 'readable copy on landscape mobile')
+  let nexts=0
+  const nodes=renderOverlay(o,{onNext:()=>nexts++})
+  nodes.find(n=>n.props.key==='mobile-tutorial-strip').props.onMouseDown()
+  nodes.find(n=>n.type==='PillButton'&&n.props.id==='tutorial-action').props.onClick()
+  assert.equal(nexts,2)
+  const images=[...new Set(nodes.map(n=>n.props.uiBackground?.texture?.src).filter(Boolean))].sort()
+  assert.deepEqual(images,['assets/images/ui-kit/hand.png'],'cards and buttons come from the kit pieces; the hand is the only image here')
+  assert.ok(nodes.some(n=>n.props.key==='crisp-strip'))
+  assert.equal(nodes.filter(n=>String(n.props.key).startsWith('dot-')).length,o.chapters)
   h.advance();h.advance();h.advance();h.tick()
   assert.equal(h.mod.testing.step(),'walk')
-  assert.equal(h.overlay.bottom,welcomeBottom,'walking never moves dialogue to the top')
-  assert.ok(h.platform.view().h-h.overlay.bottom-h.overlay.height>h.platform.view().h*0.5)
+  assert.equal(o.mode,'action','walking shows the mission in the same bottom strip')
+  assert.ok(o.stripBottom + o.stripH < h.platform.view().h * 0.5)
+  assert.equal(o.actionDisplay,'none')
+  assert.equal(o.goalDisplay,'none','no letter cube before there is a letter to fetch')
 })
 
 test('mobile hold cinematic freezes movement without disabling the carry emote', () => {
@@ -407,13 +452,13 @@ test('mobile hold cinematic freezes movement without disabling the carry emote',
 
 test('tutorial cannot draw cinematic bars even if the device is misclassified as desktop', () => {
   const react={default:{createElement:(type,props,...children)=>({type,props:props??{},children:children.flat()})},Label:'Label',UiEntity:'UiEntity'}
-  const ui=loadTs('src/ui/TutorialOverlay.tsx',{'@dcl/sdk/react-ecs':react,'../client/arena':{clickSlot(){}},'../client/ui/theme':{Frame:'Frame',PillButton:'PillButton',LetterTile:'LetterTile',PAL:{}}})
+  const ui=loadTs('src/ui/TutorialOverlay.tsx',{'@dcl/sdk/react-ecs':react,'../client/arena':{clickSlot(){}},'../client/ui/theme':{Frame:'Frame',PillButton:'PillButton',LetterTile:'LetterTile',OutlineLabel:'OutlineLabel',PAL:{}}})
   for(const phone of [false,true]) {
     Object.assign(ui.state,{mobile:phone,display:'flex',barHeight:100})
     const nodes=[]
     const visit=n=>{if(n&&typeof n==='object'){if(typeof n.type==='function'){visit(n.type(n.props));return}nodes.push(n);for(const c of n.children??[])visit(c)}}
     visit(ui.TutorialOverlay({onNext(){}}))
-    assert.ok(!nodes.some(n=>n.props.uiBackground),'no letterbox entities exist in either renderer')
+    assert.ok(!nodes.some(n=>n.props.uiTransform?.height===100),'no letterbox entities exist in either renderer')
   }
 })
 
@@ -431,13 +476,10 @@ test('mobile offers Agarrar S only after Cubby is ready and targets the nearest 
   assert.equal(h.overlay.grabDisplay,'flex')
   assert.equal(h.overlay.grabLabel,'Agarrar S')
   assert.equal(h.cs.practiceCubeId,70)
-  const react={default:{createElement:(type,props,...children)=>({type,props:props??{},children:children.flat()})},Label:'Label',UiEntity:'UiEntity'}
-  const ui=loadTs('src/ui/TutorialOverlay.tsx',{'@dcl/sdk/react-ecs':react,'../client/arena':{clickSlot(){}},'../client/ui/theme':{Frame:'Frame',PillButton:'PillButton',LetterTile:'LetterTile',PAL:{}}})
-  Object.assign(ui.state,h.overlay)
-  const nodes=[],requests=[]
-  const visit=n=>{if(n&&typeof n==='object'){if(typeof n.type==='function'){visit(n.type(n.props));return}nodes.push(n);for(const c of n.children??[])visit(c)}}
-  visit(ui.TutorialOverlay({onNext(){},onGrab(){requests.push(h.cs.practiceCubeId)}}))
-  nodes.find(n=>n.props.id==='tutorial-grab').props.onClick()
+  assert.equal(h.overlay.actionLabel,'Agarrar S')
+  const requests=[]
+  const nodes=renderOverlay(h.overlay,{onGrab(){requests.push(h.cs.practiceCubeId)},onNext(){requests.push('next')}})
+  nodes.find(n=>n.type==='PillButton'&&n.props.id==='tutorial-action').props.onClick()
   assert.deepEqual(requests,[70])
 })
 
@@ -510,25 +552,38 @@ test('post-collapse UI frame throws into the last slot on desktop and mobile', (
   for (const mobile of [false,true]) {
     const clicks=[]
     const react={default:{createElement:(type,props,...children)=>({type,props:props??{},children:children.flat()})},Label:'Label',UiEntity:'UiEntity'}
-    const ui=loadTs('src/ui/TutorialOverlay.tsx',{'@dcl/sdk/react-ecs':react,'../client/arena':{clickSlot:i=>clicks.push(i)},'../client/ui/theme':{Frame:'Frame',PillButton:'PillButton',LetterTile:'LetterTile',PAL:{}}})
-    Object.assign(ui.state,{mobile,framesDisplay:'flex',tileSize:60,primaryDisplay:'none',grabDisplay:'none'})
+    const ui=loadTs('src/ui/TutorialOverlay.tsx',{'@dcl/sdk/react-ecs':react,'../client/arena':{clickSlot:i=>clicks.push(i)},'../client/ui/theme':{Frame:'Frame',PillButton:'PillButton',LetterTile:'LetterTile',OutlineLabel:'OutlineLabel',PAL:{}}})
+    Object.assign(ui.state,{mobile,mode:'action',framesDisplay:'flex',tileSize:60,primaryDisplay:'none',grabDisplay:'none'})
     const nodes=[]
     const visit=n=>{if(n&&typeof n==='object'){if(typeof n.type==='function'){visit(n.type(n.props));return}nodes.push(n);for(const c of n.children??[])visit(c)}}
     visit(ui.TutorialOverlay({onNext(){}}))
-    const tiles=nodes.filter(n=>n.type==='LetterTile')
+    const tiles=nodes.filter(n=>n.type==='LetterTile'&&n.props.onClick)
     assert.equal(tiles.length,1)
-    if(!mobile) {
-      const row=nodes.find(n=>n.props.key==='tutorial-frame-row')
-      assert.equal(row.props.uiTransform.width,'100%')
-      assert.equal(row.props.uiTransform.justifyContent,'center')
-      assert.equal(row.props.uiTransform.alignItems,'center')
-      assert.ok(row.children.includes(tiles[0]),'the placement tile is inside its centered row')
-    }
     tiles[0].props.onClick()
     assert.deepEqual(clicks,[2])
   }
 })
 
+
+test('after the pad shot, the player and camera turn toward the pad, without moving', () => {
+  const h=harness(true)
+  h.tick()
+  h.advance();h.advance()
+  const before=h.teleports.length, me={...h.Transform.get(1).position}
+  h.advance()
+  assert.equal(h.mod.testing.step(),'walk')
+  assert.equal(h.teleports.length,before+1)
+  const turn=h.teleports.at(-1), pad=h.mod.testing.padPosition()
+  assert.deepEqual(turn.newRelativePosition,me,'the player stays where they are')
+  assert.equal(turn.cameraTarget.x,pad.x); assert.equal(turn.cameraTarget.z,pad.z)
+  assert.equal(turn.avatarTarget.x,pad.x); assert.equal(turn.avatarTarget.z,pad.z)
+  // stepping on and off the pad does not turn the camera again
+  h.Transform.get(1).position={...pad}; h.tick()
+  assert.equal(h.mod.testing.step(),'create')
+  h.Transform.get(1).position={x:pad.x+10,y:pad.y,z:pad.z}; h.tick()
+  assert.equal(h.mod.testing.step(),'walk')
+  assert.equal(h.teleports.length,before+1)
+})
 
 test('arriving beside Cubby never skips walking onto the laboratory pad',()=>{
   const h=harness()
@@ -544,27 +599,24 @@ test('arriving beside Cubby never skips walking onto the laboratory pad',()=>{
   assert.equal(h.mod.testing.step(),'create')
 })
 
-for(const canvas of [{width:1600,height:720,devicePixelRatio:1},{width:2400,height:1080,devicePixelRatio:3},{width:720,height:1600,devicePixelRatio:1}]) test(`mobile action aligns with the entire name/text column on ${canvas.width}x${canvas.height}`,()=>{
+for(const canvas of [{width:1600,height:720,devicePixelRatio:1},{width:2400,height:1080,devicePixelRatio:3},{width:720,height:1600,devicePixelRatio:1}]) test(`mobile word party is a kit card with the answer on ${canvas.width}x${canvas.height}`,()=>{
   const h=harness(true,canvas)
+  const o=h.overlay, {w,h:height}=h.platform.view()
   h.tick()
-  const o=h.overlay
-  assert.equal(o.mobileCopyHeight,o.titleHeight+o.lineHeight)
-  assert.equal(o.height,o.mobileRowHeight+2*(o.border+o.padding))
-  assert.ok(o.mobileRowHeight>=o.mobileCopyHeight)
-  assert.ok(o.mobileRowHeight>=o.buttonHeight)
-  assert.equal(o.sideWidth,o.buttonWidth)
-  assert.equal(o.bodyWidth+o.sideGap+o.sideWidth+2*(o.border+o.padding),o.width)
-  assert.equal(o.buttonBorder,o.border,'button and panel use the same viewport scale for rims')
-  const react={default:{createElement:(type,props,...children)=>({type,props:props??{},children:children.flat()})},Label:'Label',UiEntity:'UiEntity'}
-  const ui=loadTs('src/ui/TutorialOverlay.tsx',{'@dcl/sdk/react-ecs':react,'../client/arena':{clickSlot(){}},'../client/ui/theme':{Frame:'Frame',PillButton:'PillButton',LetterTile:'LetterTile',PAL:{}}})
-  Object.assign(ui.state,o)
-  const nodes=[]
-  const visit=n=>{if(n&&typeof n==='object'){if(typeof n.type==='function'){visit(n.type(n.props));return}nodes.push(n);for(const c of n.children??[])visit(c)}}
-  visit(ui.TutorialOverlay({onNext(){}}))
-  const action=nodes.find(n=>n.props.key==='mobile-tutorial-action')
-  assert.equal(action.props.uiTransform.height,o.mobileRowHeight)
-  assert.equal(action.props.uiTransform.alignItems,'center')
-  const copy=nodes.find(n=>n.props.uiTransform?.height===o.mobileCopyHeight&&n.props.uiTransform?.flexDirection==='column')
-  assert.ok(copy.children.some(n=>n?.props?.value===o.title))
-  assert.ok(copy.children.some(n=>n?.props?.value===o.text))
+  h.cs.game=7; h.cs.inGame=true; h.mod.testing.setStep('win'); h.tick(0.3)
+  assert.equal(o.mode,'party')
+  assert.equal(o.partyTitle,'¡Palabra completa!')
+  assert.equal(o.word0+o.word1+o.word2,'SOL','the practice answer in the lab language')
+  assert.ok(o.panelLeft>=0&&o.panelLeft+o.panelW<=w&&o.panelTop>=0&&o.panelTop+o.panelH<=height)
+  assert.equal(o.actionDisplay,'flex')
+  assert.ok(o.actionBottom+o.actionH<=height-o.panelTop-o.panelH-8,'the button sits apart, below the card')
+  assert.ok(o.handBottom>=0,'the hand under it stays on screen')
+  let nexts=0
+  const nodes=renderOverlay(o,{onNext:()=>nexts++})
+  assertNativeAspect(nodes)
+  assert.deepEqual(nodes.filter(n=>n.type==='LetterTile').map(n=>n.props.letter),[o.word0,o.word1,o.word2])
+  nodes.find(n=>n.type==='PillButton'&&n.props.id==='tutorial-action').props.onClick()
+  assert.equal(nexts,1)
+  const dim=nodes.find(n=>n.props.key==='party-dim')
+  assert.ok(dim.props.uiTransform.position.left<0&&dim.props.uiTransform.width>w,'the dim reaches past the safe area to the real screen edges')
 })

@@ -38,6 +38,7 @@ export const PT: Record<string, string> = {
   "tutorial.skip": "Pular tutorial",
   "tutorial.createButton": "Criar prática",
   "tutorial.retry": "Tentar de novo",
+  "tutorial.party": "Palavra completa!",
   "tutorial.welcome": "Bem-vindo ao Word Cubes! Sou o Cubby. Vamos completar sua primeira palavra juntos.",
   "tutorial.rooms": "Essas plataformas levam às salas para jogar com outras pessoas. Vamos lá depois; primeiro, vamos praticar!",
   "tutorial.pad": "Este é meu laboratório! Esta plataforma funciona como as outras. Vamos experimentar juntos.",

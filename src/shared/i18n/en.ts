@@ -39,6 +39,7 @@ export const EN: Record<string, string> = {
   "tutorial.skip": "Skip tutorial",
   "tutorial.createButton": "Create practice",
   "tutorial.retry": "Try again",
+  "tutorial.party": "Word complete!",
   "tutorial.welcome": "Welcome to Word Cubes! I'm Cubby. Let's build your first word together.",
   "tutorial.rooms": "These pads take you to the rooms where everyone plays together. We will visit them after a little practice!",
   "tutorial.pad": "Here is my laboratory! This pad works just like the others. Let's try it together.",

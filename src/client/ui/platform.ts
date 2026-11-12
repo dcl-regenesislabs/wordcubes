@@ -101,6 +101,13 @@ export const EDGE = (): number => (mobile() ? Math.round(view().w * 0.035) : S(2
 export const RIGHT_RESERVE = (): number => (mobile() ? Math.round(view().w * 0.15) : 0)
 /** Room for the phone app's own top bar, which the device safe area does not exclude. */
 export const TOP_RESERVE = (): number => (mobile() ? Math.round(view().h * 0.09) : 0)
+/** Desktop explorers keep their chat / nearby panel in the bottom-left column: dialogues start right of it. */
+export const LEFT_RESERVE = (): number => (mobile() ? 0 : Math.round(view().w * 0.22))
+/** Scale for Cubby's dialogue (strip, tab, pills): a phone draws it on a 720-tall canvas, a desktop smaller. */
+export function dialogScale(screen: { w: number; h: number }): number {
+  if (!mobile()) return screen.h / 1300
+  return screen.w >= screen.h * 1.2 ? screen.h / 720 : screen.w / 900
+}
 /** The phone app's own bottom controls (about 8% of the height): bottom-anchored pieces start above them. */
 export const BOTTOM_RESERVE = (): number => (mobile() ? Math.round(view().h * 0.09) : 0)
 
