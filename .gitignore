@@ -14,3 +14,6 @@ main1.crdt
 .agents/
 .claude/
 agent/
+
+# local preview environment variables
+.env

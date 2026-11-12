@@ -12,7 +12,7 @@ function sdkStubs(canvasInfo, rendererCalls = []) {
 }
 
 // phone: true/false; canvas: the screen the explorer reports (pixels), defaults to the virtual canvas at pixel ratio 1
-function harness(phone, canvas) {
+function harness(phone, canvas, opts = {}) {
   // the HUD under test is the real one, whatever the dev-only UI preview flag is set to
   const config = { ...loadTs('src/config.ts'), UI_PREVIEW: false }
   const state = loadTs('src/client/state.ts', { '../config': config })
@@ -24,15 +24,19 @@ function harness(phone, canvas) {
   const noop = () => {}
   let currentGame = null
   const tutorialStarts=[]
-  const theme = { PAL: {}, Frame: 'Frame', OutlineLabel: 'OutlineLabel', PillButton: 'PillButton',
-    LetterTile: 'LetterTile', CoinIcon: 'CoinIcon', c: noop,
-    clamp: (n, min, max) => Math.min(max, Math.max(min, n)) }
+  // opts.realTheme: the real cards, buttons, coin and labels (a crash inside them would freeze the scene in-world)
+  const theme = opts.realTheme
+    ? loadTs('src/client/ui/theme.tsx', { '@dcl/sdk/react-ecs': react, '@dcl/sdk/math': { Color4: { create: (r, g, b, a) => ({ r, g, b, a }) } }, './platform': platform, '../audio': { SFX: {}, playSfx() {} } })
+    : { PAL: {}, Frame: 'Frame', OutlineLabel: 'OutlineLabel', PillButton: 'PillButton',
+      LetterTile: 'LetterTile', CoinIcon: 'CoinIcon', c: noop, darken: x => x, lighten: x => x, OUTLINE: {}, hovered: {}, hover: () => ({}),
+      clamp: (n, min, max) => Math.min(max, Math.max(min, n)) }
   const netMon = { allowed: false, open: false }
   const netstats = { netMon, toggleNetMonitor: () => { if (netMon.allowed) netMon.open = !netMon.open } }
   const hud = loadTs('src/client/ui/hud.tsx', {
     '@dcl/sdk/react-ecs': react, '@dcl/sdk/ecs': { engine: { getEntitiesWith: () => currentGame ? [[0, currentGame]] : [] } },
     '../../shared/schemas': {}, '../gamestate': { myState: () => currentGame || undefined, boardText: () => '' }, '../state': state, '../cubes': { heldLetter: () => '' },
     '../netstats': netstats, '../tutorial': { startTutorial: () => tutorialStarts.push(true) },
+    '../../ui/TutorialOverlay': { CubbyStrip: 'CubbyStrip', NameTab: 'NameTab', CartoonButton: 'CartoonButton', BUTTON_ASPECT: 2.6 },
     '../../config': config, '../../shared/messages': { room: { send: noop } },
     '../lobby': { returnToLobby: noop, gameLang: () => '' }, '../../shared/lang': loadTs('src/shared/lang.ts'),
     '../i18n': { t: (key, args) => loadI18n().format('en', key, args, phone), uiLang: () => 'en', pickUiLang: noop }, './flags': { Flag: 'Flag' }, '../arena': {}, './platform': platform,
@@ -107,14 +111,29 @@ for (const [name, canvas] of [['pixel ratio 1', undefined], ['a 2400x1080 phone 
   })
 }
 
-test('desktop inventory stays in a vertical column under the buttons and empty inventory is hidden', () => {
+test('desktop power-ups are always shown as a 2x2 tile grid under the buttons, greyed out at zero', () => {
   const h = harness(false)
   const g = { phase: 'playing' }
-  assert.equal(h.hud.ItemBar({ g }), null)
-  Object.assign(h.state.cs.items, { wildcard: 1, freeze: 1, reroll: 1, bomb: 1 })
-  const bar = h.hud.ItemBar({ g })
-  assert.equal(bar.props.uiTransform.flexDirection, 'column')
-  assert.equal(bar.props.uiTransform.width, h.platform.S(250))
+  const render = n => !n || typeof n !== 'object' ? [] : typeof n.type === 'function' ? render(n.type(n.props)) : [n, ...(n.children || []).flatMap(render)]
+  const empty = h.hud.ItemBar({ g })
+  assert.ok(empty, 'the tiles show even with no power-ups')
+  assert.equal(empty.props.uiTransform.flexDirection, 'column')
+  assert.equal(empty.props.uiTransform.width, h.platform.S(250))
+  const icons = render(empty).filter(n => n.props.key === 'tile-icon')
+  assert.equal(icons.length, 4, 'one tile per power-up')
+  assert.ok(icons.every(n => n.props.uiTransform.opacity < 1), 'greyed out at zero')
+  Object.assign(h.state.cs.items, { wildcard: 2, freeze: 0, reroll: 3, bomb: 1 })
+  const tiles = render(h.hud.ItemBar({ g })).filter(n => String(n.props.key).startsWith('item-') && n.props.onMouseDown)
+  assert.equal(tiles.length, 4)
+  const lit = render(h.hud.ItemBar({ g })).filter(n => n.props.key === 'tile-icon').map(n => n.props.uiTransform.opacity)
+  assert.equal(JSON.stringify(lit), JSON.stringify([1, 0.45, 1, 1]))
+  // hovering a tile (desktop) names the power-up, even one you have none of
+  assert.ok(!render(h.hud.ItemBar({ g })).some(n => n.props.key === 'tile-tooltip'))
+  h.theme.hovered['item-freeze'] = true
+  const tip = render(h.hud.ItemBar({ g })).filter(n => n.props.key === 'tile-tooltip')
+  assert.equal(tip.length, 1)
+  assert.ok(render(tip[0]).some(n => n.type === 'Label' && n.props.value === 'Time Freeze'))
+  delete h.theme.hovered['item-freeze']
   assert.equal(h.module.hudLayout(g).itemsBeside, false)
   assert.equal(h.hud.ItemBar({ g: { phase: 'vote' } }), null)
 })
@@ -351,15 +370,26 @@ for(const phone of [false,true]) test(`tutorial replay lives in How to Play (${p
 
 for(const phone of [false,true]) test(`Cubby asks before replaying the tutorial (${phone?'mobile':'desktop'})`,()=>{
   const h=harness(phone)
+  // the prompt is its own component: render function elements too
+  const expand=t=>!t||typeof t!=='object'?[]:typeof t.type==='function'?expand(t.type(t.props)):[t,...(t.children||[]).flatMap(expand)]
   const prompt=()=>{h.state.cs.dialog={name:'Cubby',pages:['Replay the tutorial?'],page:0,replayTutorial:true}}
   prompt()
-  nodes(h.module.NpcDialog()).find(n=>n.props.id==='npc-close').props.onClick()
+  expand(h.module.NpcDialog()).find(n=>n.props.id==='npc-close').props.onClick()
   assert.equal(h.state.cs.dialog,null)
   assert.equal(h.tutorialStarts.length,0)
   prompt()
-  nodes(h.module.NpcDialog()).find(n=>n.props.id==='npc-next').props.onClick()
+  expand(h.module.NpcDialog()).find(n=>n.props.id==='npc-next').props.onClick()
   assert.equal(h.state.cs.dialog,null)
   assert.equal(h.tutorialStarts.length,1)
+  prompt()
+  const all=expand(h.module.NpcDialog()), {w}=h.platform.view()
+  assert.ok(all.some(n=>n.type==='CubbyStrip')&&all.some(n=>n.type==='NameTab'),'the replay prompt uses the tutorial\'s strip and name tab')
+  const buttons=all.filter(n=>n.type==='CartoonButton')
+  assert.equal(buttons.length,2)
+  assert.ok(!all.some(n=>n.type==='PillButton'),'no old-style pills')
+  assert.equal(buttons.find(b=>b.props.id==='npc-close').props.variant,'secondary','"not now" is the quieter cream button')
+  assert.notEqual(buttons.find(b=>b.props.id==='npc-next').props.variant,'secondary')
+  for(const b of buttons){assert.ok(b.props.left>=0&&b.props.left+b.props.w<=w,'both buttons fit on screen');assert.ok(Math.abs(b.props.w/b.props.h-2.6)<0.05)}
 })
 
 test('the lockout banner gives the reason and the seconds left, with a bar that runs down', () => {
@@ -401,4 +431,34 @@ test('while locked out the help line is hidden: the banner replaces it', () => {
   assert.ok(!texts(bottom).includes('Tap a cube to grab it'), 'no "tap a cube" while you cannot grab')
   const has = (node, type) => !!node && typeof node === 'object' && (node.type === type || (node.children || []).some(c => has(c, type)))
   assert.ok(has(bottom, h.hud.LockoutBanner), 'the banner is there')
+})
+
+// Every screen drawn with the real UI kit pieces, fully expanded, in every state a player can reach: any exception
+// here would stop the scene's update loop in-world (frozen "Connecting..." HUD, dropped server connection).
+for (const phone of [false, true]) test(`every HUD screen renders with the real kit pieces without throwing (${phone ? 'mobile' : 'desktop'})`, () => {
+  const h = harness(phone, undefined, { realTheme: true })
+  const expand = n => !n || typeof n !== 'object' ? [] : Array.isArray(n) ? n.flatMap(expand) : typeof n.type === 'function' ? expand(n.type(n.props)) : [n, ...(n.children || []).flatMap(expand)]
+  const cs = h.state.cs
+  cs.myAddress = '0xabc'
+  for (const items of [{}, { wildcard: 2, freeze: 0, reroll: 3, bomb: 1 }]) {
+    cs.items = { ...items }
+    for (const g of [{ ...longGame, length: 3, masked: 'S__', question: 'What shines?', timeLeft: 42, phase: 'playing', difficulty: 2 }, { ...longGame, length: 3, masked: '___', question: '', phase: 'playing' }, { ...longGame, phase: 'vote', voteLeft: 5 }]) {
+      h.setGame(g)
+      cs.game = 0; cs.inGame = true
+      h.module.updateHud()
+      expand(h.module.GameHud())
+      cs.itemsOpen = true
+      expand(h.module.ItemsRow())
+      cs.itemsOpen = false
+    }
+    cs.game = -1; cs.inGame = false; h.setGame(null)
+    expand(h.module.LobbyHud())
+    expand(h.module.PadCard())
+    cs.shop = true; expand(h.module.ShopPanel()); cs.shop = false
+    cs.showSettings = true; expand(h.module.SettingsPanel()); cs.showSettings = false
+    cs.showHowTo = true; expand(h.module.HowToPlay()); cs.showHowTo = false
+    cs.dialog = { name: 'Lexi', pages: ['One', 'Two'], page: 0 }; expand(h.module.NpcDialog())
+    cs.dialog = { name: 'Cubby', pages: ['Replay?'], page: 0, replayTutorial: true }; expand(h.module.NpcDialog())
+    cs.dialog = null
+  }
 })

@@ -12,6 +12,7 @@ export const cs = {
   practiceCubeId: -1,
   practiceSlot: -1,
   practiceTouchReady: true,
+  practiceUiOnly: false,
   coins: 0,
   rating: 0, // your saved rating (the server sends it)
   items: { wildcard: 0, reroll: 0, freeze: 0, bomb: 0 } as Record<string, number>, // your inventory

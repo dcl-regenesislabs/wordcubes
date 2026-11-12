@@ -102,7 +102,10 @@ export function buildSlots(count: number) {
     for (const target of [e, hit]) {
       pointerEventsSystem.onPointerDown(
         { entity: target, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.place'), maxDistance: cs.game === PRACTICE_GAME ? 16 : C.INTERACT_DISTANCE } },
-        () => onSlotClick(i)
+        () => {
+          if (cs.tutorialActive && cs.practiceUiOnly) return
+          onSlotClick(i)
+        }
       )
     }
     slotEntities.push(e)

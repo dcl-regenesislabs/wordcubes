@@ -69,7 +69,7 @@ function harness() {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/network': { syncEntity: noop }, '@dcl/sdk/server': { Storage },
     '../config': config, './profiles': profiles, '../shared/messages': { room }, '../shared/env': env,
     '../shared/schemas': schemas, './common': common, './game': game, '../shared/tutorial': loadTs('src/shared/tutorial.ts'), '../shared/lang': lang, './say': say, '../shared/i18n': i18n,
-    './netstats': { setupNetStats: noop, recordTick: noop, netAccessTick: noop, forgetNetAccess: noop } // the dev-only live monitor is not under test
+    './netstats': { setupNetStats: noop, recordTick: noop, netAccessTick: noop, forgetNetAccess: noop, isPreview: () => false } // the dev-only live monitor is not under test
   }, 'exports.games = games; exports.publishRanks = publishRanks')
   server.initServer()
   const g0 = server.games[0]
@@ -341,7 +341,7 @@ test('collapse blocks grabbing, breaking and power-ups and releases a cube held 
   assert.equal(profile.coins, 105, 'normal interaction resumes after the penalty')
 })
 
-test('leaving releases a protected held letter and pauses the empty arena timer', async () => {
+test('disconnecting keeps the seat through the reconnect grace, then releases held letters', async () => {
   const h = harness()
   await h.profiles.retain('alice')
   h.fill()
@@ -350,12 +350,34 @@ test('leaving releases a protected held letter and pauses the empty arena timer'
   h.send('breakCube')
   assert.equal(needed.mode, 'held')
   const game = () => [...h.GameState.values.values()][0]
+  h.systems.get('word-cubes-server')(0.1) // record arrival before disconnecting
   const time = game().timeLeft
   h.PlayerIdentityData.values.delete(1)
   h.systems.get('word-cubes-server')(1)
+  assert.equal(needed.mode, 'held', 'a transient presence gap must not drop the held cube')
+  assert.equal(game().players, 1, 'the seat survives the first missing presence sample')
+  for (let i = 0; i < h.config.SEAT_LEAVE_SECONDS; i++) h.systems.get('word-cubes-server')(1)
   assert.equal(needed.mode, 'free')
   assert.equal(game().timeLeft, time)
   assert.equal(game().players, 0)
+})
+
+test('a temporary missing player transform cannot clear the room or its clue', () => {
+  const h = harness()
+  h.fill()
+  const state = () => h.GameState.get(h.server.games[0].stateEntity)
+  const tick = h.systems.get('word-cubes-server')
+  tick(0.1) // the player has arrived, so reconnect grace applies
+  const transform = h.Transform.get(1)
+  const question = state().question
+  h.Transform.values.delete(1)
+  tick(1)
+  assert.equal(h.server.games[0].hasSeat('alice'), true)
+  h.Transform.create(1, transform)
+  for (let i = 0; i < 7; i++) tick(1)
+  assert.equal(state().active, 1)
+  assert.equal(state().question, question)
+  assert.ok(!h.sent.some(m => m.name === 'eject'))
 })
 
 test('a timeout settles contributors and returns to play through voting', async () => {

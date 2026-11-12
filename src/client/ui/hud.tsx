@@ -13,11 +13,12 @@ import { t, uiLang, pickUiLang } from '../i18n'
 import { Flag, flagAspect } from './flags'
 import { clickSlot } from '../arena'
 import { MAX_DIFFICULTY, ITEMS, SETTINGS } from '../../config'
-import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, S, view } from './platform'
-import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c, Edges, hovered, hover } from './theme'
+import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, LEFT_RESERVE, dialogScale, S, view } from './platform'
+import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c, darken, lighten, OUTLINE, Edges, hovered, hover } from './theme'
 import { rankIndex } from './rank'
 import { dbg, debugWord } from './debug'
 import { startTutorial } from '../tutorial'
+import { CubbyStrip, NameTab, CartoonButton, BUTTON_ASPECT } from '../../ui/TutorialOverlay'
 
 type Game = { frozen: number; players: number; builders: number; hintCost: number; phase: string; round: number; difficulty: number; timeLeft: number; voteLeft: number; voteDown: number; voteSame: number; voteUp: number; completed: number; question: string; length: number; masked: string; hint: string }
 
@@ -152,8 +153,9 @@ function Layer(props: { align?: Flex; justify?: Flex; pad?: Edges; dir?: 'row' |
 // Top-right column (coins, timer, buttons, items) and the word row next to it, computed in one place so the pieces
 // cannot overlap and the tests can check the numbers.
 const SIDE_W = () => S(250)
-const ITEM_H = () => S(52)
-const ITEM_GAP = () => S(6)
+const ITEM_TILE = () => S(84) // the power-up tiles: two columns of square cartoon tiles
+const ITEM_GAP = () => S(16)
+const ITEMS_H = () => S(10) + 2 * ITEM_TILE() + ITEM_GAP() + S(8)
 function ownedItems() {
   return ITEMS.filter((i) => (cs.items[i.id] ?? 0) > 0)
 }
@@ -188,8 +190,9 @@ export function hudLayout(g: Game | null) {
   const top = S(24) + TOP_RESERVE()
   const right = EDGE() + RIGHT_RESERVE()
   const columnH = S(150) + S(10) + S(66) + 3 * (S(8) + S(54)) // stats frame + hint + three buttons
-  const items = g && g.phase === 'playing' ? ownedItems().length : 0
-  const itemsH = items > 0 ? S(10) + items * (ITEM_GAP() + ITEM_H()) : 0
+  // the power-up tiles are always there while playing (greyed out when you have none of one)
+  const items = g && g.phase === 'playing' ? ITEMS.length : 0
+  const itemsH = items > 0 ? ITEMS_H() : 0
   // a tall stack would run off a short screen: then the items get their own column left of the buttons
   const itemsBeside = items > 0 && top + columnH + itemsH > v.h - EDGE()
   const sideW = SIDE_W() + (itemsBeside ? S(10) + SIDE_W() : 0)
@@ -585,10 +588,52 @@ function LevelBanner() {
   )
 }
 
+// ---- Cubby's "replay the tutorial?" prompt: the tutorial's own strip, name tab and cartoon buttons ----
+// Same proportions as client/tutorial.ts (layoutDialog): a phone draws it on a 720-tall canvas, a desktop a bit smaller.
+function CubbyReplayPrompt(props: { text: string; name: string }) {
+  const phone = mobile()
+  const screen = view()
+  const px = (n: number) => Math.round(n * dialogScale(screen))
+  // right of the desktop chat column, inside the screen margins
+  const areaL = Math.max(EDGE(), LEFT_RESERVE())
+  const areaW = screen.w - EDGE() - areaL
+  const gap = px(16)
+  const btnH0 = px(phone ? 84 : 94)
+  const stripMax = phone ? Math.min(px(760), Math.round(screen.w * 0.44)) : px(1034)
+  const k = Math.min(1, areaW / (stripMax + 2 * (gap + Math.round(btnH0 * BUTTON_ASPECT))))
+  const stripW = Math.round(stripMax * k)
+  const stripH = Math.round(stripW * 150 / 1024)
+  const btnH = Math.round(btnH0 * k)
+  const btnW = Math.round(btnH * BUTTON_ASPECT)
+  const left = areaL + Math.round((areaW - (stripW + 2 * (gap + btnW))) / 2)
+  const bottom = Math.max(px(24), BOTTOM_RESERVE() / 3)
+  const pad = Math.round(stripW * 0.05)
+  const textW = stripW - 2 * pad
+  const font = Math.max(px(21), Math.min(px(28), Math.floor(2 * textW / Math.max(1, props.text.length) / 0.56)))
+  const yes = t('npc.cubby.replayYes')
+  const no = t('npc.cubby.replayNo')
+  const btnFont = (label: string) => Math.min(Math.round(btnH * 0.32), Math.floor((btnW * 0.78) / Math.max(4, label.length) / 0.6))
+  const btnBottom = bottom + Math.round((stripH - btnH) / 2)
+  const tabH = px(44)
+  const tabFont = px(24)
+  return (
+    <UiEntity uiTransform={{ positionType: 'absolute', position: { left: 0, top: 0 }, width: '100%', height: '100%', pointerFilter: 'none' }}>
+      <CubbyStrip left={left} bottom={bottom} w={stripW} h={stripH} />
+      <UiEntity uiTransform={{ positionType: 'absolute', position: { left, bottom }, width: stripW, height: stripH, padding: { left: pad, right: pad }, alignItems: 'center', pointerFilter: 'block' }}>
+        <Label value={props.text} font="sans-serif" fontSize={font} color={PAL.ink} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: textW, height: Math.ceil(2 * font * 1.25) }} />
+      </UiEntity>
+      <NameTab name={props.name} left={left + Math.round(stripW * 0.07)} bottom={bottom + stripH - Math.round(tabH * 0.3)} w={Math.round(props.name.length * tabFont * 0.62) + px(40)} h={tabH} font={tabFont} />
+      <CartoonButton id="npc-close" variant="secondary" label={no} left={left + stripW + gap} bottom={btnBottom} w={btnW} h={btnH} font={btnFont(no)} onClick={() => (cs.dialog = null)} />
+      <CartoonButton id="npc-next" label={yes} left={left + stripW + 2 * gap + btnW} bottom={btnBottom} w={btnW} h={btnH} font={btnFont(yes)} onClick={() => { cs.dialog = null; startTutorial() }} />
+    </UiEntity>
+  )
+}
+
 // ---- NPC conversation: a panel at the bottom of the screen, Next / Close ----
 export function NpcDialog() {
   const d = cs.dialog
   if (!d) return null
+  if (d.replayTutorial) return <CubbyReplayPrompt text={d.pages[d.page] ?? ''} name={d.name} />
   const last = d.page >= d.pages.length - 1
   // phones: at the bottom like on desktop, shrunk to the gap between the joystick and the native buttons (panelScale)
   const k = panelScale(1100, 250)
@@ -625,66 +670,118 @@ export function NpcDialog() {
   )
 }
 
-// ---- inventory: the power-ups you own, as buttons on the right while you play ----
-const ITEM_TINT: Record<string, typeof PAL.cyan> = { wildcard: PAL.yellow, freeze: PAL.cyan, reroll: PAL.purple, bomb: PAL.red }
-function ItemBar(props: { g: Game | null; beside?: boolean }) {
-  const owned = ownedItems()
-  if (mobile() || owned.length === 0 || !props.g || props.g.phase !== 'playing') return null
-  // Under the side column's buttons, or in its own column beside them when the screen is too short (see hudLayout).
-  const w = SIDE_W()
-  return (
-    <UiEntity uiTransform={{ width: w, margin: props.beside ? { right: S(10) } : { top: S(10) }, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}>
-      {owned.map((i) => (
-        <PillButton
-          key={`item-${i.id}`}
-          id={`item-${i.id}`}
-          label={`${t(`item.${i.id}.name`)}  x${cs.items[i.id]}`}
-          width={w}
-          height={ITEM_H()}
-          font={S(22)}
-          tint={ITEM_TINT[i.id]}
-          margin={{ top: ITEM_GAP() }}
-          onClick={() => room.send('useItem', { item: i.id })}
-        />
-      ))}
-    </UiEntity>
-  )
-}
-
-// ---- phones: the power-ups you carry, in a row next to the native buttons, opened by the native items button ----
+// ---- inventory: every power-up as a cartoon tile on the right while you play; greyed out while you have none ----
 export const ITEM_ICONS: Record<string, string> = {
   wildcard: 'assets/images/ui/cartoon-wildcard.png',
   freeze: 'assets/images/ui/cartoon-freeze.png',
   reroll: 'assets/images/ui/cartoon-reroll.png',
   bomb: 'assets/images/ui/cartoon-bomb.png'
 }
+const TILE_FACE = c(0.29, 0.17, 0.58, 1)
+const TILE_FACE_HOVER = c(0.38, 0.24, 0.7, 1)
+const TILE_EMPTY = c(0.42, 0.4, 0.48, 1)
+const BADGE = c(0.96, 0.73, 0.16, 1)
+/** One power-up: its cartoon icon on a violet tile with the count in a gold badge; grey and inert at 0. */
+export function ItemTile(props: { key?: string; id: string; size: number; margin?: Edges; tooltip?: boolean; onUse: () => void }) {
+  const count = cs.items[props.id] ?? 0
+  const has = count > 0
+  const key = `item-${props.id}`
+  const pointed = !!hovered[key]
+  const hov = has && pointed
+  const s = props.size
+  const o = Math.max(2, Math.round(s * 0.05))
+  const radius = Math.round(s * 0.26)
+  const face = !has ? TILE_EMPTY : hov ? TILE_FACE_HOVER : TILE_FACE
+  const badge = Math.round(s * 0.42)
+  return (
+    <UiEntity
+      key={key}
+      uiTransform={{ width: s, height: s, margin: props.margin, padding: o, borderRadius: radius, pointerFilter: 'block' }}
+      uiBackground={{ color: OUTLINE }}
+      onMouseDown={() => {
+        if (!has) return
+        playSfx(SFX.click, 0.5)
+        props.onUse()
+      }}
+      {...hover(key)}
+    >
+      <UiEntity uiTransform={{ width: '100%', height: '100%', borderRadius: Math.max(2, radius - o), justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }} uiBackground={{ color: face }}>
+        <UiEntity key="tile-shine" uiTransform={{ positionType: 'absolute', position: { top: Math.round(s * 0.05), left: radius, right: radius }, height: Math.max(2, Math.round(s * 0.06)), borderRadius: s, pointerFilter: 'none' }} uiBackground={{ color: lighten(face, 0.16) }} />
+        <UiEntity key="tile-lip" uiTransform={{ positionType: 'absolute', position: { bottom: 0, left: Math.round(radius / 2), right: Math.round(radius / 2) }, height: Math.max(2, Math.round(s * 0.08)), borderRadius: s, pointerFilter: 'none' }} uiBackground={{ color: darken(face, 0.3) }} />
+        <UiEntity
+          key="tile-icon"
+          uiTransform={{ width: Math.round(s * 0.72), height: Math.round(s * 0.72), opacity: has ? 1 : 0.45, pointerFilter: 'none' }}
+          uiBackground={{ texture: { src: ITEM_ICONS[props.id], filterMode: 'tri-linear', wrapMode: 'clamp' }, textureMode: 'stretch' }}
+        />
+      </UiEntity>
+      {props.tooltip && pointed && <ItemTooltip id={props.id} tile={s} />}
+      <UiEntity key="tile-badge" uiTransform={{ positionType: 'absolute', position: { right: -Math.round(s * 0.1), bottom: -Math.round(s * 0.1) }, width: badge, height: badge, padding: o, borderRadius: Math.round(badge * 0.32), pointerFilter: 'none' }} uiBackground={{ color: OUTLINE }}>
+        <UiEntity uiTransform={{ width: '100%', height: '100%', borderRadius: Math.round(badge * 0.26), justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }} uiBackground={{ color: has ? BADGE : TILE_EMPTY }}>
+          <Label value={`${count}`} fontSize={Math.round(badge * 0.55)} font="sans-serif" color={OUTLINE} textAlign="middle-center" uiTransform={{ width: '100%', height: '100%' }} />
+        </UiEntity>
+      </UiEntity>
+    </UiEntity>
+  )
+}
+
+// Desktop hover: the power-up's name in a dark pill to the left of its tile (towards the world, clear of the grid).
+function ItemTooltip(props: { id: string; tile: number }) {
+  const name = t(`item.${props.id}.name`)
+  const font = S(20)
+  const h = S(40)
+  const w = Math.round(name.length * font * 0.58) + S(32)
+  const o = Math.max(2, Math.round(h * 0.07))
+  return (
+    <UiEntity key="tile-tooltip" uiTransform={{ positionType: 'absolute', position: { right: props.tile + S(10), top: Math.round((props.tile - h) / 2) }, width: w, height: h, padding: o, borderRadius: h / 2, pointerFilter: 'none' }} uiBackground={{ color: OUTLINE }}>
+      <UiEntity uiTransform={{ width: '100%', height: '100%', borderRadius: h / 2 - o, justifyContent: 'center', alignItems: 'center', pointerFilter: 'none' }} uiBackground={{ color: TILE_FACE }}>
+        <Label value={name} fontSize={font} font="sans-serif" color={PAL.text} textAlign="middle-center" textWrap="nowrap" uiTransform={{ width: '100%', height: '100%' }} />
+      </UiEntity>
+    </UiEntity>
+  )
+}
+
+function ItemBar(props: { g: Game | null; beside?: boolean }) {
+  if (mobile() || !props.g || props.g.phase !== 'playing') return null
+  // Under the side column's buttons, or in its own column beside them when the screen is too short (see hudLayout).
+  const w = SIDE_W()
+  const s = ITEM_TILE()
+  const gap = ITEM_GAP()
+  const row = (ids: string[]) => (
+    <UiEntity uiTransform={{ width: w, height: s, flexDirection: 'row', justifyContent: 'center', pointerFilter: 'none' }}>
+      {ids.map((id, i) => <ItemTile key={`item-${id}`} id={id} size={s} margin={{ left: i ? gap : 0 }} tooltip onUse={() => { void room.send('useItem', { item: id }) }} />)}
+    </UiEntity>
+  )
+  return (
+    <UiEntity uiTransform={{ width: w, height: ITEMS_H() - S(10), margin: props.beside ? { right: S(10) } : { top: S(10) }, flexDirection: 'column', justifyContent: 'space-between', pointerFilter: 'none' }}>
+      {row(ITEMS.slice(0, 2).map((i) => i.id))}
+      {row(ITEMS.slice(2, 4).map((i) => i.id))}
+    </UiEntity>
+  )
+}
+
+// ---- phones: every power-up as a tile (greyed out at 0), in a row opened by the native items button ----
 export function ItemsRow() {
   const g = game()
-  const owned = ownedItems()
-  if (!mobile() || !cs.itemsOpen || owned.length === 0 || !g || g.phase !== 'playing') return null
+  if (!mobile() || !cs.itemsOpen || !g || g.phase !== 'playing') return null
   const size = S(84)
   const cell = S(150)
   // Centred on the screen, a little low: the native buttons fan out over the bottom right when you open their "+"
   // menu, and the joystick has the bottom left. The row is short-lived: picking an item closes it.
   return (
     <Layer pad={{ top: S(120) }}>
-      <Frame width={owned.length * cell + S(24)} height={size + S(76)} edge={PAL.violet} fill={PAL.cream} radius={S(24)} border={S(4)} dir="row" align="center" justify="center" block>
+      <Frame width={ITEMS.length * cell + S(24)} height={size + S(76)} edge={PAL.violet} fill={PAL.cream} radius={S(24)} border={S(4)} dir="row" align="center" justify="center" block>
         <PillButton id="items-close" label="X" width={S(52)} height={S(52)} font={S(24)} tint={PAL.pink} at={{ top: -S(20), right: -S(20) }} onClick={() => (cs.itemsOpen = false)} />
-        {owned.map((i) => (
-          <UiEntity
-            key={`row-${i.id}`}
-            uiTransform={{ width: cell, height: size + S(64), flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerFilter: 'block' }}
-            onMouseDown={() => {
-              cs.itemsOpen = false
-              if (!C.UI_PREVIEW) room.send('useItem', { item: i.id })
-            }}
-          >
-            <UiEntity
-              uiTransform={{ width: size, height: size, pointerFilter: 'none' }}
-              uiBackground={{ texture: { src: ITEM_ICONS[i.id], filterMode: 'tri-linear', wrapMode: 'clamp' }, textureMode: 'stretch' }}
+        {ITEMS.map((i) => (
+          <UiEntity key={`row-${i.id}`} uiTransform={{ width: cell, height: size + S(64), flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
+            <ItemTile
+              id={i.id}
+              size={size}
+              onUse={() => {
+                cs.itemsOpen = false
+                if (!C.UI_PREVIEW) room.send('useItem', { item: i.id })
+              }}
             />
-            <Label value={t(`item.${i.id}.name`)} fontSize={S(16)} font="sans-serif" color={PAL.ink} textWrap="nowrap" uiTransform={{ width: cell, height: S(22) }} />
-            <Label value={`x${cs.items[i.id]}`} fontSize={S(22)} font="sans-serif" color={PAL.ink} textWrap="nowrap" uiTransform={{ width: cell, height: S(28) }} />
+            <Label value={t(`item.${i.id}.name`)} fontSize={S(16)} font="sans-serif" color={PAL.ink} textWrap="nowrap" uiTransform={{ width: cell, height: S(30), margin: { top: S(10) } }} />
           </UiEntity>
         ))}
       </Frame>
@@ -852,9 +949,7 @@ export function ShopPanel() {
           const afford = coins() >= i.price
           return (
             <UiEntity key={`shop-${i.id}`} uiTransform={{ width: '100%', height: rowH, flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
-              <Frame width={z(64)} height={z(64)} edge={ITEM_TINT[i.id]} fill={PAL.cream} radius={z(16)} border={z(5)} align="center" justify="center" margin={{ left: z(6), right: z(16) }}>
-                <Label value={`${cs.items[i.id] ?? 0}`} fontSize={z(30)} font="sans-serif" color={PAL.ink} uiTransform={{ width: '100%', height: '100%' }} />
-              </Frame>
+              <ItemTile id={i.id} size={z(64)} margin={{ left: z(6), right: z(16) }} onUse={() => {}} />
               <UiEntity uiTransform={{ width: w - z(470), height: rowH, flexDirection: 'column', justifyContent: 'center', pointerFilter: 'none' }}>
                 <Label value={t(`item.${i.id}.name`)} fontSize={z(30)} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: '100%', height: z(40) }} />
                 <Label value={t(`item.${i.id}.desc`)} fontSize={z(20)} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: z(54) }} />
@@ -965,20 +1060,24 @@ export function ConnectingGate(props: { slow: boolean }) {
 
 // A flag you can pick: a gold rim when it is the chosen one, the others a little faded. No onClick: just shows a language.
 function FlagChip(props: { key?: string; id: string; lang: Lang; height: number; active: boolean; onClick?: () => void }) {
+  // A cartoon tile around the flag: dark outline, a gold rim when picked (violet on hover), a darker lip at the bottom.
   const hov = !!props.onClick && !!hovered[props.id]
+  const outline = Math.max(2, Math.round(props.height * 0.05))
   const rim = Math.max(2, Math.round(props.height * 0.08))
-  const flagH = props.height - 2 * rim
+  const flagH = props.height - 2 * (outline + rim)
+  const face = props.active ? PAL.yellow : hov ? PAL.violetLight : PAL.violetDark
+  const radius = Math.round(props.height * 0.24)
   return (
     <UiEntity
       uiTransform={{
-        width: Math.round(flagH * flagAspect(props.lang)) + 2 * rim,
+        width: Math.round(flagH * flagAspect(props.lang)) + 2 * (outline + rim),
         height: props.height,
-        padding: rim,
+        padding: outline,
         margin: { left: S(7), right: S(7) },
-        borderRadius: Math.round(props.height * 0.24),
+        borderRadius: radius,
         pointerFilter: props.onClick ? 'block' : 'none'
       }}
-      uiBackground={{ color: props.active ? PAL.yellow : hov ? PAL.violetLight : c(1, 1, 1, 0) }}
+      uiBackground={{ color: OUTLINE }}
       onMouseDown={() => {
         if (!props.onClick) return
         playSfx(SFX.click, 0.5)
@@ -986,7 +1085,10 @@ function FlagChip(props: { key?: string; id: string; lang: Lang; height: number;
       }}
       {...(props.onClick ? hover(props.id) : {})}
     >
-      <Flag lang={props.lang} height={flagH} dim={!props.active && !hov} />
+      <UiEntity uiTransform={{ width: '100%', height: '100%', padding: rim, borderRadius: Math.max(2, radius - outline), pointerFilter: 'none' }} uiBackground={{ color: face }}>
+        <UiEntity key="chip-lip" uiTransform={{ positionType: 'absolute', position: { bottom: 0, left: radius, right: radius }, height: Math.max(1, Math.round(rim * 0.6)), pointerFilter: 'none' }} uiBackground={{ color: darken(face, 0.3) }} />
+        <Flag lang={props.lang} height={flagH} dim={!props.active && !hov} />
+      </UiEntity>
     </UiEntity>
   )
 }

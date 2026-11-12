@@ -2,7 +2,7 @@
 import {
   engine, Entity, Transform, MainCamera, VirtualCamera, InputModifier, PointerLock,
   GltfContainer, TextShape, Billboard, BillboardMode, MeshRenderer, Material,
-  AvatarModifierArea, AvatarModifierType, ColliderLayer, AvatarShape, PointerEvents, UiTransform
+  AvatarModifierArea, AvatarModifierType, ColliderLayer, AvatarShape, PointerEvents, UiTransform, RealmInfo
 } from '@dcl/sdk/ecs'
 import { Vector3, Quaternion, Color3, Color4 } from '@dcl/sdk/math'
 import { movePlayerTo } from '~system/RestrictedActions'
@@ -21,7 +21,7 @@ import { slotPosition, getSlotEntities, startArrowEntity } from './arena'
 import { cubeEntity, cubeGuessPending, myHeldCubeId } from './cubenet'
 import { myState } from './gamestate'
 import { talkSfx } from './audio'
-import { mobile, S, Sbtn, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, view } from './ui/platform'
+import { mobile, S, Sbtn, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, LEFT_RESERVE, dialogScale, view } from './ui/platform'
 import { state as overlay } from '../ui/TutorialOverlay'
 import { localPracticeAction, localPracticeStage, stopLocalPractice } from './practice'
 
@@ -61,10 +61,18 @@ const interactive = new Set<Step>(['walk', 'create', 'grab', 'place', 'lastGrab'
 const waiting = new Set<Step>(['countdown', 'waiting', 'helping', 'rebuilding'])
 const practiceSteps = new Set<Step>(['arrow', 'clue', 'grab', 'throw', 'place', 'team', 'helping', 'lastGrab', 'lastThrow', 'lastPlace', 'win', 'warning', 'mistake', 'collapse', 'rebuilding', 'retryGrab', 'retryThrow', 'retryPlace', 'complete'])
 
+// The mobile progress bars: one per chapter of the tutorial.
+const CHAPTERS: Step[][] = [
+  ['welcome', 'rooms', 'pad'], ['walk', 'create', 'countdown', 'waiting'], ['arrow', 'clue'], ['grab', 'throw', 'place'],
+  ['team', 'helping', 'lastGrab', 'lastThrow', 'lastPlace', 'win'], ['warning', 'mistake', 'collapse'],
+  ['rebuilding', 'retryGrab', 'retryThrow', 'retryPlace'], ['complete', 'outro']
+]
+
 const hiddenPointers = new Map<Entity, ReturnType<typeof PointerEvents.get>>()
-function hideWorldPointers() {
+function hideWorldPointers(onlyFrame?: Entity) {
   for (const [entity, data] of engine.getEntitiesWith(PointerEvents)) {
     if (UiTransform.has(entity) || !Transform.has(entity) || !data.pointerEvents.length) continue
+    if (onlyFrame !== undefined && entity !== onlyFrame && Transform.get(entity).parent !== onlyFrame) continue
     if (data.pointerEvents.every(entry => entry.eventInfo?.showFeedback === false && entry.eventInfo?.maxDistance === 0)) continue
     // Suspend world targeting and feedback without removing registered event descriptors.
     hiddenPointers.set(entity, { pointerEvents: data.pointerEvents.map(entry => ({ ...entry, eventInfo: entry.eventInfo ? { ...entry.eventInfo } : undefined })) })
@@ -79,8 +87,8 @@ function restoreWorldPointers() {
   hiddenPointers.clear()
 }
 function releaseCamera() {
-  if (!cinematic) return
   restoreWorldPointers()
+  if (!cinematic) return
   cinematic = false
   cs.tutorialCinematic = false
   const main = MainCamera.getMutableOrNull(engine.CameraEntity)
@@ -142,6 +150,7 @@ function setStep(next: Step) {
   step = next
   age = 0
   cs.practiceTouchReady = !mobile()
+  cs.practiceUiOnly = mobile() && next === 'retryPlace'
   setPadTour(next === 'rooms' || next === 'outro' ? 0 : null)
   cs.dialog = null
   cs.shop = false
@@ -187,6 +196,16 @@ function setStep(next: Step) {
     const p = cubbyPosition(true)
     if (p) shot(Vector3.add(p, Vector3.create(2, 1.4, 1)), Vector3.create(-4, 3, -7))
   }
+}
+
+// After the pad shot hands the camera back, turn the player (and the camera behind them) toward the pad they must
+// walk to, instead of wherever they happened to face. Only on that hand-off: stepping off the pad later
+// (create -> walk) must not yank the camera around.
+function facePad() {
+  const me = Transform.getOrNull(engine.PlayerEntity)?.position
+  if (!me) return
+  const target = Vector3.add(padPosition, Vector3.create(0, 0.5, 0))
+  void movePlayerTo({ newRelativePosition: me, cameraTarget: target, avatarTarget: target })
 }
 
 function spawnPad() {
@@ -252,6 +271,7 @@ export function stopTutorial() {
   cs.tutorialActive = false
   cs.practiceLetter = ''
   cs.practiceSlot = -1
+  cs.practiceUiOnly = false
   step = 'off'
   disposeSign?.()
   disposeSign = undefined
@@ -267,7 +287,7 @@ export function nextTutorial() {
   switch (step) {
     case 'welcome': setStep('rooms'); break
     case 'rooms': setStep('pad'); break
-    case 'pad': setStep('walk'); break
+    case 'pad': setStep('walk'); facePad(); break
     case 'create':
       lang = uiLang() // snapshot the phone's current language at creation, not at scene load
       pendingEntry = true
@@ -355,41 +375,188 @@ function updateOverlay() {
   overlay.mobile = phone
   overlay.grabDisplay = phone && ['grab', 'lastGrab', 'retryGrab'].includes(step) ? 'flex' : 'none'
   overlay.grabLabel = t('tutorial.grabAction', { letter: goalLetter() })
-  if (phone) {
-    // One viewport-based scale for copy, button, rims and spacing. The action
-    // is centred against the whole name/text column, not only the body text.
-    const landscape = screen.w >= screen.h * 1.2
-    const scale = landscape ? screen.h / 720 : screen.w / 900
-    const px = (n: number) => Math.round(n * scale)
-    overlay.width = Math.min(px(1000), screen.w * (landscape ? 0.58 : 0.86))
-    overlay.left = (screen.w - overlay.width) / 2
-    overlay.bottom = (landscape ? BOTTOM_RESERVE() : Math.max(BOTTOM_RESERVE(), screen.h * 0.17)) + px(8)
-    overlay.barHeight = 0
-    overlay.title = t('npc.cubby.short')
-    overlay.titleFont = px(28)
-    overlay.font = px(24)
-    overlay.titleHeight = px(36)
-    overlay.radius = px(20)
-    overlay.border = px(3)
-    overlay.padding = px(18)
-    overlay.buttonWidth = px(192)
-    overlay.buttonHeight = px(64)
-    overlay.buttonBorder = px(3)
-    overlay.tileSize = px(60)
-    overlay.framesHeight = overlay.framesDisplay === 'flex' ? overlay.tileSize : 0
-    const showAction = showNext || overlay.grabDisplay === 'flex'
-    overlay.sideWidth = overlay.framesDisplay === 'flex' || showAction || step === 'rooms' || step === 'outro' ? overlay.buttonWidth : 0
-    overlay.sideGap = overlay.sideWidth ? px(24) : 0
-    overlay.bodyWidth = overlay.width - 2 * (overlay.border + overlay.padding) - overlay.sideWidth - overlay.sideGap
-    overlay.text = cs.message || overlay.text
-    const lines = Math.max(2, Math.ceil(overlay.text.length * overlay.font * 0.56 / overlay.bodyWidth))
-    overlay.lineHeight = Math.ceil(lines * overlay.font * 1.3)
-    overlay.mobileCopyHeight = overlay.titleHeight + overlay.lineHeight
-    overlay.mobileRowHeight = Math.max(overlay.mobileCopyHeight, overlay.framesHeight, showAction ? overlay.buttonHeight : 0)
-    overlay.height = overlay.mobileRowHeight + 2 * (overlay.border + overlay.padding)
-    overlay.progress = ''
-    overlay.progressHeight = 0
+  layoutDialog(screen, showNext, phone)
+}
+
+// Desktop and mobile share one look: the game's own art only, at its native proportions. Cubby's line sits in the word strip at the bottom
+// (the camera already frames the real NPC) and stays there during the playable steps as the mission, the action
+// is the cartoon button above the native buttons with a tapping hand, and the finished word is the cartoon panel.
+// Sizes come from a 844x390 pt mockup, scaled so 390 pt = 720 virtual px on a phone. Desktop draws the same pieces a
+// little smaller (its screen is larger) and, with no native buttons to avoid, keeps the action next to the strip.
+function layoutDialog(screen: { w: number; h: number }, showNext: boolean, phone: boolean) {
+  const o = overlay
+  const px = (n: number) => Math.round(n * dialogScale(screen))
+  const margin = EDGE()
+  // the free band for the dialogue: right of the desktop chat column, inside the screen margins
+  const areaL = Math.max(margin, LEFT_RESERVE())
+  const areaW = screen.w - margin - areaL
+  const party = step === 'win' || step === 'complete'
+  o.mode = party ? 'party' : cinematic ? 'talk' : 'action'
+  o.barHeight = 0
+  o.progress = ''
+  o.progressHeight = 0
+  o.title = t('npc.cubby.short')
+  o.tabName = o.title
+  o.text = cs.message || o.text
+  o.copy = o.text
+  o.chapters = CHAPTERS.length
+  o.chapter = Math.max(0, CHAPTERS.findIndex(group => group.includes(step)))
+  o.stepLabel = `${o.chapter + 1}/${o.chapters}`
+  o.framesDisplay = o.mode === 'action' ? o.framesDisplay : 'none'
+
+  // pill buttons, 2.6:1 like the HUD's
+  const button = (h: number) => { o.actionH = h; o.actionW = Math.round(h * 2.6) }
+  o.actionGrab = o.grabDisplay === 'flex'
+  o.actionLabel = o.actionGrab ? o.grabLabel : o.next
+  o.actionDisplay = o.actionGrab || showNext ? 'flex' : 'none'
+  // Cubby's strip (drawn in code, keeping the word-strip's 1024x150 proportions)
+  const strip = (w: number) => {
+    o.stripW = w
+    o.stripH = Math.round(w * 150 / 1024)
+    o.stripPadL = Math.round(w * 0.05)
+    o.stripPadR = Math.round(w * 0.05)
   }
+
+  if (o.mode === 'talk') {
+    button(px(phone ? 84 : 94))
+    const gap = px(18)
+    // phones: a narrower strip (about half the screen) so the scene stays visible around it
+    const stripMax = phone ? Math.min(px(860), Math.round(screen.w * 0.5)) : px(1034)
+    // the hand reaches ~0.3 button-heights past the button's right edge: keep that on screen too
+    const k = Math.min(1, areaW / (stripMax + gap + o.actionW + Math.round(o.actionH * 0.3)))
+    strip(Math.round(stripMax * k))
+    button(Math.round(px(phone ? 84 : 94) * k))
+    const group = o.stripW + gap + o.actionW + Math.round(o.actionH * 0.3)
+    o.stripLeft = areaL + Math.round((areaW - group) / 2)
+    o.stripBottom = Math.max(px(24), BOTTOM_RESERVE() / 3)
+    o.goalDisplay = 'none'
+    o.chipW = 0
+    o.stripTextW = o.stripW - o.stripPadL - o.stripPadR
+    o.actionLeft = o.stripLeft + o.stripW + gap
+    o.actionBottom = o.stripBottom + Math.round((o.stripH - o.actionH) / 2)
+    o.dotW = px(26)
+    o.dotH = px(9)
+    o.dotGap = px(7)
+    o.dotsLeft = o.stripLeft + o.stripW - Math.round(o.stripW * 0.08) - o.chapters * (o.dotW + o.dotGap)
+    o.dotsBottom = o.stripBottom + o.stripH + px(4)
+  } else if (o.mode === 'action') {
+    // Cubby keeps talking from the bottom; on a phone the strip narrows to fit between the joystick and the
+    // native jump / E buttons
+    strip(phone ? Math.min(px(860), Math.round(screen.w * 0.5)) : Math.min(px(1034), Math.round(areaW * 0.62)))
+    o.stripLeft = Math.round((screen.w - o.stripW) / 2)
+    o.stripBottom = Math.max(px(24), BOTTOM_RESERVE() / 3)
+    const letterSteps: Step[] = ['grab', 'throw', 'place', 'lastGrab', 'lastThrow', 'lastPlace', 'retryGrab', 'retryThrow', 'retryPlace']
+    o.goalDisplay = letterSteps.includes(step) ? 'flex' : 'none'
+    o.goalLetter = goalLetter()
+    o.goalSize = Math.round(o.stripH * 0.5)
+    o.chipH = Math.round(o.stripH * 0.32)
+    o.chipW = Math.round(o.chipH * 2)
+    o.chipFont = Math.round(o.chipH * 0.55)
+    o.stripTextW = o.stripW - o.stripPadL - o.stripPadR - o.chipW - Math.round(o.chipH / 4) - (o.goalDisplay === 'flex' ? o.goalSize + Math.round(o.goalSize / 4) : 0)
+    o.tileSize = px(104)
+    if (phone) {
+      // above the native jump / E cluster on the right
+      button(px(107))
+      o.actionLeft = screen.w - margin - px(30) - o.actionW
+      o.actionBottom = Math.round(screen.h * 0.33)
+    } else {
+      // no native buttons: the action sits right of the strip, the strip shifts left to keep the pair centred
+      button(Math.round(o.stripH * 0.62))
+      const gap = px(18)
+      o.stripLeft = areaL + Math.round((areaW - o.stripW - gap - o.actionW - Math.round(o.actionH * 0.3)) / 2)
+      o.actionLeft = o.stripLeft + o.stripW + gap
+      o.actionBottom = o.stripBottom + Math.round((o.stripH - o.actionH) / 2)
+    }
+    o.tileLeft = o.actionLeft + Math.round((o.actionW - o.tileSize) / 2)
+    o.tileBottom = o.actionBottom
+    if (o.framesDisplay === 'flex') o.actionDisplay = 'none'
+  } else {
+    o.bleed = Math.round(Math.max(screen.w, screen.h) * 0.25)
+    o.dimW = screen.w + 2 * o.bleed
+    o.dimH = screen.h + 2 * o.bleed
+    o.panelW = Math.min(px(700), areaW)
+    const k = o.panelW / px(700)
+    const q = (n: number) => Math.round(px(n) * k)
+    o.panelPadTop = q(30)
+    o.panelPadSide = q(40)
+    o.panelGap = q(18)
+    o.partyTitle = t('tutorial.party')
+    o.partyTitleFont = q(40)
+    o.partyTitleH = q(54)
+    o.partyTile = q(96)
+    const word = PRACTICE_WORDS[lang].answer
+    o.word0 = word[0] ?? ''
+    o.word1 = word[1] ?? ''
+    o.word2 = word[2] ?? ''
+    const hop = (i: number) => Math.round(Math.max(0, Math.sin(age * 5.2 - i * 0.9)) * q(14))
+    o.hop0 = hop(0)
+    o.hop1 = hop(1)
+    o.hop2 = hop(2)
+    o.partyFont = q(24)
+    o.partyTextH = q(64)
+    o.panelH = o.panelPadTop + o.partyTitleH + o.partyTile + o.panelGap + Math.round(o.panelGap / 2) + o.partyTextH + q(26)
+    o.panelLeft = areaL + Math.round((areaW - o.panelW) / 2)
+    o.panelTop = Math.max(TOP_RESERVE(), Math.round((screen.h - o.panelH) / 2) - q(40))
+    // the button sits on its own under the card, with the hand tapping it; lift the card if they would not fit
+    button(q(84))
+    const gap = q(22)
+    const handRoom = Math.round(o.actionH * 0.66 * 216 / 184 * 0.62) + px(6)
+    const below = gap + o.actionH + handRoom
+    o.panelTop = Math.max(TOP_RESERVE(), Math.min(o.panelTop, screen.h - o.panelH - below))
+    o.actionLeft = o.panelLeft + Math.round((o.panelW - o.actionW) / 2)
+    o.actionBottom = screen.h - o.panelTop - o.panelH - gap - o.actionH
+  }
+
+  if (o.mode !== 'party') {
+    // Cubby's name tab rides the strip's top edge in both talk and action
+    o.tabH = px(44)
+    o.tabFont = px(24)
+    o.tabW = Math.round(o.tabName.length * o.tabFont * 0.62) + px(40)
+    o.tabLeft = o.stripLeft + Math.round(o.stripW * 0.07)
+    o.tabBottom = o.stripBottom + o.stripH - Math.round(o.tabH * 0.3)
+    // two lines at most: shrink the copy a little instead of growing the art
+    const max = px(o.mode === 'talk' ? 28 : 26)
+    o.stripFont = Math.max(px(21), Math.min(max, Math.floor(2 * o.stripTextW / Math.max(1, o.text.length) / 0.56)))
+    o.stripTextH = Math.ceil(2 * o.stripFont * 1.25)
+  }
+  o.actionFont = Math.min(Math.round(o.actionH * 0.32), Math.floor((o.actionW * 0.78) / Math.max(4, o.actionLabel.length) / 0.6))
+
+  // the hand taps the button (or the dialogue frame) from below-right
+  const press = Math.max(0, Math.sin(age * 5))
+  o.handW = Math.round(o.actionH * 0.66)
+  o.handH = Math.round(o.handW * 216 / 184)
+  const target = o.framesDisplay === 'flex'
+    ? { left: o.tileLeft, bottom: o.tileBottom, w: o.tileSize }
+    : { left: o.actionLeft, bottom: o.actionBottom, w: o.actionW }
+  o.handDisplay = o.actionDisplay === 'flex' || o.framesDisplay === 'flex' ? 'flex' : 'none'
+  // the fingertip lands on the button's lower-right corner, clear of its label (at rest; the tap is added last)
+  o.handLeft = target.left + Math.round(target.w * 0.84)
+  o.handBottom = target.bottom - Math.round(o.handH * 0.62)
+
+  // Lift the whole group when the resting hand (or the button) would run off the bottom edge. Only rest positions
+  // count, so the layout never follows the hand's animation.
+  if (o.mode !== 'party') {
+    const lowest = Math.min(o.stripBottom, o.actionDisplay === 'flex' ? o.actionBottom : Infinity, o.handDisplay === 'flex' ? o.handBottom : Infinity)
+    const lift = Math.max(0, px(10) - lowest)
+    if (o.mode === 'action' && phone) {
+      // the phone's action button floats on its own above the native buttons: only the strip moves with the hand rule
+      o.stripBottom += Math.max(0, px(10) - o.stripBottom)
+    } else {
+      o.stripBottom += lift
+      o.actionBottom += lift
+      o.handBottom += lift
+      o.tileBottom += lift
+    }
+    o.tabBottom = o.stripBottom + o.stripH - Math.round(o.tabH * 0.3)
+    o.dotsBottom = o.stripBottom + o.stripH + px(4)
+  }
+  // only the hand moves: a small tap towards the button
+  o.handLeft -= Math.round(press * px(6))
+  o.handBottom += Math.round(press * px(8))
+
+  // the box placement checks reason about
+  if (o.mode === 'party') { o.left = o.panelLeft; o.width = o.panelW; o.height = o.panelH; o.bottom = screen.h - o.panelTop - o.panelH }
+  else { o.left = o.stripLeft; o.width = o.stripW; o.height = o.stripH; o.bottom = o.stripBottom }
 }
 
 export function tutorialSystem(dt: number) {
@@ -403,11 +570,18 @@ export function tutorialSystem(dt: number) {
     // Never infer a first visit from default settings while the server is unavailable.
     if (!serverReady()) return
     checked = true
-    if (cs.settings.tutorialComplete !== true) startTutorial()
+    // In the local preview the tutorial is not forced, so the game can be tested quickly (Cubby still offers it).
+    // Deployed worlds always start it for new players.
+    const preview = RealmInfo?.getOrNull?.(engine.RootEntity)?.isPreview === true
+    if (cs.settings.tutorialComplete !== true && !preview) startTutorial()
   }
   if (!cs.tutorialActive) return
   age += dt
   if (cinematic) hideWorldPointers()
+  if (cs.practiceUiOnly) {
+    const frame = getSlotEntities()[2]
+    if (frame !== undefined) hideWorldPointers(frame)
+  }
   if (step === 'countdown' && age >= 3) { requestPractice(lang); setStep('waiting') }
   if (age >= 0.4) cs.practiceTouchReady = true
   if (step === 'rooms' || step === 'outro') setPadTour(age)
