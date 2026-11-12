@@ -13,6 +13,7 @@ import {
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
+import { PRACTICE_GAME } from '../shared/tutorial'
 import { t } from './i18n'
 import { envOrigin } from '../shared/env'
 import { cs } from './state'
@@ -90,7 +91,8 @@ export function buildSlots(count: number) {
     GltfContainer.create(e, {
       src: 'assets/models/CubeFrame.glb',
       // the frame GLB has no `_collider` node, so make the visible mesh clickable
-      visibleMeshesCollisionMask: ColliderLayer.CL_POINTER
+      visibleMeshesCollisionMask: ColliderLayer.CL_POINTER,
+      invisibleMeshesCollisionMask: 0
     })
     // Invisible click box around the frame (SLOT_HIT_*), so the whole area works, not just the thin border.
     // Child of the frame: it follows the frame's pulse/shake/wave.
@@ -99,7 +101,7 @@ export function buildSlots(count: number) {
     MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
     for (const target of [e, hit]) {
       pointerEventsSystem.onPointerDown(
-        { entity: target, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.place'), maxDistance: C.INTERACT_DISTANCE } },
+        { entity: target, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.place'), maxDistance: cs.game === PRACTICE_GAME ? 16 : C.INTERACT_DISTANCE } },
         () => onSlotClick(i)
       )
     }
@@ -132,6 +134,8 @@ function buildStartArrow(count: number) {
 export function getSlotEntities(): Entity[] {
   return slotEntities
 }
+
+export function startArrowEntity(): Entity | null { return startArrow }
 
 export function clearSlots() {
   for (const e of [...slotHits, ...slotEntities]) {

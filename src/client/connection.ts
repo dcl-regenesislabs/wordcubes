@@ -17,20 +17,28 @@ let sinceJoin = Infinity
 /** True once the server has answered; until then the HUD shows only the connecting card. */
 export const serverReady = () => ready
 
+/** Release a connection-owned freeze before the tutorial takes control of movement. */
+export function releaseTutorialGate() {
+  if (frozen) {
+    frozen = false
+    InputModifier.deleteFrom(engine.PlayerEntity)
+  }
+}
+
 /** True after SERVER_GATE_HINT_SECONDS without an answer. */
 export const connectingTooLong = () => !ready && waited >= C.SERVER_GATE_HINT_SECONDS
 
 /** Every game's synced state is here (the late-join snapshot came through). */
 function allGamesSynced(): boolean {
   let n = 0
-  for (const _ of engine.getEntitiesWith(GameState)) n++
+  for (const [, game] of engine.getEntitiesWith(GameState)) if (game.game >= 0 && game.game < C.GAME_COUNT) n++
   return n >= C.GAME_COUNT
 }
 
 export function connectionSystem(dt: number) {
   if (ready) return
   waited += dt
-  if (!frozen) {
+  if (!frozen && !cs.tutorialActive) {
     frozen = true
     InputModifier.createOrReplace(engine.PlayerEntity, { mode: InputModifier.Mode.Standard({ disableAll: true }) })
   }
@@ -43,7 +51,7 @@ export function connectionSystem(dt: number) {
   }
   if (!profileSeen || !allGamesSynced()) return
   ready = true
-  if (InputModifier.has(engine.PlayerEntity)) InputModifier.deleteFrom(engine.PlayerEntity)
+  if (!cs.tutorialActive && InputModifier.has(engine.PlayerEntity)) InputModifier.deleteFrom(engine.PlayerEntity)
   console.log('[CLIENT] connected to the server after', waited.toFixed(1), 's')
 }
 

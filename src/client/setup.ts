@@ -28,6 +28,9 @@ import { setupLocalization, serverText, t } from './i18n'
 import { cubeNetSystem, setupCubeNet } from './cubenet'
 import { netStatsSystem, setupNetStats } from './netstats'
 import { NET_STATS } from '../config'
+import { setupTutorial } from './tutorial'
+import { localPracticeSystem, setPracticeEffect } from './practice'
+import { PRACTICE_GAME } from '../shared/tutorial'
 
 const HOLD_TIPS_STICKY = 3
 let holdTips = 0 // how many sticky "Holding" tips you have had this session
@@ -38,6 +41,7 @@ let lastLength = -1
 let lastGame = -1
 
 function useHint() {
+  if (cs.tutorialActive) return
   room.send('hint', { n: 0 })
 }
 export { useHint }
@@ -50,7 +54,7 @@ function clientSystem(dt: number) {
     if (p) cs.myAddress = p.userId.toLowerCase()
   }
   connectionSystem(dt) // sends 'join' until the server answers; freezes you and hides the HUD until then
-  if (!serverReady()) return
+  if (!serverReady() && !cs.tutorialActive) return
 
   // keep the frame row in step with the server's word
   const g = myState()
@@ -87,6 +91,7 @@ function clientSystem(dt: number) {
   syncTouchButtons(inGame && (isHolding() || (UI_PREVIEW && dbg.screen === 'holding')), inGame, inGame && hasItems)
   audioSystem(dt)
   cubeNetSystem(dt) // your game's cubes from the server's messages, before anything reads them
+  localPracticeSystem(dt)
   cubesSystem(dt)
   predictSystem(dt) // your own pushes move cubes right away, before the server confirms them
   framesSystem(dt)
@@ -109,13 +114,13 @@ function clientSystem(dt: number) {
   // 4 = back to lobby (in a game)
   if (mobile()) {
     // 2 opens your items in a game (How to play is in Settings there), How to play in the lobby
-    if (inputSystem.isTriggered(InputAction.IA_ACTION_4, PointerEventType.PET_DOWN)) {
+    if (!cs.tutorialActive && inputSystem.isTriggered(InputAction.IA_ACTION_4, PointerEventType.PET_DOWN)) {
       if (showGame()) cs.itemsOpen = !cs.itemsOpen
       else cs.showHowTo = true
     }
-    if (inputSystem.isTriggered(InputAction.IA_ACTION_5, PointerEventType.PET_DOWN)) cs.showSettings = true
+    if (!cs.tutorialActive && inputSystem.isTriggered(InputAction.IA_ACTION_5, PointerEventType.PET_DOWN)) cs.showSettings = true
     // back to lobby asks first: a tap by mistake would give your seat away mid-round
-    if (cs.inGame && inputSystem.isTriggered(InputAction.IA_ACTION_6, PointerEventType.PET_DOWN)) cs.confirmLeave = true
+    if (!cs.tutorialActive && cs.inGame && inputSystem.isTriggered(InputAction.IA_ACTION_6, PointerEventType.PET_DOWN)) cs.confirmLeave = true
   }
 
   // E = break held cube, F = throw it away, 1 = hint (game only, not in the lobby)
@@ -140,10 +145,10 @@ const TOUCH_ICONS: Partial<Record<InputAction, string>> = {
 const ITEMS_ICON = 'assets/images/ui/cartoon-powerups.png'
 let touchShown = ''
 function syncTouchButtons(holding: boolean, inGame: boolean, items: boolean) {
-  const key = `${holding}:${inGame}:${items}`
+  const key = `${holding}:${inGame}:${items}:${cs.tutorialActive}:${cs.tutorialCinematic}`
   if (key === touchShown) return
   touchShown = key
-  const shown = new Set<InputAction>([InputAction.IA_ACTION_5])
+  const shown = new Set<InputAction>([InputAction.IA_ACTION_5, InputAction.IA_JUMP, InputAction.IA_POINTER])
   if (holding) shown.add(InputAction.IA_PRIMARY).add(InputAction.IA_SECONDARY)
   if (inGame) shown.add(InputAction.IA_ACTION_3).add(InputAction.IA_ACTION_6)
   if (!inGame || items) shown.add(InputAction.IA_ACTION_4)
@@ -155,9 +160,15 @@ function syncTouchButtons(holding: boolean, inGame: boolean, items: boolean) {
     InputAction.IA_ACTION_3,
     InputAction.IA_ACTION_4,
     InputAction.IA_ACTION_5,
-    InputAction.IA_ACTION_6
+    InputAction.IA_ACTION_6,
+    InputAction.IA_JUMP,
+    InputAction.IA_POINTER
   ]
   if (TOUCH_CONTROLS_DEBUG) for (const b of buttons) shown.add(b)
+  if (cs.tutorialActive) {
+    shown.clear()
+    if (!cs.tutorialCinematic) shown.add(InputAction.IA_JUMP).add(InputAction.IA_POINTER)
+  }
   TouchScreenControls.createOrReplace(engine.RootEntity, {
     touchInputs: buttons.map((inputAction) => {
       const src = icons[inputAction]
@@ -167,8 +178,8 @@ function syncTouchButtons(holding: boolean, inGame: boolean, items: boolean) {
         icon: src ? { tex: { $case: 'texture' as const, texture: { src } } } : undefined
       }
     }),
-    hideJoystick: false,
-    hideCrosshair: false
+    hideJoystick: cs.tutorialCinematic,
+    hideCrosshair: cs.tutorialCinematic
   })
 }
 
@@ -186,16 +197,20 @@ export function initClient() {
   setupLobby()
   setupFx()
   setupNpcs()
+  setupTutorial()
   setArenaVendorFactory(spawnArenaVendor)
   setupCheats()
 
   setSlotClickHandler((slot) => {
+    if (cs.tutorialCinematic) return
+    if (cs.game === PRACTICE_GAME) { throwAtFrame(slot); return }
     if (!isHolding()) return showMessage(t('msg.grabFirst'), 2)
     if (lockoutLeft() > 0) return showMessage(t('msg.lockedPlace', { s: lockoutLeft() }), 2)
     throwAtFrame(slot) // the cube leaves your hands now (guessed), the server confirms it
   })
 
   room.onMessage('toast', (d) => {
+    if (cs.game === PRACTICE_GAME) return
     // refused because you are locked out (hint, power-up...): the banner hops instead of repeating it in a toast
     if (d.key === 'srv.lockedOut' && lockoutLeft() > 0) return pingLockout()
     const text = serverText(d) // in your UI language (the server sends a key, shared/i18n)
@@ -214,12 +229,12 @@ export function initClient() {
     showMessage(text, 3)
   })
   room.onMessage('entered', (d) => onEntered(d.game, d.ok === 1))
-  room.onMessage('eject', () => onEjected())
+  room.onMessage('eject', (d) => onEjected(d.n))
   room.onMessage('coins', (d) => {
     onCoins(d.value)
     cs.coins = d.value
   })
-  room.onMessage('fx', (d) => {
+  const onFx = (d: { kind: string; slot: number }) => {
     if (d.kind === 'lock') {
       lockFrame(d.slot)
       playSfx(SFX.lock)
@@ -230,7 +245,9 @@ export function initClient() {
       winFrames()
       playSfx(SFX.win)
     }
-  })
+  }
+  room.onMessage('fx', (d) => { if (cs.game !== PRACTICE_GAME) onFx(d) })
+  setPracticeEffect((kind, slot) => onFx({ kind, slot }))
 
   engine.addSystem(clientSystem, 1, 'word-cubes-client')
   engine.addSystem(arenaSystem, 1, 'word-cubes-arenas')

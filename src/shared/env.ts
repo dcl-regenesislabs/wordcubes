@@ -21,7 +21,7 @@ export function envOrigin(game = 0): Vector3 {
 
 /** Which game's island a point is on (within its edge, plus a margin, and not far below the floor), or -1. */
 export function arenaAt(x: number, y: number, z: number): number {
-  for (let g = 0; g < C.GAME_COUNT; g++) {
+  for (let g = 0; g < C.GAME_OFFSETS.length; g++) {
     const o = envOrigin(g)
     const dx = x - o.x
     const dz = z - o.z

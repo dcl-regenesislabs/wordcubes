@@ -21,7 +21,10 @@ function harness() {
     './state': state,
     './audio': { SFX: {}, playSfx: noop },
     './emotes': { playThrowEmote: noop },
-    './i18n': { t: (key) => key }
+    './i18n': { t: (key) => key },
+    './ui/platform': { mobile: () => false },
+    '../shared/tutorial': loadTs('src/shared/tutorial.ts'),
+    './practice': { grabLocalCube: noop, placeLocalCube: noop, localLetterCube: () => -1 }
   })
   return { actions, state, sent }
 }

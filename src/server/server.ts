@@ -13,6 +13,7 @@ import { say } from './say'
 import type { Args } from '../shared/i18n'
 import { setupNetStats, recordTick, netAccessTick, forgetNetAccess } from './netstats'
 import type { Game } from './game'
+import { PRACTICE_GAME } from '../shared/tutorial'
 
 // The server runs GAME_COUNT independent games (see game.ts). This module owns what they share: the player list,
 // saved profiles, the leaderboard and the rank labels, and it routes each player's messages to the game they sit in.
@@ -162,9 +163,11 @@ function init() {
     if (!p) return
     if (C.VOLUMES.some((v) => v.id === data.key)) p.settings[data.key] = Math.max(0, Math.min(C.VOLUME_MAX, Math.round(data.value)))
     else if (C.SETTINGS.some((s) => s.id === data.key)) p.settings[data.key] = data.value === 1 // only entries listed in config
+    else if (data.key === 'tutorialComplete' && data.value === 1) p.settings.tutorialComplete = true // local tutorial completion; no gameplay validation
     else if (data.key === 'lang') p.settings.lang = Math.max(0, Math.min(LANGS.length - 1, Math.round(data.value))) // desktop language picker: index into LANGS
     else return
     touch(addr)
+    if (data.key === 'tutorialComplete') sendProfile(addr)
   })
 
   room.onMessage('buy', (data, ctx) => {
@@ -210,7 +213,7 @@ function serverSystem(dt: number) {
     // standing in an arena without a seat (walked in, or the game was full): back to the lobby
     for (const p of list) {
       const at = arenaAt(p.pos.x, p.pos.y, p.pos.z)
-      if (at < 0 || games[at]?.hasSeat(p.address)) continue
+      if (at < 0 || at === PRACTICE_GAME || games[at]?.hasSeat(p.address)) continue // laboratory is client-only
       if (clock - (lastEject.get(p.address) ?? -Infinity) < 3) continue
       lastEject.set(p.address, clock)
       room.send('eject', { n: at }, { to: [p.address] })

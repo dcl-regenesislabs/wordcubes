@@ -40,6 +40,7 @@ import { PusherTracker } from '../shared/pushers'
 import { createWorld, addBody, removeBody, setPushers, step } from '../sim/physics'
 import type { Body, Pusher } from '../sim/physics'
 import { cs } from './state'
+import { PRACTICE_GAME } from '../shared/tutorial'
 import { dropAge } from './gamestate'
 import { setCubeHidden } from './cubemodel'
 
@@ -82,7 +83,8 @@ const pusherTracker = new PusherTracker()
 function playerPushers(dt: number, self: Vector3): Pusher[] {
   const present = new Set<string>(['self'])
   const out: Pusher[] = [pusherTracker.update('self', self.x, self.y, self.z, dt)]
-  if (C.PREDICT_REMOTE_PUSHES) {
+  // Private lab instances share a location; other trainees must never push this player's local pile.
+  if (C.PREDICT_REMOTE_PUSHES && !cs.tutorialActive) {
     // other players push from where their avatar is drawn on this screen
     for (const [entity, identity, t] of engine.getEntitiesWith(PlayerIdentityData, Transform)) {
       if (entity === engine.PlayerEntity) continue
@@ -251,6 +253,10 @@ function nearAny(x: number, z: number, pushers: Pusher[], r2: number): boolean {
 // ---------- per frame ----------
 
 export function predictSystem(dt: number) {
+  if (cs.game === PRACTICE_GAME) {
+    for (const [entity, local] of Array.from(locals)) forget(entity, local)
+    return
+  }
   if (!C.PREDICT_PUSHES || dt <= 0) return
   const pt = Transform.getOrNull(engine.PlayerEntity)
   if (!pt) return

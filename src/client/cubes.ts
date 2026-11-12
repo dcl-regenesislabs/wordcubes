@@ -16,6 +16,7 @@ import {
 import type { Entity } from '@dcl/sdk/ecs'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
+import { PRACTICE_GAME } from '../shared/tutorial'
 import { t } from './i18n'
 import { letterArg } from '../shared/i18n'
 import { CubeData, modelFor, letterLabel } from '../shared/schemas'
@@ -87,6 +88,7 @@ function anchorFor(address: string): Entity {
 
 // Approximate world position of a player's hand (works for any player present in the scene).
 function handPos(address: string): Vector3 {
+  if (address === 'cubby-coach') return cs.cubbyHand
   let t = address === cs.myAddress ? Transform.getOrNull(engine.PlayerEntity) : null
   if (!t) {
     for (const [e, id] of engine.getEntitiesWith(PlayerIdentityData)) {
@@ -238,7 +240,7 @@ function adopt(entity: Entity, letter: string, id: number): ClientCube {
   Transform.create(hit, { parent: entity, scale: Vector3.create(0.5, 0.5, 0.5) })
   MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
   pointerEventsSystem.onPointerDown(
-    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.grab', { letter: letterArg(letter) }), maxDistance: C.PICKUP_DISTANCE } },
+    { entity: hit, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.grab', { letter: letterArg(letter) }), maxDistance: cs.game === PRACTICE_GAME ? 6 : C.PICKUP_DISTANCE } },
     () => grabCube(id)
   )
   return { mode: 'free', holder: '', slot: -1, letter, proxy: null, t: 0, from: Vector3.Zero(), length: wordLength, lastPos: null, vel: Vector3.Zero(), sinceSnap: 0, idle: 0, smooth: null, hit, hitOn: true, fall: null, tossVel: null }

@@ -16,8 +16,8 @@ function env(template = TEMPLATE) {
 
 test('every arena centre, its floor and its island (the shop) map to its own game', () => {
   const { config, envOrigin, arenaAt } = env()
-  assert.equal(config.GAME_OFFSETS.length, config.GAME_COUNT)
-  for (let g = 0; g < config.GAME_COUNT; g++) {
+  assert.equal(config.GAME_OFFSETS.length, config.GAME_COUNT + 1)
+  for (let g = 0; g < config.GAME_OFFSETS.length; g++) {
     const o = envOrigin(g)
     const [dx, dy, dz] = config.GAME_OFFSETS[g]
     assert.deepEqual([o.x, o.y, o.z], [TEMPLATE.x + dx, TEMPLATE.y + dy, TEMPLATE.z + dz])
@@ -34,8 +34,8 @@ test('every arena centre, its floor and its island (the shop) map to its own gam
 test('the islands do not overlap, and the space between them, below them and the lobby belong to no game', () => {
   const { config, envOrigin, arenaAt } = env()
   const reach = config.ISLAND_RADIUS + 2 // arenaAt's margin around the island's edge
-  for (let a = 0; a < config.GAME_COUNT; a++) {
-    for (let b = a + 1; b < config.GAME_COUNT; b++) {
+  for (let a = 0; a < config.GAME_OFFSETS.length; a++) {
+    for (let b = a + 1; b < config.GAME_OFFSETS.length; b++) {
       const oa = envOrigin(a)
       const ob = envOrigin(b)
       assert.ok(Math.hypot(oa.x - ob.x, oa.z - ob.z) > 2 * reach, `arenas ${a} and ${b} are apart`)
@@ -51,7 +51,7 @@ test('the islands do not overlap, and the space between them, below them and the
 
 test('without the template entity the arenas fall back to the same layout', () => {
   const { config, envOrigin, arenaAt } = env(null)
-  for (let g = 0; g < config.GAME_COUNT; g++) {
+  for (let g = 0; g < config.GAME_OFFSETS.length; g++) {
     const o = envOrigin(g)
     assert.equal(arenaAt(o.x, o.y + 1, o.z), g)
   }

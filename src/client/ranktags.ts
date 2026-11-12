@@ -97,7 +97,7 @@ function readRatings() {
 export function rankTagSystem() {
   readRatings()
   const me = Transform.getOrNull(engine.PlayerEntity)?.position
-  const enabled = setting('showRanks') // Settings panel switch
+  const enabled = setting('showRanks') && !cs.tutorialActive // no floating badges from other private trainees
   const holding = new Set<string>()
   for (const [, cube] of engine.getEntitiesWith(CubeData)) {
     if (cube.mode === 'held') holding.add(cube.holder.toLowerCase())

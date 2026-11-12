@@ -68,7 +68,7 @@ function harness() {
   const server = loadTs('src/server/server.ts', {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/network': { syncEntity: noop }, '@dcl/sdk/server': { Storage },
     '../config': config, './profiles': profiles, '../shared/messages': { room }, '../shared/env': env,
-    '../shared/schemas': schemas, './common': common, './game': game, '../shared/lang': lang, './say': say, '../shared/i18n': i18n,
+    '../shared/schemas': schemas, './common': common, './game': game, '../shared/tutorial': loadTs('src/shared/tutorial.ts'), '../shared/lang': lang, './say': say, '../shared/i18n': i18n,
     './netstats': { setupNetStats: noop, recordTick: noop, netAccessTick: noop, forgetNetAccess: noop } // the dev-only live monitor is not under test
   }, 'exports.games = games; exports.publishRanks = publishRanks')
   server.initServer()
@@ -525,7 +525,7 @@ function cubeClient(h) {
   const Quaternion = { fromEulerDegrees: (x, y, z) => ({ y }), slerp: (a, b) => b }
   const mod = loadTs('src/client/cubenet.ts', {
     '@dcl/sdk/ecs': { engine, Transform }, '@dcl/sdk/math': { Vector3: h.Vector3, Quaternion }, '../config': h.config,
-    '../shared/messages': { room }, '../shared/schemas': { CubeData }, '../shared/cubenet': loadTs('src/shared/cubenet.ts'), './state': { cs }
+    '../shared/tutorial': loadTs('src/shared/tutorial.ts'), '../shared/messages': { room }, '../shared/schemas': { CubeData }, '../shared/cubenet': loadTs('src/shared/cubenet.ts'), './state': { cs }
   })
   mod.setupCubeNet()
   let read = 0
@@ -739,4 +739,14 @@ test('a guess the server never answers asks for the full state, and a lost toss 
   c.system(h.config.GUESS_CONFIRM_SECONDS + h.config.TOSS_SHOW_SECONDS + 0.1)
   assert.equal(mine(a.id).mode, 'free', 'it stays where it fell on your screen')
   assert.ok(c.out.some(m => m.name === 'cubeSync'), 'the full state settles it')
+})
+
+test('server only persists the local tutorial completion flag, with no practice instance', async () => {
+  const h=harness()
+  await h.profiles.retain('alice')
+  const before=h.server.games.length
+  h.send('setSetting',{key:'tutorialComplete',value:1})
+  assert.equal(h.profiles.profileOf('alice').settings.tutorialComplete,true)
+  assert.equal(h.server.games.length,before)
+  assert.ok(h.sent.filter(m=>m.name==='profile').some(m=>JSON.parse(m.data.settings).tutorialComplete===true))
 })

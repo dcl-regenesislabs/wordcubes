@@ -11,7 +11,12 @@ import { engine, UiCanvasInformation } from '@dcl/sdk/ecs'
 import { ReactEcsRenderer, type UiComponent } from '@dcl/sdk/react-ecs'
 import { getExplorerInformation } from '~system/Runtime'
 
-const MOBILE_AGENT_RE = /mobile|android|iphone|ipad|ios/
+// Godot's desktop phone emulator is the mobile renderer too, even when its host OS reports desktop.
+const MOBILE_AGENT_RE = /mobile|android|iphone|ipad|ios|godot/i
+
+export function isMobileExplorer(info: { platform?: string; agent?: string }): boolean {
+  return MOBILE_AGENT_RE.test(`${info.platform ?? ''} ${info.agent ?? ''}`)
+}
 
 let detected = false
 let forced: boolean | null = null // lets a desktop Explorer show the phone layout while testing
@@ -24,15 +29,20 @@ export function resolvePlatform(onResolved?: () => void) {
     .then((info) => {
       const platform = (info.platform ?? '').toLowerCase()
       const agent = (info.agent ?? '').toLowerCase()
-      detected = platform === 'mobile' || MOBILE_AGENT_RE.test(agent)
-      console.log('[CLIENT] platform', platform || '?', 'agent', agent || '?', 'mobile', detected)
+      detected = isMobileExplorer(info)
+      console.log('[CLIENT] platform', platform || '?', 'agent', agent || '?', 'mobile', mobile())
     })
-    .catch(() => {}) // couldn't read it: stay on desktop rather than guess
+    .catch(() => { started = false }) // retry a transient lookup failure; don't pin a phone to desktop forever
     .then(() => onResolved && onResolved())
 }
 
 /** True on the DCL mobile app. false on Unity desktop and on Bevy. */
-export const mobile = (): boolean => (forced === null ? detected : forced)
+export const mobile = (): boolean => {
+  if (forced !== null) return forced
+  const inset = UiCanvasInformation.getOrNull(engine.RootEntity)?.screenInsetArea
+  const phoneNotch = (inset?.left ?? 0) > 0 || (inset?.right ?? 0) > 0
+  return detected || phoneNotch
+}
 export function forceMobile(v: boolean | null) {
   forced = v
 }
@@ -113,7 +123,12 @@ export function setupResponsiveUi(Root: UiComponent) {
   rootComponent = Root
   if (!syncRegistered) {
     syncRegistered = true
-    engine.addSystem(() => applyUiRenderer())
+    let retryIn = 1
+    engine.addSystem((dt: number) => {
+      retryIn -= dt
+      if (!started && retryIn <= 0) { retryIn = 1; resolvePlatform(() => applyUiRenderer()) }
+      applyUiRenderer()
+    })
   }
   resolvePlatform(() => applyUiRenderer())
   applyUiRenderer(true)

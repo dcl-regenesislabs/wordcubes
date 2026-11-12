@@ -16,6 +16,7 @@ import { room } from '../shared/messages'
 import { CubeData } from '../shared/schemas'
 import { STATE_FIELDS, MOVE_FIELDS, unpackPos, unpackYawDeg, unpackLetter, unpackMode } from '../shared/cubenet'
 import { cs } from './state'
+import { PRACTICE_GAME } from '../shared/tutorial'
 
 interface Target {
   pos: Vector3
@@ -85,6 +86,28 @@ export function guessMode(id: number, mode: 'held' | 'flying' | 'tossing', slot:
 
 /** The local cube entity of an id in your game. */
 export const cubeEntity = (id: number): Entity | undefined => entities.get(id)
+export const cubeGuessPending = (id: number): boolean => guesses.has(id)
+
+// The laboratory reuses the normal cube renderer, but owns its entities locally.
+export function beginLocalCubes() {
+  clear()
+  game = PRACTICE_GAME
+  lastSeq = 0
+  wantSync = false
+}
+export function addLocalCube(id: number, letter: string, position: Vector3): Entity {
+  const e = engine.addEntity()
+  Transform.create(e, { position, scale: Vector3.scale(Vector3.One(), C.CUBE_SCALE) })
+  CubeData.create(e, { game: PRACTICE_GAME, id, letter, mode: 'free', slot: -1, holder: '', born: 0 })
+  entities.set(id, e)
+  return e
+}
+export function clearLocalCubes() {
+  if (game !== PRACTICE_GAME) return
+  clear()
+  game = -1
+  wantSync = false
+}
 
 /** The id of the cube in your hands (guessed or confirmed), -1 if none. */
 export function myHeldCubeId(): number {
@@ -184,6 +207,7 @@ function applyMoves(o: Vector3, d: number[]) {
 
 export function setupCubeNet() {
   room.onMessage('cubeState', (m) => {
+    if (m.g === PRACTICE_GAME) return
     if (m.g !== cs.game || m.g !== game) return
     if (m.full === 1) {
       if (!fullSet) fullSet = new Set()
@@ -208,6 +232,7 @@ export function setupCubeNet() {
   })
 
   room.onMessage('cubeMoves', (m) => {
+    if (m.g === PRACTICE_GAME) return
     if (m.g !== cs.game || m.g !== game) return
     if (lastSeq >= 0 && m.s !== lastSeq && !wantSync) {
       wantSync = true // a cubeState went missing
@@ -230,7 +255,7 @@ export function cubeNetSystem(dt: number) {
     wantSync = game >= 0
     sinceAsk = Infinity
   }
-  if (game < 0) return
+  if (game < 0 || game === PRACTICE_GAME) return
 
   // guesses the server never confirmed: back to its state
   for (const [id, g] of Array.from(guesses.entries())) {
