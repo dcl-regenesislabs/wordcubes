@@ -243,7 +243,6 @@ export const EN: Record<string, string> = {
   'srv.built.one': '{word}! Built by 1 player',
   'srv.built': '{word}! Built by {n} players',
   'srv.youBuilt': 'You built {word}! +{coins} coins',
-  'srv.wearable': 'Wearable reward unlocked! (stub: not delivered yet)',
   'srv.handsFull': 'Hands full. Click a frame to throw it, E to break it or F to throw it away.',
   'srv.handsFull.mobile': 'Hands full. Tap a frame to throw it, E to break it or F to throw it away.',
   'srv.stepOff': 'Step off the platform to pick up letters.',

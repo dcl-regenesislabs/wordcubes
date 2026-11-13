@@ -509,12 +509,6 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
         giveCoins(addr, C.COINS_PER_WORD)
         room.send('result', { coins: C.COINS_PER_WORD, delta: deltas.get(addr) ?? 0 }, { to: [addr] })
         toast('srv.youBuilt', { word: answer, coins: C.COINS_PER_WORD }, addr)
-        const p = profileOf(addr)
-        if (p && p.wins >= C.ROUNDS_FOR_REWARD && !p.rewarded) {
-          p.rewarded = true
-          touch(addr)
-          toast('srv.wearable', {}, addr)
-        }
       }
       console.log('[ROUND]', 'won', answer, 'level', difficulty, 'builders', builders.join(','), 'participants', Array.from(participants).join(','))
     }

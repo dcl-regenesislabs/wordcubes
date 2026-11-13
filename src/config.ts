@@ -125,7 +125,6 @@ export const COINS_PER_BREAK = 5
 export const COINS_PER_WORD = 25
 export const NEXT_ROUND_DELAY = 4 // seconds the result (won / time's up) stays on screen before the vote
 export const VOTE_SECONDS = 12 // how long the Easier / Same / Harder vote stays open (ends early once everyone present voted)
-export const ROUNDS_FOR_REWARD = 2
 
 // Physics
 export const GRAVITY = -14
