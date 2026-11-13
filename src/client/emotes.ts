@@ -21,8 +21,18 @@ export function preloadGrabAssets(): void {
   })
 }
 
+// A fulfilled RPC can still return success:false. Keep rejected requests visible
+// in the client log instead of hiding the evidence when a renderer won't play it.
+function playSceneEmote(src: string, loop: boolean): void {
+  void triggerSceneEmote({ src, loop, mask: AvatarMask.AM_UPPER_BODY })
+    .then(result => {
+      if (!result.success) console.error('[emotes] Playback request rejected:', src)
+    })
+    .catch(error => console.error('[emotes] Playback request failed:', src, error))
+}
+
 export function playHoldEmote(): void {
-  void triggerSceneEmote({ src: HOLD_EMOTE, loop: true, mask: AvatarMask.AM_UPPER_BODY }).catch(() => {})
+  playSceneEmote(HOLD_EMOTE, true)
 }
 
 // Ends the carry pose. stopEmote isn't callable on every client build, so it is guarded. A masked one-shot
@@ -40,5 +50,5 @@ export function stopHoldEmoteQuietly(): void {
 
 // A masked one-shot replaces the masked hold loop and ends it when it finishes.
 export function playThrowEmote(): void {
-  void triggerSceneEmote({ src: THROW_EMOTE, loop: false, mask: AvatarMask.AM_UPPER_BODY }).catch(() => {})
+  playSceneEmote(THROW_EMOTE, false)
 }
