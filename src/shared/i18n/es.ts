@@ -227,7 +227,6 @@ export const ES: Record<string, string> = {
   'srv.built.one': '¡{word}! La armó 1 jugador',
   'srv.built': '¡{word}! La armaron {n} jugadores',
   'srv.youBuilt': '¡Armaste {word}! +{coins} monedas',
-  'srv.wearable': '¡Desbloqueaste un wearable! (de prueba: todavía no se entrega)',
   'srv.handsFull': 'Tienes las manos ocupadas. Haz clic en un marco para lanzarlo, E para romperlo o F para tirarlo.',
   'srv.handsFull.mobile': 'Tienes las manos ocupadas. Toca un marco para lanzarlo, E para romperlo o F para tirarlo.',
   'srv.stepOff': 'Bájate de la plataforma para agarrar letras.',

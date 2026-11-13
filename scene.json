@@ -7,9 +7,9 @@
     "favicon": "favicon_asset",
     "navmapThumbnail": "assets/images/WordCubesThumbnail.png"
   },
-  "owner": "",
+  "owner": "RGL",
   "contact": {
-    "name": "SDK",
+    "name": "RGL",
     "email": ""
   },
   "main": "bin/index.js",

@@ -7,7 +7,7 @@ export interface Profile {
   rating: number
   rounds: number // rounds played that counted (built a word, or took part in one that timed out)
   wins: number
-  rewarded: boolean // the wearable reward (stub) was announced
+  rewarded: boolean // legacy stored flag; retained for profile compatibility
   items: Record<string, number>
   settings: Record<string, boolean | number> // switches (true / false) and volume levels (0..VOLUME_MAX)
 }
