@@ -10,6 +10,7 @@ import { NetMonitor } from './ui/netstats'
 import { TutorialOverlay } from '../ui/TutorialOverlay'
 import { nextTutorial } from './tutorial'
 import { grabTutorialCube } from './actions'
+import { UiTextureWarmer } from './ui/textureWarmer'
 
 // The UI canvas depends on the device (1920x1080 desktop, 1600x720 x pixel ratio on phones): setupResponsiveUi sets
 // the renderer up once and again as soon as the platform lookup answers.
@@ -21,7 +22,14 @@ export function setupUi() {
 
 // Coded (not UI-Designer-editable) HUD: everything comes from the server's synced state each frame.
 // Pieces and look live in ./ui (theme = palette and shared widgets, hud = the screens).
-export const uiMenu = () => {
+export const uiMenu = () => (
+  <UiEntity uiTransform={{ width: '100%', height: '100%', pointerFilter: 'none' }}>
+    <UiTextureWarmer />
+    <UiContent />
+  </UiEntity>
+)
+
+const UiContent = () => {
   applyDebug() // UI_PREVIEW only: the screen picked in the debug bar
   if (!serverReady() && !cs.tutorialActive && !UI_PREVIEW) {
     return (
