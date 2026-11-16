@@ -21,12 +21,12 @@ export function preloadGrabAssets(): void {
   })
 }
 
-// A fulfilled RPC can still return success:false. Keep rejected requests visible
-// in the client log instead of hiding the evidence when a renderer won't play it.
+// Unity can reject a request with success:false. Mobile may return no response
+// and Bevy acknowledges without confirming playback, so silence is not visual proof.
 function playSceneEmote(src: string, loop: boolean): void {
   void triggerSceneEmote({ src, loop, mask: AvatarMask.AM_UPPER_BODY })
     .then(result => {
-      if (!result.success) console.error('[emotes] Playback request rejected:', src)
+      if (result?.success === false) console.error('[emotes] Playback request rejected:', src)
     })
     .catch(error => console.error('[emotes] Playback request failed:', src, error))
 }
@@ -38,14 +38,23 @@ export function playHoldEmote(): void {
 // Ends the carry pose. stopEmote isn't callable on every client build, so it is guarded. A masked one-shot
 // ends the masked carry loop for good once it finishes, so the short throw clip is played as the way out
 // (re-playing the carry clip itself with loop:false showed the whole 2s carry pose again).
+function stopSceneEmote(): void {
+  if (typeof stopEmote !== 'function') return
+  void stopEmote({})
+    .then(result => {
+      if (result?.success === false) console.error('[emotes] Stop request rejected')
+    })
+    .catch(error => console.error('[emotes] Stop request failed:', error))
+}
+
 export function stopHoldEmote(): void {
-  if (typeof stopEmote === 'function') void stopEmote({}).catch(() => {})
+  stopSceneEmote()
   playThrowEmote()
 }
 
 /** Ends the carry pose without the throw clip: for a guessed grab the server refused. */
 export function stopHoldEmoteQuietly(): void {
-  if (typeof stopEmote === 'function') void stopEmote({}).catch(() => {})
+  stopSceneEmote()
 }
 
 // A masked one-shot replaces the masked hold loop and ends it when it finishes.

@@ -17,6 +17,7 @@ const INVISIBLE = { r: 1, g: 1, b: 1, a: 0 }
 // Keep these transparent 1px nodes alive through connection, tutorial and public
 // screens. display:none can skip loading; pointerFilter:none leaves input alone.
 // Same pattern as Marsh Colony #458 and Slide-Maze #19.
+// Native TouchScreenControls icons use a separate cache and are outside this warmer.
 export function UiTextureWarmer() {
   return (
     <UiEntity key="ui-texture-warmer" uiTransform={{ positionType: 'absolute', position: { top: 0, left: 0 }, width: 1, height: 1, pointerFilter: 'none' }}>

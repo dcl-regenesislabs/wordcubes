@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
+const path = require('node:path')
 const { loadTs } = require('./load-ts.cjs')
 
 const react = {
@@ -35,9 +36,11 @@ test('warmer matches the cache options of buttons, icons, flags and tutorial art
   }
   assert.equal(byPath.get('assets/images/ui/languages.png').filterMode, 'tri-linear')
   assert.equal(byPath.get('assets/images/ui-kit/hand.png').filterMode, undefined)
-  // Literal image references in the screens must not silently escape the warmer.
-  for (const file of ['src/client/ui/theme.tsx','src/client/ui/flags.tsx','src/client/ui/hud.tsx','src/ui/TutorialOverlay.tsx']) {
-    for (const [,src] of fs.readFileSync(file,'utf8').matchAll(/['"](assets\/images\/[^'"]+\.png)['"]/g)) {
+  // Discover screens recursively; new UI files and template paths must be covered.
+  const images = walk('assets/images').filter(file => /\.(png|jpe?g|webp)$/.test(file))
+  const screens = [...walk('src/client'), ...walk('src/ui')].filter(file => file.endsWith('.tsx') && !file.endsWith('/textureWarmer.tsx'))
+  for (const file of screens) {
+    for (const src of referencedImages(fs.readFileSync(file, 'utf8'), images)) {
       assert.ok(byPath.has(src), `${file}: ${src} needs a matching UI cache entry`)
     }
   }
@@ -65,4 +68,27 @@ test('same warmer stays at root during connection, tutorial, lobby and public ga
     // Exercise the screen branch too, so all early returns are covered.
     assert.ok(root.children[1].type())
   }
+})
+
+function walk(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const file = path.posix.join(dir, entry.name)
+    return entry.isDirectory() ? walk(file) : [file]
+  })
+}
+
+function referencedImages(source, images) {
+  return [...source.matchAll(/(['"`])(assets\/images\/[^'"`]+\.(?:png|jpe?g|webp))\1/g)].flatMap(([, , src]) => {
+    if (!src.includes('${')) return [src]
+    const pattern = src.split(/\$\{[^}]+\}/).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+')
+    const matches = images.filter(image => new RegExp(`^${pattern}$`).test(image))
+    assert.ok(matches.length, `Template ${src} must resolve to existing images`)
+    return matches
+  })
+}
+
+test('coverage guard expands template image references', () => {
+  assert.deepEqual(referencedImages('texture: { src: `assets/images/ui/btn-${color}.png` }', [
+    'assets/images/ui/btn-red.png', 'assets/images/ui/btn-blue.png', 'assets/images/ui/coin.png'
+  ]), ['assets/images/ui/btn-red.png', 'assets/images/ui/btn-blue.png'])
 })
