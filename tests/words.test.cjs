@@ -24,7 +24,7 @@ for (const l of lang.LANGS) {
       seen.add(w.answer)
     }
     for (let level = 1; level <= 7; level++) {
-      assert.ok(list.filter((w) => w.level === level).length >= 20, `${l} level ${level} has enough words`)
+      assert.ok(list.filter((w) => w.level === level).length >= 100, `${l} level ${level} has at least 100 words`)
     }
   })
 
