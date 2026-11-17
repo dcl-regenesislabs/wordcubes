@@ -8,7 +8,7 @@ Each room votes on its own difficulty after every round, and each player earns o
 
 ## Where we are today
 
-Everything in this doc is built on the `roundsystem` branch and type-checked. None of it has been playtested by the team yet. What is left is content (a bigger word bank, sounds), tuning, and delivering the real wearable.
+Everything in this doc is built on the `roundsystem` branch and type-checked. None of it has been playtested by the team yet. What is left is content (a bigger word bank, sounds) and tuning. Rewards and retention are designed in [retention-and-rewards.md](retention-and-rewards.md).
 
 | Feature | Status |
 | --- | --- |
@@ -24,7 +24,7 @@ Everything in this doc is built on the `roundsystem` branch and type-checked. No
 | Vendor with Wildcard, Time Freeze, Reroll and Bomb, in the lobby and in the arena | Built |
 | Rank guide NPC | Built (draft text) |
 | Break and bomb effects (3D particles) | Built |
-| Wearable reward after 2 won rounds | Announced per player; the real wearable is not delivered |
+| Rewards beyond coins and rating | Designed in [retention-and-rewards.md](retention-and-rewards.md), not built. No wearable rewards |
 | Sounds | Missing: the project has no audio files |
 | Question bank big enough for 24/7 play | Missing: needs bulk content |
 
@@ -171,7 +171,6 @@ Prices are a first guess. Coins come from 25 per finished word, 5 per broken non
 
 ## Open questions
 
-- [ ] Should the real wearable reward still go out after 2 won rounds, and how is it delivered?
 - [ ] Are the item prices and the 30-second cooldown right? Tune after playtests.
 - [ ] Should the one-wildcard-per-round limit apply to the room (as built) or to each player?
 - [ ] What are the final rank names?
@@ -188,7 +187,7 @@ Prices are a first guess. Coins come from 25 per finished word, 5 per broken non
 4. Done: saved profiles, rating, ranks, leaderboard and rank labels.
 5. Done: vendor, inventory, wildcard, Time Freeze, Reroll and Bomb.
 6. Left: playtest and tune (timers, prices, rating numbers).
-7. Left: a much bigger word bank, sounds, the real wearable reward, and vendor outfits.
+7. Left: a much bigger word bank, sounds, vendor outfits, and the rewards in [retention-and-rewards.md](retention-and-rewards.md).
 
 ## Regression checks
 
