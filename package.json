@@ -10,7 +10,8 @@
     "build": "sdk-commands build",
     "upgrade-sdk": "npm install --save-dev @dcl/sdk@latest",
     "upgrade-sdk:next": "npm install --save-dev @dcl/sdk@next",
-    "server-logs": "sdk-commands sdk-server-logs"
+    "server-logs": "sdk-commands sdk-server-logs",
+    "stress": "node tests/stress/server-stress.cjs"
   },
   "devDependencies": {
     "@dcl/js-runtime": "7.29.1-36863326504.commit-aa54c50",

@@ -1,13 +1,14 @@
 import { engine, Entity } from '@dcl/sdk/ecs'
 import { syncEntity } from '@dcl/sdk/network'
 import * as C from '../config'
-import { retain, profileOf, touch, saveSome, release as releaseProfile, allCached } from './profiles'
+import { retain, profileOf, touch, saveSome, release as releaseProfile, allCached, forgetFailures } from './profiles'
 import { room } from '../shared/messages'
 import { arenaAt } from '../shared/env'
 import { CubeData, GameState, PlayerRanks } from '../shared/schemas'
 import { Storage } from '@dcl/sdk/server'
 import { players, giveCoins, sendProfile } from './common'
 import { createGame } from './game'
+import { prepareHeaps, heapTick } from './heaps'
 import { toLang, LANGS } from '../shared/lang'
 import { say } from './say'
 import type { Args } from '../shared/i18n'
@@ -204,6 +205,7 @@ function init() {
 function serverSystem(dt: number) {
   clock += dt
   const t0 = Date.now()
+  heapTick() // the ready-made cube heaps after the first, a little at a time
   for (const g of games) g.tick(dt)
   if (C.NET_STATS) recordTick(dt, Date.now() - t0)
 
@@ -232,7 +234,8 @@ function serverSystem(dt: number) {
       room.send('eject', { n: at }, { to: [p.address] })
     }
     for (const addr of Array.from(lastEject.keys())) if (!present.has(addr)) lastEject.delete(addr)
-    // Presence also recovers profiles if the client's one-shot join message was missed.
+    // Presence also recovers profiles if the client's one-shot join message was missed, and retries a failed read.
+    forgetFailures(present)
     for (const addr of present) {
       const loaded = profileOf(addr) !== undefined
       void retain(addr).then(() => {
@@ -289,6 +292,7 @@ function clearStaleEntities() {
 
 export function initServer() {
   clearStaleEntities()
+  prepareHeaps() // the first cube heap, before anyone can start a game
   for (let i = 0; i < C.GAME_COUNT; i++) {
     const stateEntity = engine.addEntity()
     GameState.create(stateEntity, {

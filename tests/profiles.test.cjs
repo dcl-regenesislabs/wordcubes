@@ -66,24 +66,63 @@ test('leaving during load and rejoining before it completes keeps the loaded pro
   assert.equal(p.profileOf('alice').coins, 90)
 })
 
-test('failed reads never overwrite saved data and can recover after leaving', async () => {
+// The modules run with the real Date: move its clock by hand for the retry waits.
+function withClock(fn) {
+  const real = Date.now
+  let now = real()
+  Date.now = () => now
+  return Promise.resolve(fn((ms) => { now += ms })).finally(() => { Date.now = real })
+}
+
+test('a failed read caches nothing, never writes, and is retried while the player stays', () => withClock(async (advance) => {
   let fail = true
+  let reads = 0
   const { profiles: p, writes } = harness(async () => {
-    if (fail) throw new Error('simulated read failure')
+    reads++
+    if (fail) throw new Error('too many concurrent host calls')
     return { coins: 350 }
   })
-  const profile = await p.retain('alice')
-  profile.coins = 5
+  assert.equal(await p.retain('alice'), undefined, 'no empty stand-in profile')
+  assert.equal(p.profileOf('alice'), undefined)
   p.touch('alice')
-  p.release('alice')
   p.saveSome()
-  assert.equal(writes.length, 0)
+  assert.equal(writes.length, 0, 'nothing to overwrite the saved profile with')
+  assert.equal(await p.retain('alice'), undefined, 'waits before asking again')
+  assert.equal(reads, 1)
   fail = false
-  const recovered = await p.retain('alice')
-  assert.equal(recovered.coins, 350)
-  p.touch('alice')
-  p.saveSome()
-  assert.equal(writes.length, 1)
-  writes[0].resolve(true)
-  await flush()
+  advance(1000)
+  const profile = await p.retain('alice') // the server's housekeeping asks every second
+  assert.equal(reads, 2)
+  assert.equal(profile.coins, 350, 'the saved profile, not a fresh one')
+  assert.equal(p.profileOf('alice'), profile)
+}))
+
+test('repeated failures wait longer each time', () => withClock(async (advance) => {
+  let reads = 0
+  const { profiles: p } = harness(async () => { reads++; throw new Error('storage unavailable') })
+  await p.retain('alice')
+  advance(1000); await p.retain('alice')
+  assert.equal(reads, 2)
+  advance(1000); await p.retain('alice')
+  assert.equal(reads, 2, 'second wait is 2 s')
+  advance(1000); await p.retain('alice')
+  assert.equal(reads, 3)
+  p.forgetFailures(new Set()) // gone: the next visit asks at once
+  await p.retain('alice')
+  assert.equal(reads, 4)
+}))
+
+test('a crowd arriving at once never has more than 10 profile reads in flight', async () => {
+  const pending = []
+  let peak = 0
+  const { profiles: p } = harness(() => new Promise((resolve) => {
+    pending.push(resolve)
+    peak = Math.max(peak, pending.length)
+  }))
+  const loads = Array.from({ length: 50 }, (_, i) => p.retain('player' + i))
+  assert.equal(pending.length, 10)
+  while (pending.length) { pending.shift()({ coins: 1 }); await flush() }
+  const all = await Promise.all(loads)
+  assert.equal(peak, 10)
+  assert.ok(all.every((x) => x && x.coins === 1), 'everyone gets their profile')
 })
