@@ -1,4 +1,5 @@
 import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
+import { FLAG_TEXTURES } from './flags'
 
 // Real UiBackgrounds warm the same cache entries as the screens (AssetLoad alone
 // uses a different cache). Match each screen's wrap/filter settings as well as src.
@@ -9,7 +10,7 @@ const UI_TEXTURES = [
   ...['coin', 'break', 'toss', 'wildcard', 'freeze', 'reroll', 'bomb'].map(icon => ({
     src: `assets/images/ui/cartoon-${icon}.png`, wrapMode: 'clamp' as const, filterMode: 'tri-linear' as const
   })),
-  { src: 'assets/images/ui/languages.png', wrapMode: 'clamp' as const, filterMode: 'tri-linear' as const },
+  ...Object.values(FLAG_TEXTURES).map(src => ({ src, wrapMode: 'clamp' as const, filterMode: 'tri-linear' as const })),
   { src: 'assets/images/ui-kit/hand.png' }
 ]
 const INVISIBLE = { r: 1, g: 1, b: 1, a: 0 }
