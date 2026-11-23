@@ -99,7 +99,7 @@ export const VOLUMES: { id: string; label: string; desc: string; default: number
 
 // TESTING ONLY: a hidden cheat. In the lobby, clicking the S cube of the "WORD CUBES" blocks gives CHEAT_COINS coins every time.
 // The server checks this flag too. Set CHEATS_ENABLED to false before a release.
-export const CHEATS_ENABLED = true
+export const CHEATS_ENABLED = false
 export const CHEAT_COINS = 500
 export const CHEAT_ENTITY = 'CubeS.glb'
 
