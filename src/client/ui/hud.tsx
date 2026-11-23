@@ -15,7 +15,8 @@ import { clickSlot } from '../arena'
 import { MAX_DIFFICULTY, ITEMS, SETTINGS } from '../../config'
 import { mobile, EDGE, RIGHT_RESERVE, TOP_RESERVE, BOTTOM_RESERVE, LEFT_RESERVE, dialogScale, S, view } from './platform'
 import { PAL, Frame, OutlineLabel, PillButton, LetterTile, CoinIcon, TileState, clamp, c, darken, lighten, OUTLINE, Edges, hovered, hover } from './theme'
-import { rankIndex } from './rank'
+import { rankIndex, RANK_NAMES } from './rank'
+const RANK_COUNT = RANK_NAMES.length
 import { dbg, debugWord } from './debug'
 import { startTutorial } from '../tutorial'
 import { CubbyStrip, NameTab, CartoonButton, BUTTON_ASPECT } from '../../ui/TutorialOverlay'
@@ -65,6 +66,17 @@ function mockGame(): Game {
 
 /** Your rank's name in the UI language. */
 const rankName = (rating: number) => t(`rank.${rankIndex(rating)}`)
+
+/** A rank's badge (the same picture that floats over heads), square. */
+function RankIcon(props: { rank: number; size: number; margin?: Edges; key?: string }) {
+  return (
+    <UiEntity
+      key={props.key}
+      uiTransform={{ width: props.size, height: props.size, margin: props.margin, pointerFilter: 'none' }}
+      uiBackground={{ textureMode: 'stretch', texture: { src: C.rankBadgeImage(props.rank) } }}
+    />
+  )
+}
 
 const heldLetter = (): string => {
   if (!C.UI_PREVIEW) return realHeldLetter()
@@ -308,7 +320,15 @@ function SidePanel(props: { g: Game | null }) {
     <UiEntity uiTransform={{ width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}>
       <Frame width={w} height={S(150)} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(20)} pad={S(10)} align="center" justify="center">
         <CoinsRow size={S(34)} />
-        <OutlineLabel value={g ? t('hud.levelRank', { n: g.difficulty, rank: rankName(cs.rating) }) : ''} fontSize={S(22)} color={PAL.dim} width="100%" height={S(30)} />
+        {g ? (
+          <UiEntity uiTransform={{ width: '100%', height: S(30), flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
+            <OutlineLabel value={t('hud.level', { n: g.difficulty })} fontSize={S(22)} color={PAL.dim} width={estW(t('hud.level', { n: g.difficulty }), S(22)) + S(6)} height={S(30)} align="middle-right" />
+            <RankIcon rank={rankIndex(cs.rating)} size={S(28)} margin={{ left: S(10), right: S(6) }} />
+            <OutlineLabel value={rankName(cs.rating)} fontSize={S(22)} color={PAL.dim} width={estW(rankName(cs.rating), S(22)) + S(6)} height={S(30)} align="middle-left" />
+          </UiEntity>
+        ) : (
+          <UiEntity uiTransform={{ width: '100%', height: S(30), pointerFilter: 'none' }} />
+        )}
         <OutlineLabel value={timeText(g)} fontSize={S(36)} color={timeColor(g)} width="100%" height={S(46)} />
       </Frame>
       <PillButton id="hint" label={g && g.hintCost > 0 ? t('hud.hint') : t('hud.noHints')} cost={g && g.hintCost > 0 ? g.hintCost : undefined} width={w} height={S(66)} font={S(28)} tint={PAL.pink} margin={{ top: S(10) }} onClick={() => room.send('hint', { n: 0 })} />
@@ -646,6 +666,21 @@ export function NpcDialog() {
         <Label value={d.name} fontSize={z(30)} font="sans-serif" color={PAL.violet} textAlign="middle-left" uiTransform={{ width: '100%', height: z(40) }} />
         <Label value={d.pages[d.page]} fontSize={z(28)} font="sans-serif" color={PAL.ink} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: z(110) }} />
         <UiEntity uiTransform={{ width: '100%', height: z(60), flexDirection: 'row', justifyContent: 'flex-end', pointerFilter: 'none' }}>
+          {d.ranks && (
+            <PillButton
+              id="npc-ranks"
+              label={t('npc.lexi.ranks')}
+              width={z(220)}
+              height={z(52)}
+              font={z(24)}
+              tint={PAL.cyan}
+              margin={{ right: z(12) }}
+              onClick={() => {
+                cs.dialog = null
+                cs.showRanks = true
+              }}
+            />
+          )}
           <PillButton id="npc-close" label={t(d.replayTutorial ? 'npc.cubby.replayNo' : 'common.close')} width={z(d.replayTutorial ? 220 : 150)} height={z(52)} font={z(24)} margin={{ right: z(12) }} onClick={() => (cs.dialog = null)} />
           <PillButton
             id="npc-next"
@@ -917,6 +952,53 @@ export function SettingsPanel() {
           )}
           <PillButton id="settings-close" label={t('common.close')} width={z(220)} height={z(60)} font={z(28)} onClick={() => (cs.showSettings = false)} />
         </UiEntity>
+      </Frame>
+    </Layer>
+  )
+}
+
+// ---- Lexi's rank table: every rank with its badge, the rooms that suit it, and where you are ----
+export function RanksPanel() {
+  const n = RANK_COUNT
+  const k = panelScale(900, 160 + n * 76 + 90)
+  const z = (v: number) => Math.round(S(v) * k)
+  const w = mobile() ? z(900) : fit(z(900))
+  const rowH = z(76)
+  const h = z(160) + n * rowH + z(90)
+  const mine = rankIndex(cs.rating)
+  // how far you are through your rank, 0..1 (the rating itself stays hidden)
+  const progress = mine >= n - 1 ? 1 : Math.max(0, Math.min(1, (cs.rating - mine * C.RATING_PER_RANK) / C.RATING_PER_RANK))
+  const barW = z(220)
+  return (
+    <Layer>
+      <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={z(30)} border={z(6)} pad={z(22)} align="center" justify="flex-start" block>
+        <Label value={t('ranks.title')} fontSize={z(44)} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: '100%', height: z(60) }} />
+        <Label value={t('ranks.intro')} fontSize={z(22)} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textWrap="wrap" textAlign="middle-left" uiTransform={{ width: '100%', height: z(56) }} />
+        {Array.from({ length: n }, (_, i) => n - 1 - i).map((r) => {
+          const you = r === mine
+          return (
+            <UiEntity
+              key={`rank-row-${r}`}
+              uiTransform={{ width: '100%', height: rowH - z(6), margin: { top: z(6) }, padding: { left: z(10), right: z(14) }, flexDirection: 'row', alignItems: 'center', borderRadius: z(18), pointerFilter: 'none' }}
+              uiBackground={{ color: you ? c(1, 0.86, 0.45, 1) : c(0, 0, 0, 0) }}
+            >
+              <RankIcon rank={r} size={rowH - z(14)} margin={{ right: z(14) }} />
+              <Label value={`${r + 1}. ${t(`rank.${r}`)}`} fontSize={z(30)} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: z(260), height: rowH }} />
+              <Label value={t('ranks.room', { n: Math.min(MAX_DIFFICULTY, r + 1) })} fontSize={z(22)} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textAlign="middle-left" uiTransform={{ width: z(200), height: rowH }} />
+              {you && (
+                <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
+                  <Label value={t('ranks.you')} fontSize={z(24)} font="sans-serif" color={PAL.violet} textAlign="middle-right" uiTransform={{ width: z(70), height: rowH, margin: { right: z(10) } }} />
+                  {mine < n - 1 && (
+                    <UiEntity uiTransform={{ width: barW, height: z(18), padding: z(3), borderRadius: z(9), pointerFilter: 'none' }} uiBackground={{ color: OUTLINE }}>
+                      <UiEntity uiTransform={{ width: Math.max(z(12), Math.round((barW - z(6)) * progress)), height: '100%', borderRadius: z(6), pointerFilter: 'none' }} uiBackground={{ color: PAL.green }} />
+                    </UiEntity>
+                  )}
+                </UiEntity>
+              )}
+            </UiEntity>
+          )
+        })}
+        <PillButton id="ranks-close" label={t('common.close')} width={z(220)} height={z(60)} font={z(28)} margin={{ top: z(14) }} onClick={() => (cs.showRanks = false)} />
       </Frame>
     </Layer>
   )
@@ -1206,14 +1288,38 @@ export function LobbyHud() {
   const w = SIDE_W()
   return (
     <Layer align="flex-end" justify="flex-start" pad={{ top: S(24) + TOP_RESERVE(), right: EDGE() + RIGHT_RESERVE() }}>
-      <Frame width={w} height={S(150)} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(20)} pad={S(10)} align="center" justify="center">
-        <CoinsRow size={S(34)} />
-        <OutlineLabel value={t('lobby.rank')} fontSize={S(18)} color={PAL.dim} width="100%" height={S(24)} />
-        <OutlineLabel value={rankName(cs.rating)} fontSize={S(30)} color={PAL.pink} width="100%" height={S(38)} />
-      </Frame>
+      <LobbyCard width={w} />
+
       <PillButton id="howto-lobby" label={t('hud.howTo')} width={w} height={S(54)} font={S(22)} tint={PAL.cyan} margin={{ top: S(10) }} onClick={() => (cs.showHowTo = true)} />
       <PillButton id="settings-lobby" label={t('hud.settings')} width={w} height={S(54)} font={S(22)} margin={{ top: S(8) }} onClick={() => (cs.showSettings = true)} />
     </Layer>
+  )
+}
+
+// Desktop lobby card: your rank's badge large on the left; its name, "Rank n of 7" and your coins stacked on the right.
+function LobbyCard(props: { width: number }) {
+  const w = props.width
+  const h = S(150)
+  const pad = S(10)
+  const badge = S(100)
+  const gap = S(10)
+  const colW = w - 2 * (pad + S(4)) - badge - gap // inside the rim (Frame's default border is S(4))
+  const rank = rankIndex(cs.rating)
+  const name = rankName(cs.rating)
+  const nameFont = Math.min(S(30), Math.floor(colW / Math.max(1, name.length) / 0.58)) // long names shrink to fit
+  const coinText = `${coins()}`
+  return (
+    <Frame width={w} height={h} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(20)} pad={pad} dir="row" align="center" justify="flex-start">
+      <RankIcon rank={rank} size={badge} margin={{ right: gap }} />
+      <UiEntity uiTransform={{ width: colW, height: '100%', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start', pointerFilter: 'none' }}>
+        <OutlineLabel value={name} fontSize={nameFont} color={PAL.pink} width={colW} height={S(38)} align="middle-left" />
+        <OutlineLabel value={t('lobby.rankOf', { n: rank + 1, total: RANK_COUNT })} fontSize={S(15)} color={PAL.dim} width={colW} height={S(22)} align="middle-left" />
+        <UiEntity uiTransform={{ width: colW, height: S(36), margin: { top: S(6) }, flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
+          <CoinIcon size={S(28)} margin={{ right: S(6) }} />
+          <OutlineLabel value={coinText} fontSize={S(24)} color={PAL.yellow} width={colW - S(34)} height={S(32)} align="middle-left" />
+        </UiEntity>
+      </UiEntity>
+    </Frame>
   )
 }
 
@@ -1221,20 +1327,27 @@ export function LobbyHud() {
 const LOBBY_RANK_W = () => S(200)
 function LobbyBar() {
   const L = mobileLayout(null)
-  const w = BAR_COINS_W() + BAR_DIVIDER() + LOBBY_RANK_W() + 2 * BAR_PAD()
   const h = L.barH
+  const cap = Math.round(h * 0.32) // keep content clear of the bar's rounded ends
   const text = `${coins()}`
+  const name = rankName(cs.rating)
+  const coinTextW = Math.max(S(20), Math.round(text.length * S(24) * 0.62))
+  const nameW = estW(name, S(24)) + S(6)
+  // each half is its content plus the end padding, never narrower than before; the bar grows left only when it must
+  const coinsW = Math.max(BAR_COINS_W(), cap + S(26) + S(6) + coinTextW)
+  const rankW = Math.max(LOBBY_RANK_W(), cap + S(30) + S(6) + nameW)
+  const w = coinsW + BAR_DIVIDER() + rankW + 2 * BAR_PAD()
   return (
     <Layer justify="flex-start" align="flex-start" pad={{ top: L.top, left: view().w - L.right - w, right: L.right }}>
       <Frame width={w} height={h} edge={PAL.violetLight} fill={PAL.violetGlass} radius={h / 2} border={S(3)} dir="row" align="center" justify="center">
-        <UiEntity uiTransform={{ width: BAR_COINS_W(), height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
+        <UiEntity uiTransform={{ width: coinsW, height: '100%', padding: { left: cap }, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
           <CoinIcon size={S(26)} margin={{ right: S(6) }} />
-          <OutlineLabel value={text} fontSize={S(24)} color={PAL.yellow} width={Math.max(S(30), Math.round(text.length * S(24) * 0.62))} height={S(32)} align="middle-left" />
+          <OutlineLabel value={text} fontSize={S(24)} color={PAL.yellow} width={coinTextW} height={S(32)} align="middle-left" />
         </UiEntity>
         <UiEntity uiTransform={{ width: BAR_DIVIDER(), height: '60%', margin: { left: BAR_PAD(), right: BAR_PAD() } }} uiBackground={{ color: PAL.violetLight }} />
-        <UiEntity uiTransform={{ width: LOBBY_RANK_W(), height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
-          <OutlineLabel value={t('lobby.rank')} fontSize={S(18)} color={PAL.dim} width={S(60)} height={S(30)} />
-          <OutlineLabel value={rankName(cs.rating)} fontSize={S(24)} color={PAL.pink} width={LOBBY_RANK_W() - S(60)} height={S(32)} align="middle-left" />
+        <UiEntity uiTransform={{ width: rankW, height: '100%', padding: { right: cap }, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
+          <RankIcon rank={rankIndex(cs.rating)} size={S(30)} margin={{ right: S(6) }} />
+          <OutlineLabel value={name} fontSize={S(24)} color={PAL.pink} width={nameW} height={S(32)} align="middle-left" />
         </UiEntity>
       </Frame>
     </Layer>

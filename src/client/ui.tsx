@@ -2,7 +2,7 @@ import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
 import { cs } from './state'
 import { UI_PREVIEW, NET_STATS } from '../config'
 import { setupResponsiveUi } from './ui/platform'
-import { ConnectingGate, GameHud, ItemsRow, ConfirmLeave, LobbyHud, LobbyMessage, PadCard, HowToPlay, NpcDialog, ShopPanel, SettingsPanel, setupHudMessages, updateHud } from './ui/hud'
+import { ConnectingGate, GameHud, ItemsRow, ConfirmLeave, LobbyHud, LobbyMessage, PadCard, HowToPlay, NpcDialog, RanksPanel, ShopPanel, SettingsPanel, setupHudMessages, updateHud } from './ui/hud'
 import { engine } from '@dcl/sdk/ecs'
 import { DebugBar, applyDebug, showGame } from './ui/debug'
 import { serverReady, connectingTooLong } from './connection'
@@ -43,6 +43,7 @@ export const uiMenu = () => {
       {cs.showHowTo && <HowToPlay />}
       {cs.dialog && <NpcDialog />}
       {cs.shop && <ShopPanel />}
+      {cs.showRanks && <RanksPanel />}
       {cs.showSettings && <SettingsPanel />}
       {inGame && <ConfirmLeave />}
       {UI_PREVIEW && <DebugBar />}

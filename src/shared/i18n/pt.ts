@@ -86,6 +86,7 @@ export const PT: Record<string, string> = {
   'hud.frozen': 'Congelado {s}s',
   'hud.levelShort': 'Nv{n}',
   'hud.levelRank': 'Nível {n}   {rank}',
+  'hud.level': 'Nível {n}',
   'hud.hint': 'Dica',
   'hud.noHints': 'Sem dicas',
   'hud.howTo': 'Como jogar',
@@ -170,6 +171,11 @@ export const PT: Record<string, string> = {
   'sign.full': 'CHEIO',
 
   'lobby.rank': 'Rank',
+  'lobby.rankOf': 'Rank {n} de {total}',
+  'ranks.title': 'Ranks',
+  'ranks.intro': 'Ganhe palavras em salas do seu nível ou mais difíceis para subir. Cada rank corresponde a um nível de sala.',
+  'ranks.room': 'Salas nível {n}',
+  'ranks.you': 'Você',
   'lobby.left': 'Você saiu do jogo {n}',
   'lobby.gameFull': 'O jogo {n} está cheio. Tente outro pad.',
   'lobby.starting': 'Entrando no jogo #{n}',
@@ -194,6 +200,7 @@ export const PT: Record<string, string> = {
 
   'npc.lexi.name': 'Lexi, guardiã dos ranks',
   'npc.lexi.short': 'Lexi',
+  'npc.lexi.ranks': 'Ver ranks',
   'npc.cubby.name': 'Cubby, seu guia',
   'npc.cubby.short': 'Cubby',
   "npc.cubby.replayPrompt": "Quer fazer o tutorial de novo? Posso acompanhar você ao laboratório para praticarmos juntos.",
@@ -204,7 +211,7 @@ export const PT: Record<string, string> = {
   'npc.bix.short': 'Bix',
   'npc.shopSign': 'LOJA',
   'npc.lexi.1': 'Bem-vindo ao Word Cubes! Todo mundo aqui tem um rank, e ele aparece ao lado das suas moedas no lobby.',
-  'npc.lexi.2': 'Você começa como {first}. Ganhe palavras em salas mais difíceis e você sobe: {all}.',
+  'npc.lexi.2': 'Você começa como {first}. Ganhe palavras em salas mais difíceis e você sobe. Toque em Ver ranks para ver a tabela completa.',
   'npc.lexi.3': 'Depois de cada rodada os jogadores da sala votam: mais fácil, igual ou mais difícil. Salas difíceis valem mais.',
   'npc.lexi.4': 'Só quem coloca as últimas letras ganha a recompensa, então procure seus cubos e ajude a montar a palavra!',
 

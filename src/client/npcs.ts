@@ -147,7 +147,7 @@ function setTalkPrompt(def: NpcDef, hit: Entity) {
         cs.dialog = { name: t('npc.cubby.name'), pages: [t('npc.cubby.replayPrompt')], page: 0, replayTutorial: true }
       }
       else if (def.shop) cs.shop = true
-      else cs.dialog = { name: t(`npc.${def.talk}.name`), pages: pagesOf(def), page: 0 }
+      else cs.dialog = { name: t(`npc.${def.talk}.name`), pages: pagesOf(def), page: 0, ranks: def.talk === 'lexi' }
     }
   )
 }
