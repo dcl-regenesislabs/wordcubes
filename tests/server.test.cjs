@@ -297,6 +297,7 @@ test('only cast votes decide the next level: a silent player does not hold it ba
   h.send('enter', { game: 0 }, 'bob')
   const game = () => [...h.GameState.values.values()][0]
   assert.equal(h.server.games[0].seats.size, 2, 'both players are seated in the arena')
+  const lastToast = () => h.sent.filter(m => m.name === 'toast').pop().data
   const finishVote = () => {
     h.systems.get('word-cubes-server')(h.config.NEXT_ROUND_DELAY)
     assert.equal(game().phase, 'vote')
@@ -313,10 +314,35 @@ test('only cast votes decide the next level: a silent player does not hold it ba
   h.send('vote', { choice: 0 }, 'bob')
   h.systems.get('word-cubes-server')(0.1)
   assert.equal(game().difficulty, 2, 'Harder against Same is a tie and keeps the level')
+  assert.equal(lastToast().key, 'srv.levelKept', 'a kept level explains itself')
+  assert.deepEqual(JSON.parse(lastToast().args), { n: 2, up: 1, same: 1, down: 0 }, 'with the tally')
   h.server.testing.timeUp()
   finishVote()
   h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
   assert.equal(game().difficulty, 2, 'nobody voting keeps the level')
+  assert.equal(lastToast().key, 'srv.levelSame', 'no votes, no tally')
+  h.server.testing.timeUp()
+  finishVote()
+  h.send('vote', { choice: 1 })
+  h.send('vote', { choice: 'same' }, 'bob') // malformed votes are ignored, not counted as Same
+  h.send('vote', { choice: null }, 'bob')
+  h.send('vote', {}, 'bob')
+  h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  assert.equal(game().difficulty, 3, 'a malformed vote cannot block a Harder majority')
+  assert.equal(lastToast().key, 'srv.levelChanged')
+  for (let level = 3; level > 1; level--) { // walk down to the easiest level
+    h.server.testing.timeUp()
+    finishVote()
+    h.send('vote', { choice: -1 })
+    h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  }
+  assert.equal(game().difficulty, 1)
+  h.server.testing.timeUp()
+  finishVote()
+  h.send('vote', { choice: -1 })
+  h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  assert.equal(game().difficulty, 1, 'the level never goes below 1')
+  assert.equal(lastToast().key, 'srv.levelMin', 'a winning Easier vote at level 1 says it is already the easiest')
 })
 
 test('needed letters cannot be destroyed and another player cannot steal a held or placed cube', async () => {

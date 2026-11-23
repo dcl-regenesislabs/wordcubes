@@ -219,6 +219,8 @@ export const ES: Record<string, string> = {
   'srv.newGame': '¡Un juego nuevo! Encuentra las letras.',
   'srv.levelChanged': '¡Nivel {n} ({dir})! Encuentra las letras.',
   'srv.levelSame': 'Nivel {n}. Encuentra las letras.',
+  'srv.levelMax': 'El nivel {n} ya es el más difícil. Encuentra las letras.',
+  'srv.levelMin': 'El nivel {n} ya es el más fácil. Encuentra las letras.',
   'srv.levelKept': 'Sigue el nivel {n} ({up} más difícil, {same} igual, {down} más fácil). Encuentra las letras.',
   'srv.harder': 'más difícil',
   'srv.easier': 'más fácil',
