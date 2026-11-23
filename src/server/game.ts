@@ -578,17 +578,20 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     updateVoteState()
   }
 
-  // Players who did not vote count as "same". The option with the most votes wins, a tie keeps the level.
+  // Only cast votes count: a player who did not vote does not hold the level back. The option with the most votes
+  // wins, a tie (or no votes at all) keeps the level.
   function endVote() {
     const present = arenaPlayers()
     let down = 0
+    let same = 0
     let up = 0
     for (const p of present) {
-      const choice = votes.get(p.address) ?? 0
+      const choice = votes.get(p.address)
+      if (choice === undefined) continue
       if (choice < 0) down++
       else if (choice > 0) up++
+      else same++
     }
-    const same = present.length - down - up
     let step = 0
     if (up > down && up > same) step = 1
     else if (down > up && down > same) step = -1
@@ -600,6 +603,8 @@ export function createGame(index: number, stateEntity: Entity, host: GameHost) {
     const changed = next !== difficulty
     difficulty = next
     if (changed) startRound('srv.levelChanged', { n: difficulty, dir: step > 0 ? '@srv.harder' : '@srv.easier' })
+    // say how the vote went, so a player who voted Harder sees why the level did not move
+    else if (up + same + down > 0) startRound('srv.levelKept', { n: difficulty, up, same, down })
     else startRound('srv.levelSame', { n: difficulty })
   }
 

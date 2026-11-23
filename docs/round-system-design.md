@@ -52,7 +52,7 @@ Rooms start when players join and can run for days. If the room is empty, the ti
 After every round, won or timed out, the players in the room vote Easier, Same or Harder, and the majority of votes sets the next round's level.
 
 - The level moves at most one step per round, so a room cannot jump from 1 to 7.
-- Only players currently in the room vote. A tie keeps the level. *Proposed:* no vote counts as Same.
+- Only players currently in the room vote, and only cast votes count: a player who does not vote does not hold the level back. A tie, or no votes at all, keeps the level. When the level stays, the next round's message shows the tally (for example "Level 2 stays (1 harder, 1 same, 0 easier)").
 - The vote needs a longer gap than today's 4-second delay between rounds, probably 10 to 15 seconds.
 
 Getting people to vote is the main risk. *Proposed* ways to help:

@@ -288,6 +288,37 @@ test('a complete winning round awards the vote bonus only to actual contributors
   assert.equal(bob.coins, 0, 'voting without building the word does not earn passive coins')
 })
 
+test('only cast votes decide the next level: a silent player does not hold it back, a tie keeps it', async () => {
+  const h = harness()
+  await h.profiles.retain('alice')
+  await h.profiles.retain('bob')
+  h.PlayerIdentityData.create(2, { address: 'bob' })
+  h.Transform.create(2, { position: h.Vector3.create(8, 0, 0), rotation: {} })
+  h.send('enter', { game: 0 }, 'bob')
+  const game = () => [...h.GameState.values.values()][0]
+  assert.equal(h.server.games[0].seats.size, 2, 'both players are seated in the arena')
+  const finishVote = () => {
+    h.systems.get('word-cubes-server')(h.config.NEXT_ROUND_DELAY)
+    assert.equal(game().phase, 'vote')
+  }
+  h.server.testing.timeUp()
+  finishVote()
+  h.send('vote', { choice: 1 }) // alice wants harder, bob says nothing
+  h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  assert.equal(game().phase, 'playing')
+  assert.equal(game().difficulty, 2, 'one Harder vote and one abstention raise the level')
+  h.server.testing.timeUp()
+  finishVote()
+  h.send('vote', { choice: 1 })
+  h.send('vote', { choice: 0 }, 'bob')
+  h.systems.get('word-cubes-server')(0.1)
+  assert.equal(game().difficulty, 2, 'Harder against Same is a tie and keeps the level')
+  h.server.testing.timeUp()
+  finishVote()
+  h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  assert.equal(game().difficulty, 2, 'nobody voting keeps the level')
+})
+
 test('needed letters cannot be destroyed and another player cannot steal a held or placed cube', async () => {
   const h = harness()
   await h.profiles.retain('alice')
