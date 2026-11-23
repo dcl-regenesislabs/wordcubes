@@ -17,7 +17,7 @@ import { t, uiLang } from './i18n'
 import { LANG_NAMES, type Lang } from '../shared/lang'
 import { cubbyEntity, cubbyEmote } from './npcs'
 import { worldPosition, lobbyAnchors, requestPractice, returnToLobby, createPadSign, setPadTour } from './lobby'
-import { slotPosition, getSlotEntities, startArrowEntity } from './arena'
+import { slotPosition, getSlots, startArrowEntity } from './arena'
 import { cubeEntity, cubeGuessPending, myHeldCubeId } from './cubenet'
 import { myState } from './gamestate'
 import { talkSfx } from './audio'
@@ -579,8 +579,8 @@ export function tutorialSystem(dt: number) {
   age += dt
   if (cinematic) hideWorldPointers()
   if (cs.practiceUiOnly) {
-    const frame = getSlotEntities()[2]
-    if (frame !== undefined) hideWorldPointers(frame)
+    const slot = getSlots()[2]
+    if (slot) hideWorldPointers(slot.target)
   }
   if (step === 'countdown' && age >= 3) { requestPractice(lang); setStep('waiting') }
   if (age >= 0.4) cs.practiceTouchReady = true
@@ -605,7 +605,7 @@ export function tutorialSystem(dt: number) {
   const me = Transform.getOrNull(engine.PlayerEntity)?.position
   if (step === 'walk' && me && Math.hypot(me.x - padPosition.x, me.z - padPosition.z) < LAB_PAD_RADIUS && Math.abs(me.y - padPosition.y) < C.PAD_HEIGHT_RANGE) setStep('create')
   else if (step === 'create' && me && (Math.hypot(me.x - padPosition.x, me.z - padPosition.z) > LAB_PAD_RADIUS + 0.5 || Math.abs(me.y - padPosition.y) >= C.PAD_HEIGHT_RANGE)) setStep('walk')
-  if (step === 'waiting' && cs.inGame && cs.game === PRACTICE_GAME && getSlotEntities().length === 3 && npc) {
+  if (step === 'waiting' && cs.inGame && cs.game === PRACTICE_GAME && getSlots().length === 3 && npc) {
     pendingEntry = false
     setStep('arrow')
   }
