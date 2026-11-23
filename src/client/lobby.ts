@@ -17,7 +17,7 @@ import { movePlayerTo } from '~system/RestrictedActions'
 import * as C from '../config'
 import { isLang, LANG_NAMES, type Lang } from '../shared/lang'
 import { t, uiLang } from './i18n'
-import { FLAG_ATLAS, planeFlagUvs, flagAspect } from './ui/flags'
+import { FLAG_TEXTURES, flagAspect } from './ui/flags'
 import { envOrigin, arenaAt } from '../shared/env'
 import { room } from '../shared/messages'
 import { cs, showMessage } from './state'
@@ -236,21 +236,10 @@ export function createPadSign(position: Vector3, text: string): { entity: Entity
   return { entity, dispose: () => { engine.removeEntity(plate); engine.removeEntity(entity) } }
 }
 
-// The language flag beside a pad's status line: a plane child of the line (so it turns to the camera with it), left of
-// the plate, cut from the flag atlas (ui/flags.tsx). Its texture coords pick the flag; scale 0 hides it.
+// The flag turns with the status line. It uses the same full-image texture as the HUD.
 function makeFlag(flag: Entity, info: Entity) {
   Transform.create(flag, { parent: info, scale: Vector3.Zero() })
-  const texture = Material.Texture.Common({ src: FLAG_ATLAS })
-  Material.setPbrMaterial(flag, {
-    texture,
-    emissiveTexture: texture,
-    emissiveColor: Color3.White(),
-    emissiveIntensity: C.PAD_PLATE_GLOW,
-    transparencyMode: MaterialTransparencyMode.MTM_ALPHA_BLEND,
-    metallic: 0,
-    roughness: 1,
-    castShadows: false
-  })
+  MeshRenderer.setPlane(flag)
 }
 
 function showFlag(pad: PadView, lang: Lang | null) {
@@ -261,7 +250,17 @@ function showFlag(pad: PadView, lang: Lang | null) {
     tr.scale = Vector3.Zero()
     return
   }
-  MeshRenderer.setPlane(pad.flag, planeFlagUvs(lang))
+  const texture = Material.Texture.Common({ src: FLAG_TEXTURES[lang] })
+  Material.setPbrMaterial(pad.flag, {
+    texture,
+    emissiveTexture: texture,
+    emissiveColor: Color3.White(),
+    emissiveIntensity: C.PAD_PLATE_GLOW,
+    transparencyMode: MaterialTransparencyMode.MTM_ALPHA_BLEND,
+    metallic: 0,
+    roughness: 1,
+    castShadows: false
+  })
   const w = C.PAD_FLAG_HEIGHT * flagAspect(lang)
   tr.scale = Vector3.create(w, C.PAD_FLAG_HEIGHT, 1)
   tr.position = Vector3.create(-(C.PAD_PLATE_WIDTH / 2 + C.PAD_FLAG_GAP + w / 2), 0, 0)
