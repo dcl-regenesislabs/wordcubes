@@ -48,6 +48,7 @@ const GOLD = Color3.create(1, 0.85, 0.2)
 const AIM_CYAN = Color3.create(0.04, 0.72, 1)
 
 let fx: FrameFx[] = []
+let aimSession = 0
 
 function mobileAimTarget(active: boolean): number | undefined {
   const camera = engine.CameraEntity
@@ -56,23 +57,23 @@ function mobileAimTarget(active: boolean): number | undefined {
     return
   }
 
+  if (!Raycast.has(camera)) aimSession++
   const pointerDirection = PrimaryPointerInfo.getOrNull(engine.RootEntity)?.worldRayDirection
   const direction = pointerDirection && Vector3.lengthSquared(pointerDirection) > 0
     ? { $case: 'globalDirection' as const, globalDirection: pointerDirection }
     : { $case: 'localDirection' as const, localDirection: Vector3.create(0, 0, 1) }
   Raycast.createOrReplace(camera, {
     direction,
-    maxDistance: cs.game === PRACTICE_GAME ? 16 : C.INTERACT_DISTANCE,
+    timestamp: aimSession,
+    // Allow for the third-person camera sitting behind the player.
+    maxDistance: (cs.game === PRACTICE_GAME ? 16 : C.INTERACT_DISTANCE) + 4,
     collisionMask: ColliderLayer.CL_POINTER,
-    queryType: RaycastQueryType.RQT_QUERY_ALL,
-    continuous: true
+    queryType: RaycastQueryType.RQT_HIT_FIRST,
+    continuous: false
   })
 
-  let closest
-  for (const hit of RaycastResult.getOrNull(camera)?.hits ?? []) {
-    if (!closest || hit.length < closest.length) closest = hit
-  }
-  return closest?.entityId
+  const result = RaycastResult.getOrNull(camera)
+  if (result?.timestamp === aimSession) return result.hits[0]?.entityId
 }
 
 // Recolour the frame model. color null = the resting translucent look.
