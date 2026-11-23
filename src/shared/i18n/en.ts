@@ -188,6 +188,7 @@ export const EN: Record<string, string> = {
   'lobby.noServer': 'The game server did not answer. Is the multiplayer server running? Try again.',
   'rank.up': 'Rank up! You are now a {rank}',
   'board.nobody': 'Nobody ranked yet',
+  'board.player': 'Player',
 
   // ranks (one per difficulty level)
   'rank.0': 'Letter',

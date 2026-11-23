@@ -177,6 +177,7 @@ export const PT: Record<string, string> = {
   'lobby.noServer': 'O servidor do jogo não respondeu. O servidor multijogador está rodando? Tente de novo.',
   'rank.up': 'Subiu de rank! Agora você é {rank}',
   'board.nobody': 'Ninguém tem rank ainda',
+  'board.player': 'Jogador',
 
   'rank.0': 'Letra',
   'rank.1': 'Sílaba',
