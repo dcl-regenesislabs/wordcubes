@@ -67,12 +67,27 @@ function mockGame(): Game {
 /** Your rank's name in the UI language. */
 const rankName = (rating: number) => t(`rank.${rankIndex(rating)}`)
 
+/**
+ * The in-game side panel's "Level n [badge] Rank" row. The level text and badge keep their size; the rank name gets
+ * what is left inside the card and shrinks its font to fit, so the row never overflows (long names in every language).
+ */
+export function sideRankRow(levelText: string, name: string) {
+  const inner = SIDE_W() - 2 * (S(4) + S(10)) // inside the card's rim (Frame border) and padding
+  const levelW = estW(levelText, S(22)) + S(6)
+  const icon = S(28)
+  const iconMargin = { left: S(10), right: S(6) }
+  const nameRoom = inner - levelW - icon - iconMargin.left - iconMargin.right
+  const nameFont = Math.min(S(22), Math.floor((nameRoom - S(6)) / Math.max(1, name.length) / 0.55))
+  const nameW = Math.min(nameRoom, estW(name, nameFont) + S(6))
+  return { inner, levelW, icon, iconMargin, nameFont, nameW, total: levelW + icon + iconMargin.left + iconMargin.right + nameW }
+}
+
 /** A rank's badge (the same picture that floats over heads), square. */
 function RankIcon(props: { rank: number; size: number; margin?: Edges; key?: string }) {
   return (
     <UiEntity
       key={props.key}
-      uiTransform={{ width: props.size, height: props.size, margin: props.margin, pointerFilter: 'none' }}
+      uiTransform={{ width: props.size, height: props.size, margin: props.margin, flexShrink: 0, pointerFilter: 'none' }}
       uiBackground={{ textureMode: 'stretch', texture: { src: C.rankBadgeImage(props.rank) } }}
     />
   )
@@ -333,15 +348,16 @@ function SidePanel(props: { g: Game | null }) {
   if (mobile()) return null // phones: the stats are in the top bar, the buttons are native (setup.ts)
   const w = SIDE_W()
   const L = hudLayout(g)
+  const row = sideRankRow(g ? t('hud.level', { n: g.difficulty }) : '', rankName(cs.rating))
   const column = (
     <UiEntity uiTransform={{ width: w, flexDirection: 'column', alignItems: 'flex-end', pointerFilter: 'none' }}>
       <Frame width={w} height={S(150)} edge={PAL.violetLight} fill={PAL.violetDark} radius={S(20)} pad={S(10)} align="center" justify="center">
         <CoinsRow size={S(34)} />
         {g ? (
           <UiEntity uiTransform={{ width: '100%', height: S(30), flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
-            <OutlineLabel value={t('hud.level', { n: g.difficulty })} fontSize={S(22)} color={PAL.dim} width={estW(t('hud.level', { n: g.difficulty }), S(22)) + S(6)} height={S(30)} align="middle-right" />
-            <RankIcon rank={rankIndex(cs.rating)} size={S(28)} margin={{ left: S(10), right: S(6) }} />
-            <OutlineLabel value={rankName(cs.rating)} fontSize={S(22)} color={PAL.dim} width={estW(rankName(cs.rating), S(22)) + S(6)} height={S(30)} align="middle-left" />
+            <OutlineLabel value={t('hud.level', { n: g.difficulty })} fontSize={S(22)} color={PAL.dim} width={row.levelW} height={S(30)} align="middle-right" />
+            <RankIcon rank={rankIndex(cs.rating)} size={row.icon} margin={row.iconMargin} />
+            <OutlineLabel value={rankName(cs.rating)} fontSize={row.nameFont} color={PAL.dim} width={row.nameW} height={S(30)} align="middle-left" />
           </UiEntity>
         ) : (
           <UiEntity uiTransform={{ width: '100%', height: S(30), pointerFilter: 'none' }} />
@@ -977,15 +993,11 @@ export function SettingsPanel() {
 // ---- Lexi's rank table: every rank with its badge, the rooms that suit it, and where you are ----
 export function RanksPanel() {
   const n = RANK_COUNT
-  const k = panelScale(900, 160 + n * 76 + 90)
-  const z = (v: number) => Math.round(S(v) * k)
-  const w = mobile() ? z(900) : fit(z(900))
-  const rowH = z(76)
-  const h = z(160) + n * rowH + z(90)
+  const L = ranksLayout()
+  const { z, w, h, rowH, cols } = L
   const mine = rankIndex(cs.rating)
   // how far you are through your rank, 0..1 (the rating itself stays hidden)
   const progress = mine >= n - 1 ? 1 : Math.max(0, Math.min(1, (cs.rating - mine * C.RATING_PER_RANK) / C.RATING_PER_RANK))
-  const barW = z(220)
   return (
     <Layer>
       <Frame width={w} height={h} edge={PAL.violet} fill={PAL.cream} radius={z(30)} border={z(6)} pad={z(22)} align="center" justify="flex-start" block>
@@ -996,18 +1008,18 @@ export function RanksPanel() {
           return (
             <UiEntity
               key={`rank-row-${r}`}
-              uiTransform={{ width: '100%', height: rowH - z(6), margin: { top: z(6) }, padding: { left: z(10), right: z(14) }, flexDirection: 'row', alignItems: 'center', borderRadius: z(18), pointerFilter: 'none' }}
+              uiTransform={{ width: '100%', height: rowH - z(6), margin: { top: z(6) }, padding: { left: cols.padL, right: cols.padR }, flexDirection: 'row', alignItems: 'center', borderRadius: z(18), pointerFilter: 'none' }}
               uiBackground={{ color: you ? c(1, 0.86, 0.45, 1) : c(0, 0, 0, 0) }}
             >
-              <RankIcon rank={r} size={rowH - z(14)} margin={{ right: z(14) }} />
-              <Label value={`${r + 1}. ${t(`rank.${r}`)}`} fontSize={z(30)} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: z(260), height: rowH }} />
-              <Label value={t('ranks.room', { n: Math.min(MAX_DIFFICULTY, r + 1) })} fontSize={z(22)} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textAlign="middle-left" uiTransform={{ width: z(200), height: rowH }} />
+              <RankIcon rank={r} size={cols.icon} margin={{ right: cols.iconGap }} />
+              <Label value={`${r + 1}. ${t(`rank.${r}`)}`} fontSize={z(30)} font="sans-serif" color={PAL.ink} textAlign="middle-left" uiTransform={{ width: cols.name, height: rowH, flexShrink: 0 }} />
+              <Label value={t('ranks.room', { n: Math.min(MAX_DIFFICULTY, r + 1) })} fontSize={z(22)} font="sans-serif" color={c(0.45, 0.35, 0.6, 1)} textAlign="middle-left" uiTransform={{ width: cols.room, height: rowH, flexShrink: 0 }} />
               {you && (
-                <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', pointerFilter: 'none' }}>
-                  <Label value={t('ranks.you')} fontSize={z(24)} font="sans-serif" color={PAL.violet} textAlign="middle-right" uiTransform={{ width: z(70), height: rowH, margin: { right: z(10) } }} />
+                <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', flexShrink: 0, pointerFilter: 'none' }}>
+                  <Label value={t('ranks.you')} fontSize={z(24)} font="sans-serif" color={PAL.violet} textAlign="middle-right" uiTransform={{ width: cols.you, height: rowH, margin: { right: cols.youGap } }} />
                   {mine < n - 1 && (
-                    <UiEntity uiTransform={{ width: barW, height: z(18), padding: z(3), borderRadius: z(9), pointerFilter: 'none' }} uiBackground={{ color: OUTLINE }}>
-                      <UiEntity uiTransform={{ width: Math.max(z(12), Math.round((barW - z(6)) * progress)), height: '100%', borderRadius: z(6), pointerFilter: 'none' }} uiBackground={{ color: PAL.green }} />
+                    <UiEntity uiTransform={{ width: cols.bar, height: z(18), padding: z(3), borderRadius: z(9), pointerFilter: 'none' }} uiBackground={{ color: OUTLINE }}>
+                      <UiEntity uiTransform={{ width: Math.max(z(12), Math.round((cols.bar - z(6)) * progress)), height: '100%', borderRadius: z(6), pointerFilter: 'none' }} uiBackground={{ color: PAL.green }} />
                     </UiEntity>
                   )}
                 </UiEntity>
@@ -1019,6 +1031,26 @@ export function RanksPanel() {
       </Frame>
     </Layer>
   )
+}
+
+/**
+ * Sizes of the rank table. Design size 900 x (title + intro + 7 rows + Close + slack); phones shrink it to the free
+ * middle of the screen (panelScale), desktops shrink it to 92% of the canvas height so a short window never clips it.
+ */
+export function ranksLayout() {
+  const n = RANK_COUNT
+  const designW = 900
+  const designH = 22 + 60 + 56 + n * 76 + 14 + 60 + 22 + 6 * 2 + 24 // padding, title, intro, rows, Close, border, slack
+  const k = mobile() ? panelScale(designW, designH) : Math.min(1, (view().h * 0.92) / S(designH))
+  const z = (v: number) => Math.round(S(v) * k)
+  const w = mobile() ? z(designW) : fit(z(designW))
+  const h = z(designH)
+  const rowH = z(76)
+  const cols = { padL: z(10), padR: z(14), icon: rowH - z(14), iconGap: z(14), name: z(240), room: z(190), you: z(64), youGap: z(10), bar: z(170) }
+  const inner = w - 2 * (z(6) + z(22)) // inside the rim and padding
+  const rowContent = cols.padL + cols.icon + cols.iconGap + cols.name + cols.room + cols.you + cols.youGap + cols.bar + cols.padR
+  const content = z(60) + z(56) + n * rowH + z(14) + z(60) // what the column of children needs
+  return { k, z, w, h, rowH, cols, inner, rowContent, content, innerH: h - 2 * (z(6) + z(22)) }
 }
 
 // ---- the vendor's shop ----

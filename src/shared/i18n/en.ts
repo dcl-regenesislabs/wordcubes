@@ -89,7 +89,6 @@ export const EN: Record<string, string> = {
   // game HUD
   'hud.frozen': 'Frozen {s}s',
   'hud.levelShort': 'Lv{n}',
-  'hud.levelRank': 'Level {n}   {rank}',
   'hud.level': 'Level {n}',
   'hud.hint': 'Hint',
   'hud.noHints': 'No hints',
@@ -181,7 +180,6 @@ export const EN: Record<string, string> = {
   'sign.full': 'FULL',
 
   // lobby
-  'lobby.rank': 'Rank',
   'lobby.rankOf': 'Rank {n} of {total}',
   'ranks.title': 'Ranks',
   'ranks.intro': 'Win words in rooms at your level or harder to climb. Each rank matches a room level.',

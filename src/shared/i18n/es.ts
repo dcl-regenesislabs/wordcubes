@@ -85,7 +85,6 @@ export const ES: Record<string, string> = {
 
   'hud.frozen': 'Congelado {s}s',
   'hud.levelShort': 'Nv{n}',
-  'hud.levelRank': 'Nivel {n}   {rank}',
   'hud.level': 'Nivel {n}',
   'hud.hint': 'Pista',
   'hud.noHints': 'Sin pistas',
@@ -170,7 +169,6 @@ export const ES: Record<string, string> = {
   'sign.level': 'Nivel {n}',
   'sign.full': 'LLENO',
 
-  'lobby.rank': 'Rango',
   'lobby.rankOf': 'Rango {n} de {total}',
   'ranks.title': 'Rangos',
   'ranks.intro': 'Gana palabras en salas de tu nivel o más difíciles para subir. Cada rango corresponde a un nivel de sala.',

@@ -156,6 +156,7 @@ function setStep(next: Step) {
   cs.shop = false
   cs.showHowTo = false
   cs.showSettings = false
+  cs.showRanks = false
   cs.message = ''
   cs.messageSticky = false
   cs.practiceLetter = ['grab', 'lastGrab', 'retryGrab'].includes(next) ? PRACTICE_WORDS[lang].answer[next === 'grab' ? 0 : 2] : ''
