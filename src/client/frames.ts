@@ -5,19 +5,27 @@ import {
   engine,
   Transform,
   MaterialTransparencyMode,
-  GltfNodeModifiers
+  GltfNodeModifiers,
+  ColliderLayer,
+  PrimaryPointerInfo,
+  Raycast,
+  RaycastQueryType,
+  RaycastResult
 } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Color3, Color4, Vector3 } from '@dcl/sdk/math'
 import * as C from '../config'
 import { placedProxy, isHolding } from './cubes'
-import { getSlotEntities, slotPosition } from './arena'
+import { getSlots, slotHitScale, slotPosition } from './arena'
 import { cs } from './state'
+import { mobile } from './ui/platform'
+import { PRACTICE_GAME } from '../shared/tutorial'
 
 type Status = 'idle' | 'locked' | 'fail' | 'win'
 
 interface FrameFx {
   frame: Entity
+  target: Entity
   base: Vector3
   status: Status
   t: number // seconds since the status last changed
@@ -37,8 +45,36 @@ const BLUE = Color3.create(0.1, 0.5, 1)
 const RED = Color3.create(1, 0.08, 0.08)
 const GREEN = Color3.create(0.1, 1, 0.3)
 const GOLD = Color3.create(1, 0.85, 0.2)
+const AIM_CYAN = Color3.create(0.04, 0.72, 1)
 
 let fx: FrameFx[] = []
+let aimSession = 0
+
+function mobileAimTarget(active: boolean): number | undefined {
+  const camera = engine.CameraEntity
+  if (!active) {
+    if (Raycast.has(camera)) Raycast.deleteFrom(camera)
+    return
+  }
+
+  if (!Raycast.has(camera)) aimSession++
+  const pointerDirection = PrimaryPointerInfo.getOrNull(engine.RootEntity)?.worldRayDirection
+  const direction = pointerDirection && Vector3.lengthSquared(pointerDirection) > 0
+    ? { $case: 'globalDirection' as const, globalDirection: pointerDirection }
+    : { $case: 'localDirection' as const, localDirection: Vector3.create(0, 0, 1) }
+  Raycast.createOrReplace(camera, {
+    direction,
+    timestamp: aimSession,
+    // Allow for the third-person camera sitting behind the player.
+    maxDistance: (cs.game === PRACTICE_GAME ? 16 : C.INTERACT_DISTANCE) + 4,
+    collisionMask: ColliderLayer.CL_POINTER,
+    queryType: RaycastQueryType.RQT_HIT_FIRST,
+    continuous: false
+  })
+
+  const result = RaycastResult.getOrNull(camera)
+  if (result?.timestamp === aimSession) return result.hits[0]?.entityId
+}
 
 // Recolour the frame model. color null = the resting translucent look.
 function paint(frame: Entity, color: Color3 | null, alpha: number, intensity: number) {
@@ -71,11 +107,12 @@ function setStatus(f: FrameFx, status: Status) {
 }
 
 export function resetFrames() {
-  const frames = getSlotEntities()
-  fx = frames.map((frame, i) => {
+  const slots = getSlots()
+  fx = slots.map(({ frame, target }, i) => {
     const entry: FrameFx = {
       frame,
-      base: slotPosition(i, frames.length),
+      target,
+      base: slotPosition(i, slots.length),
       status: 'idle',
       t: 0,
       lockT: 999,
@@ -111,9 +148,10 @@ function rand() {
 export function framesSystem(dt: number) {
   const n = fx.length
   const holding = isHolding()
+  const aimTarget = mobileAimTarget(n > 0 && holding && mobile() && !cs.practiceUiOnly && !cs.tutorialCinematic)
   for (let i = 0; i < n; i++) {
     const f = fx[i]
-    if (!Transform.has(f.frame)) continue // removed with the word (idle game or left it)
+    if (!Transform.has(f.target)) continue // removed with the word (idle game or left it)
     f.t += dt
     f.lockT += dt
     let off = Vector3.Zero()
@@ -158,16 +196,17 @@ export function framesSystem(dt: number) {
     const wantReady = f.status === 'idle' && holding && !placedProxy.get(i) && (!cs.tutorialActive || cs.practiceSlot === i)
     if (wantReady) {
       const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220)
-      color = GOLD
-      intensity = 1.5 + 2.5 * pulse
-      alpha = 0.7 + 0.2 * pulse
+      const aimed = f.target === aimTarget
+      color = aimed ? AIM_CYAN : GOLD
+      intensity = aimed ? 2 : 1.5 + 2.5 * pulse
+      alpha = aimed ? 1 : 0.7 + 0.2 * pulse
       scale = 1 + 0.05 * pulse
     } else if (f.ready && f.status === 'idle') paint(f.frame, null, IDLE_ALPHA, 0)
     f.ready = wantReady
 
-    const t = Transform.getMutable(f.frame)
+    const t = Transform.getMutable(f.target)
     t.position = Vector3.create(f.base.x + off.x, f.base.y + off.y, f.base.z + off.z)
-    t.scale = Vector3.scale(Vector3.One(), C.CUBE_SCALE * scale)
+    t.scale = Vector3.scale(slotHitScale, scale)
 
     // the placed cube rides with its frame
     const cube = placedProxy.get(i)

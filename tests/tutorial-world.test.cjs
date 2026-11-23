@@ -2,7 +2,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { loadTs } = require('./load-ts.cjs')
 
-function harness() {
+function harness(platform = { mobile: false, holding: false }) {
   const config = loadTs('src/config.ts')
   const { cs } = loadTs('src/client/state.ts', { '../config': config })
   const v = (x=0,y=0,z=0) => ({x,y,z})
@@ -11,7 +11,8 @@ function harness() {
   const component = (defaults = {}) => {
     const data = new Map()
     return { data, get:e=>data.get(e), getMutable:e=>data.get(e), getOrNull:e=>data.get(e) ?? null,
-      has:e=>data.has(e), create:(e,d)=>data.set(e,{...defaults,...d}) }
+      has:e=>data.has(e), deleteFrom:e=>data.delete(e),
+      create:(e,d)=>data.set(e,{...defaults,...d}), createOrReplace:(e,d)=>data.set(e,{...defaults,...d}) }
   }
   const Transform=component({position:v(),scale:v(1,1,1),rotation:{}}), GltfContainer=component(), TextShape=component()
   const MeshCollider=component(), MeshRenderer=component(), PlayerIdentityData=component()
@@ -29,7 +30,9 @@ function harness() {
   const pointerEventsSystem={onPointerDown:(d,fn)=>pointers.set(d.entity,{...d.opts,fn}),removeOnPointerDown:e=>pointers.delete(e)}
   const ecs={engine,pointerEventsSystem,Transform,GltfContainer,TextShape,MeshCollider,MeshRenderer,Material,Billboard,Animator,AvatarModifierArea,PlayerIdentityData,
     ColliderLayer:{CL_PHYSICS:1,CL_POINTER:2},BillboardMode:{BM_Y:1},TextAlignMode:{TAM_MIDDLE_CENTER:1},InputAction:{IA_POINTER:1},MaterialTransparencyMode:{MTM_ALPHA_BLEND:1}}
-  const math={Vector3,Quaternion:{fromEulerDegrees:()=>({}),multiply:()=>({})},Color3:{White:()=>v(1,1,1)},Color4:{create:(r,g,b,a)=>({r,g,b,a})}}
+  Object.assign(ecs, { GltfNodeModifiers: component(), PrimaryPointerInfo: component(),
+    Raycast: component(), RaycastResult: component(), RaycastQueryType: { RQT_HIT_FIRST: 0 } })
+  const math={Vector3,Quaternion:{fromEulerDegrees:()=>({}),multiply:()=>({})},Color3:{create:v,Black:()=>v(),White:()=>v(1,1,1)},Color4:{create:(r,g,b,a)=>({r,g,b,a})}}
   Transform.create(1,{position:v(500,160,500)})
   Transform.create(10,{position:v(186,160,57)})
   for(let i=0;i<7;i++) Transform.create(20+i,{position:v(160+i*5,162,40),scale:v(4.4,4.4,4.4)})
@@ -46,7 +49,12 @@ function harness() {
   const arena=loadTs('src/client/arena.ts',{
     '@dcl/sdk/ecs':ecs,'@dcl/sdk/math':math,'../config':config,'./i18n':i18n,'../shared/env':env,'./state':{cs},'../shared/tutorial':loadTs('src/shared/tutorial.ts')
   })
-  return {config,cs,lobby,arena,ecs,systems,pointers,teleports}
+  const frames = loadTs('src/client/frames.ts', {
+    '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math, '../config': config, './arena': arena, './state': { cs },
+    './cubes': { placedProxy: new Map(), isHolding: () => platform.holding },
+    './ui/platform': { mobile: () => platform.mobile }, '../shared/tutorial': loadTs('src/shared/tutorial.ts')
+  })
+  return {config,cs,lobby,arena,frames,ecs,systems,pointers,teleports}
 }
 
 test('pad accordion reveals rooms 1 through 7 from left to right and restores the original heights', () => {
@@ -86,30 +94,77 @@ test('every practice frame has a full pointer collider reachable from the first-
   h.arena.buildSlots(3)
   const hits=[...h.ecs.MeshCollider.data].filter(([,d])=>d.shape==='box')
   assert.equal(hits.length,3)
-  for(const [e,d] of hits) {
-    assert.equal(d.mask,h.ecs.ColliderLayer.CL_POINTER)
-    assert.equal(h.pointers.get(e).maxDistance,16)
-    const hit=h.ecs.Transform.get(e), frame=h.ecs.Transform.get(hit.parent)
-    assert.ok(Math.abs(hit.scale.x*frame.scale.x-h.config.SLOT_HIT_WIDTH)<1e-6)
-    assert.ok(Math.abs(hit.scale.y*frame.scale.y-h.config.SLOT_HIT_HEIGHT)<1e-6)
+  for (const [index, { target, frame }] of h.arena.getSlots().entries()) {
+    assert.equal(h.ecs.MeshCollider.get(target).mask, h.ecs.ColliderLayer.CL_POINTER)
+    assert.equal(h.pointers.get(target).maxDistance, 16)
+    assert.equal(h.pointers.get(target).showHighlight, true)
+    const hit = h.ecs.Transform.get(target), visual = h.ecs.Transform.get(frame)
+    assert.equal(hit.parent, undefined)
+    assert.deepEqual(hit.position, h.arena.slotPosition(index, 3))
+    assert.equal(visual.parent, target)
+    for (const [axis, expected] of [['x', h.config.SLOT_HIT_WIDTH], ['y', h.config.SLOT_HIT_HEIGHT], ['z', h.config.SLOT_HIT_DEPTH]]) {
+      assert.equal(hit.scale[axis], expected)
+      assert.ok(Math.abs(hit.scale[axis] * visual.scale[axis] - h.config.CUBE_SCALE) < 1e-6)
+    }
   }
   h.pointers.get(hits[0][0]).fn()
   assert.equal(clicked,0)
   h.cs.tutorialActive=true
   h.cs.practiceUiOnly=true
   clicked=-1
-  const lastFrame=h.arena.getSlotEntities()[2]
-  h.pointers.get(lastFrame).fn()
-  h.pointers.get(hits[2][0]).fn()
-  assert.equal(clicked,-1,'neither the 3D frame nor its hitbox can bypass the UI lesson')
+  const lastSlot = h.arena.getSlots()[2]
+  assert.equal(h.pointers.has(lastSlot.frame), false)
+  h.pointers.get(lastSlot.target).fn()
+  assert.equal(clicked, -1, 'world placement cannot bypass the UI lesson')
   h.arena.clickSlot(2)
   assert.equal(clicked,2,'the HUD tile still places the letter')
   h.cs.practiceUiOnly=false
   clicked=-1
-  h.pointers.get(lastFrame).fn()
+  h.pointers.get(lastSlot.target).fn()
   assert.equal(clicked,2,'world placement resumes after the UI lesson')
   h.arena.clearSlots()
   assert.equal(h.pointers.size,0,'handlers are removed with the word')
+})
+
+test('mobile aim recolors only the aimed slot and discards hits from a previous hold', () => {
+  const platform = { mobile: false, holding: true }
+  const { arena, frames, ecs, cs, config } = harness(platform)
+  cs.game = 0
+  arena.buildSlots(3)
+  frames.resetFrames()
+  const camera = ecs.engine.CameraEntity
+  const slots = arena.getSlots()
+  const colors = () => Array.from(slots, ({ frame }) =>
+    ecs.GltfNodeModifiers.get(frame).modifiers[0].material.material.pbr.emissiveColor)
+  const gold = { x: 1, y: 0.85, z: 0.2 }
+  const cyan = { x: 0.04, y: 0.72, z: 1 }
+  frames.framesSystem(0.016)
+  assert.equal(ecs.Raycast.has(camera), false)
+  assert.deepEqual(colors(), [gold, gold, gold])
+
+  platform.mobile = true
+  frames.framesSystem(0.016)
+  const query = ecs.Raycast.get(camera)
+  assert.equal(query.maxDistance, config.INTERACT_DISTANCE + 4)
+  assert.equal(query.queryType, ecs.RaycastQueryType.RQT_HIT_FIRST)
+  assert.equal(query.continuous, false)
+  ecs.RaycastResult.create(camera, { timestamp: query.timestamp, hits: [{ entityId: slots[1].target }] })
+  frames.framesSystem(0.016)
+  assert.deepEqual(colors(), [gold, cyan, gold])
+
+  platform.holding = false
+  frames.framesSystem(0.016)
+  assert.equal(ecs.Raycast.has(camera), false)
+  platform.holding = true
+  frames.framesSystem(0.016)
+  assert.deepEqual(colors(), [gold, gold, gold])
+
+  ecs.RaycastResult.create(camera, { timestamp: ecs.Raycast.get(camera).timestamp, hits: [{ entityId: slots[0].target }] })
+  frames.framesSystem(0.016)
+  assert.deepEqual(colors(), [cyan, gold, gold])
+  platform.mobile = false
+  frames.framesSystem(0.016)
+  assert.deepEqual(colors(), [gold, gold, gold])
 })
 
 test('an eject response for a previous room cannot kick the player out of the private lab', () => {
