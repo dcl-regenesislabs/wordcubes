@@ -28,7 +28,9 @@ for (const l of lang.LANGS) {
       assert.ok(!seen.has(w.answer), `${w.answer} is listed twice`)
       seen.add(w.answer)
       // a clue that spells out its answer gives the round away
-      assert.ok(!fold(w.question).includes(w.answer), `${w.answer}'s clue contains its answer`)
+      // ...and so does its root: no clue holds the first 5 letters of its answer (destornillador / TORNILLO)
+      const root = w.answer.slice(0, 5)
+      assert.ok(!fold(w.question).includes(root), `${w.answer}'s clue contains its answer or its root ${root}`)
       // two answers with one clue leave only the frame count to tell them apart, and a wrong guess collapses the word
       const clue = fold(w.question).replace(/[^A-Z]/g, '')
       assert.ok(!clues.has(clue), `${w.answer} has the same clue as ${clues.get(clue)}`)

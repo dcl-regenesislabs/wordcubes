@@ -106,7 +106,7 @@ export const EN: Record<string, string> = {
 
   // vote and round result
   'vote.title': 'Next round: how hard?',
-  'vote.sub': 'Level {n} now  -  {s}s  -  no vote counts as Same',
+  'vote.sub': 'Level {n} now  -  {s}s  -  only cast votes count',
   'vote.easier': 'Easier',
   'vote.same': 'Same',
   'vote.harder': 'Harder',
@@ -236,6 +236,9 @@ export const EN: Record<string, string> = {
   'srv.newGame': 'A new game! Find the letters.',
   'srv.levelChanged': 'Level {n} ({dir})! Find the letters.',
   'srv.levelSame': 'Level {n}. Find the letters.',
+  'srv.levelMax': 'Level {n} is already the hardest. Find the letters.',
+  'srv.levelMin': 'Level {n} is already the easiest. Find the letters.',
+  'srv.levelKept': 'Level {n} stays ({up} harder, {same} same, {down} easier). Find the letters.',
   'srv.harder': 'harder',
   'srv.easier': 'easier',
   'srv.collapsed': 'Wrong cube! The whole word collapsed.',

@@ -64,7 +64,7 @@ export const INTERACT_DISTANCE = 10
 export const CUBES_BLOCK_PLAYER = false
 
 // Economy / rules
-// Difficulty: one level per room (1..7), set by the players' vote (not built yet; see docs/round-system-design.md).
+// Difficulty: one level per room (1..7), set by the players' vote after every round (see docs/round-system-design.md).
 // Level 1 is easy. Each level has its own word list (server/words.ts) and round timer; the table can grow more levers later.
 export const START_DIFFICULTY = 1
 export const LEVELS: { seconds: number }[] = [
@@ -99,7 +99,7 @@ export const VOLUMES: { id: string; label: string; desc: string; default: number
 
 // TESTING ONLY: a hidden cheat. In the lobby, clicking the S cube of the "WORD CUBES" blocks gives CHEAT_COINS coins every time.
 // The server checks this flag too. Set CHEATS_ENABLED to false before a release.
-export const CHEATS_ENABLED = true
+export const CHEATS_ENABLED = false
 export const CHEAT_COINS = 500
 export const CHEAT_ENTITY = 'CubeS.glb'
 

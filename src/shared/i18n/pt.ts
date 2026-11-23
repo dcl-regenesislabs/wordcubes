@@ -101,7 +101,7 @@ export const PT: Record<string, string> = {
   'toast.holdingWord': 'Segurando',
 
   'vote.title': 'Próxima rodada: qual dificuldade?',
-  'vote.sub': 'Nível {n} agora  -  {s}s  -  sem voto conta como Igual',
+  'vote.sub': 'Nível {n} agora  -  {s}s  -  só contam os votos',
   'vote.easier': 'Mais fácil',
   'vote.same': 'Igual',
   'vote.harder': 'Mais difícil',
@@ -220,6 +220,9 @@ export const PT: Record<string, string> = {
   'srv.newGame': 'Um jogo novo! Encontre as letras.',
   'srv.levelChanged': 'Nível {n} ({dir})! Encontre as letras.',
   'srv.levelSame': 'Nível {n}. Encontre as letras.',
+  'srv.levelMax': 'O nível {n} já é o mais difícil. Encontre as letras.',
+  'srv.levelMin': 'O nível {n} já é o mais fácil. Encontre as letras.',
+  'srv.levelKept': 'Continua o nível {n} ({up} mais difícil, {same} igual, {down} mais fácil). Encontre as letras.',
   'srv.harder': 'mais difícil',
   'srv.easier': 'mais fácil',
   'srv.collapsed': 'Cubo errado! A palavra inteira desmoronou.',
