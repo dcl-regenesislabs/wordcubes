@@ -177,6 +177,7 @@ const BAR_TIME_W = () => S(150)
 const BAR_COINS_W = () => S(110)
 const BAR_PAD = () => S(8)
 const BAR_DIVIDER = () => S(3)
+const MOBILE_CLUE_FONT = 32 // the question under the bar: as big as the desktop one, so it reads on a phone (#98)
 function mobileLayout(g: Game | null) {
   const v = view()
   const right = 0 // the renderer already applies the device safe area
@@ -193,7 +194,10 @@ function mobileLayout(g: Game | null) {
   const left = v.w - right - panelW
   const barH = Math.round(v.h * C.MOBILE_TOP_BAR_HEIGHT)
   const top = Math.round(v.h * C.MOBILE_TOP_BAR_TOP)
-  return { top, right, left, reserve: Math.max(0, v.w - left - panelW), panelW, tile, gap, rowW, barH, sideW: 0, columnH: 0, itemsH: 0, itemsBeside: false }
+  // the question panel under the bar keeps a readable width even when a short word shrinks the bar (#98)
+  const clueW = Math.max(panelW, Math.min(room, Math.round(v.w * 0.43)))
+  const clueLeft = v.w - right - clueW
+  return { top, right, left, reserve: Math.max(0, v.w - left - panelW), panelW, tile, gap, rowW, barH, clueW, clueLeft, sideW: 0, columnH: 0, itemsH: 0, itemsBeside: false }
 }
 
 export function hudLayout(g: Game | null) {
@@ -215,7 +219,7 @@ export function hudLayout(g: Game | null) {
   const n = Math.max(g?.length ?? 1, 1)
   const gap = S(TILE_GAP)
   const tile = Math.min(S(84), Math.max(S(16), Math.floor(panelW / n) - gap))
-  return { top, right, left, reserve, panelW, tile, gap, rowW: n * (tile + gap), barH: 0, sideW, columnH, itemsH, itemsBeside }
+  return { top, right, left, reserve, panelW, tile, gap, rowW: n * (tile + gap), barH: 0, clueW: panelW, clueLeft: left, sideW, columnH, itemsH, itemsBeside }
 }
 // A panel width that never runs off a narrow screen.
 const fit = (w: number, share = 0.92) => Math.min(w, Math.round(view().w * share))
@@ -224,7 +228,7 @@ const fitH = (h: number, share = 0.92) => Math.min(h, Math.round(view().h * shar
 function WordPanel(props: { g: Game }) {
   const { g } = props
   const n = Math.max(g.length, 1)
-  const { top, left, reserve, panelW, tile, gap, rowW, barH } = hudLayout(g)
+  const { top, left, reserve, panelW, tile, gap, rowW, barH, clueW, clueLeft } = hudLayout(g)
   const qFont = S(32)
   const qLines = Math.ceil((g.question.length * qFont * 0.55) / (panelW * 0.6)) || 1
   const qW = clamp(Math.round(g.question.length * qFont * 0.56) + S(90), Math.min(S(380), panelW), panelW)
@@ -260,14 +264,17 @@ function WordPanel(props: { g: Game }) {
     )
   }
 
-  // Phones: the slim top bar (time and level | tiles | coins) and the question under it as bare outlined text.
+  // Phones: the slim top bar (time and level | tiles | coins) and the question under it on the same cream panel as
+  // desktop. Bare text over the world was too small to read on a phone (#98).
   if (mobile()) {
-    const font = S(22)
-    const lines = Math.round(g.question.length * font * 0.55) > panelW ? 2 : 1
+    const font = S(MOBILE_CLUE_FONT)
+    const textW = clueW - 2 * S(14)
+    const lines = clamp(Math.ceil((g.question.length * font * 0.55) / textW), 1, 3)
+    const clueH = Math.round(font * 1.35 * lines) + S(16)
     const divider = <UiEntity uiTransform={{ width: BAR_DIVIDER(), height: '60%', margin: { left: BAR_PAD(), right: BAR_PAD() } }} uiBackground={{ color: PAL.violetLight }} />
     const text = `${coins()}`
     return (
-      <Layer justify="flex-start" align="flex-start" pad={{ top, left, right: reserve }}>
+      <Layer justify="flex-start" align="flex-end" pad={{ top, left: clueLeft, right: reserve }}>
         <Frame width={panelW} height={barH} edge={PAL.violetLight} fill={PAL.violetGlass} radius={barH / 2} border={S(3)} dir="row" align="center" justify="center">
           <UiEntity uiTransform={{ width: BAR_TIME_W(), height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}>
             <OutlineLabel value={timeText(g)} fontSize={S(28)} color={timeColor(g)} width={S(g.frozen > 0 ? 110 : 80)} height={S(40)} />
@@ -281,7 +288,17 @@ function WordPanel(props: { g: Game }) {
             <OutlineLabel value={text} fontSize={S(24)} color={PAL.yellow} width={Math.max(S(30), Math.round(text.length * S(24) * 0.62))} height={S(32)} align="middle-left" />
           </UiEntity>
         </Frame>
-        <OutlineLabel value={g.question || t('word.connecting')} fontSize={font} color={PAL.text} width={panelW} height={Math.round(font * 1.4 * lines) + S(8)} align="middle-right" wrap soft />
+        <Frame width={clueW} height={clueH} edge={PAL.violet} fill={PAL.cream} radius={S(14)} border={S(3)} margin={{ top: S(6) }} align="center" justify="center">
+          <Label
+            value={g.question || t('word.connecting')}
+            fontSize={font}
+            font="sans-serif"
+            color={PAL.ink}
+            textWrap="wrap"
+            textAlign="middle-center"
+            uiTransform={{ width: textW, height: '100%' }}
+          />
+        </Frame>
       </Layer>
     )
   }
@@ -407,7 +424,7 @@ export function Toast(props: { text: string; plain?: boolean; shift?: number }) 
   const font = S(20)
   const icon = Math.round(font * 1.5)
   const left = mobile() ? 0 : EDGE() + S(40) // mobile renderer already applies the device safe area
-  const w = mobile() ? Math.min(S(360), Math.max(S(200), mobileLayout(null).left - S(16) - left)) : S(360) // ends before the top bar (and its question) starts
+  const w = mobile() ? Math.min(S(360), Math.max(S(200), Math.min(mobileLayout(null).left, mobileLayout(null).clueLeft) - S(16) - left)) : S(360) // ends before the top bar and its question panel start
   const inner = w - S(28)
   const pieces: ToastPiece[] = mobile() && !props.plain ? toastPieces(props.text) : [{ text: props.text }]
   const withIcons = pieces.some((p) => 'icon' in p)

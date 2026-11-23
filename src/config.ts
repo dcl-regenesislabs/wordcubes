@@ -64,7 +64,7 @@ export const INTERACT_DISTANCE = 10
 export const CUBES_BLOCK_PLAYER = false
 
 // Economy / rules
-// Difficulty: one level per room (1..7), set by the players' vote (not built yet; see docs/round-system-design.md).
+// Difficulty: one level per room (1..7), set by the players' vote after every round (see docs/round-system-design.md).
 // Level 1 is easy. Each level has its own word list (server/words.ts) and round timer; the table can grow more levers later.
 export const START_DIFFICULTY = 1
 export const LEVELS: { seconds: number }[] = [
@@ -99,7 +99,7 @@ export const VOLUMES: { id: string; label: string; desc: string; default: number
 
 // TESTING ONLY: a hidden cheat. In the lobby, clicking the S cube of the "WORD CUBES" blocks gives CHEAT_COINS coins every time.
 // The server checks this flag too. Set CHEATS_ENABLED to false before a release.
-export const CHEATS_ENABLED = true
+export const CHEATS_ENABLED = false
 export const CHEAT_COINS = 500
 export const CHEAT_ENTITY = 'CubeS.glb'
 
@@ -125,7 +125,6 @@ export const COINS_PER_BREAK = 5
 export const COINS_PER_WORD = 25
 export const NEXT_ROUND_DELAY = 4 // seconds the result (won / time's up) stays on screen before the vote
 export const VOTE_SECONDS = 12 // how long the Easier / Same / Harder vote stays open (ends early once everyone present voted)
-export const ROUNDS_FOR_REWARD = 2
 
 // Physics
 export const GRAVITY = -14
@@ -272,8 +271,9 @@ export const LEADERBOARD_TEXT_YAW: number = 180 // text reads from its -Z side, 
 export const LEADERBOARD_WIDTH = 7.6 // m between the place number's left edge and the rank's right edge
 export const LEADERBOARD_ROW_HEIGHT = 1.65 // m
 export const LEADERBOARD_FONT = 5.5
+export const LEADERBOARD_LINE_OFFSET = 0.34 // m above and below the centre of each plank
 export const LEADERBOARD_NAME_X = 1 // m from the place number to the name
-export const LEADERBOARD_NAME_CHARS = 12 // longer names are cut with "…"
+export const LEADERBOARD_NAME_CHARS = 12 // name portion only; the wallet suffix is always kept
 
 export const PAD_PLATE_IMAGE = 'assets/images/sign_plate.png'
 export const PAD_PLATE_WIDTH = 5.6 // m

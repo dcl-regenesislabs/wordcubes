@@ -233,7 +233,7 @@ export function netLines(): string[] {
       .map(([k, v]) => `${k} ${v}`)
       .join(' ')
     lines.push(`game ${x.game + 1}: ${x.active ? x.phase : 'idle'} r${x.round} lvl ${x.level} ${x.timeLeft}s  seats ${x.seats} in ${x.inArena}`)
-    lines.push(`  cubes ${x.cubes}${x.settling ? ` (+${x.settling} settling)` : ''} awake ${x.awake}${modes ? ' ' + modes : ''}  out ${kb(x.sent.b)}/s ${x.sent.n} msgs/s`)
+    lines.push(`  cubes ${x.cubes} awake ${x.awake}${modes ? ' ' + modes : ''}  out ${kb(x.sent.b)}/s ${x.sent.n} msgs/s`)
   }
   return lines
 }

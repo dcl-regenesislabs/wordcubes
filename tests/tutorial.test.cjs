@@ -68,7 +68,7 @@ function harness(phone = false, canvas, opts = {}) {
     './lobby': { setPadTour: time => padTour.push(time), createPadSign: (position, text) => { const entity = engine.addEntity(); Transform.create(entity, { position }); TextShape.create(entity, { text }); return { entity, dispose: () => engine.removeEntity(entity) } }, worldPosition: e => Transform.get(e).position, lobbyAnchors: () => ({ origin: vec(186,0,57), pad: vec(167,0,38) }),
       requestPractice: lang => { localStarts.push(lang); cs.game = 7 },
       returnToLobby: () => { cs.game = -1; cs.inGame = false; lobbyReturns++ } },
-    './arena': { slotPosition: i => vec(315+i,163,360), getSlotEntities: () => [40,41,42], startArrowEntity: () => null },
+    './arena': { slotPosition: i => vec(315+i,163,360), getSlots: () => [40,41,42].map(entity => ({ target: entity, frame: entity })), startArrowEntity: () => null },
     './cubenet': { cubeEntity: id => id, cubeGuessPending: () => false, myHeldCubeId: () => held },
     './gamestate': { myState: () => [...GameState.data.values()].find(g => g.game === cs.game) },
     './audio': { talkSfx: noop }, './ui/platform': platform, '../ui/TutorialOverlay': { state: overlay }

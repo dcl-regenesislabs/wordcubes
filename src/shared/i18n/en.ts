@@ -8,7 +8,7 @@ export const EN: Record<string, string> = {
   "tutorial.welcome.mobile": "Welcome to Word Cubes! I'm Cubby. Let's build your first word together.",
   "tutorial.rooms.mobile": "These pads lead to rooms with other players. First, we will practice together!",
   "tutorial.pad.mobile": "My laboratory! This pad works like the others. Let us try it.",
-  "tutorial.walk.mobile": "Use the joystick to walk onto the glowing laboratory pad.",
+  "tutorial.walk.mobile": "Use the joystick to move toward the glowing laboratory pad, then jump onto it.",
   "tutorial.create.mobile": "We will practice in {lang}, your phone language. Tap Create practice. Other languages come later!",
   "tutorial.waiting.mobile": "Loading our laboratory... I am coming with you!",
   "tutorial.arrow.mobile": "The arrow marks the START and reading direction. The first LETTER goes in the frame beside it.",
@@ -43,7 +43,7 @@ export const EN: Record<string, string> = {
   "tutorial.welcome": "Welcome to Word Cubes! I'm Cubby. Let's build your first word together.",
   "tutorial.rooms": "These pads take you to the rooms where everyone plays together. We will visit them after a little practice!",
   "tutorial.pad": "Here is my laboratory! This pad works just like the others. Let's try it together.",
-  "tutorial.walk": "Walk onto the glowing laboratory pad beside me.",
+  "tutorial.walk": "Jump onto the glowing laboratory pad beside me.",
   "tutorial.create": "We will practice in {lang}, your current language. You can try the other languages later. Create your practice room!",
   "tutorial.waiting": "Preparing our laboratory... I am coming with you! If it takes too long, you can try again.",
   "tutorial.arrow": "First, look at the arrow! It marks where the word starts and the direction to read it. The FIRST LETTER goes beside it.",
@@ -107,7 +107,7 @@ export const EN: Record<string, string> = {
 
   // vote and round result
   'vote.title': 'Next round: how hard?',
-  'vote.sub': 'Level {n} now  -  {s}s  -  no vote counts as Same',
+  'vote.sub': 'Level {n} now  -  {s}s  -  only cast votes count',
   'vote.easier': 'Easier',
   'vote.same': 'Same',
   'vote.harder': 'Harder',
@@ -194,6 +194,7 @@ export const EN: Record<string, string> = {
   'lobby.noServer': 'The game server did not answer. Is the multiplayer server running? Try again.',
   'rank.up': 'Rank up! You are now a {rank}',
   'board.nobody': 'Nobody ranked yet',
+  'board.player': 'Player',
 
   // ranks (one per difficulty level)
   'rank.0': 'Letter',
@@ -242,6 +243,9 @@ export const EN: Record<string, string> = {
   'srv.newGame': 'A new game! Find the letters.',
   'srv.levelChanged': 'Level {n} ({dir})! Find the letters.',
   'srv.levelSame': 'Level {n}. Find the letters.',
+  'srv.levelMax': 'Level {n} is already the hardest. Find the letters.',
+  'srv.levelMin': 'Level {n} is already the easiest. Find the letters.',
+  'srv.levelKept': 'Level {n} stays ({up} harder, {same} same, {down} easier). Find the letters.',
   'srv.harder': 'harder',
   'srv.easier': 'easier',
   'srv.collapsed': 'Wrong cube! The whole word collapsed.',
@@ -250,7 +254,6 @@ export const EN: Record<string, string> = {
   'srv.built.one': '{word}! Built by 1 player',
   'srv.built': '{word}! Built by {n} players',
   'srv.youBuilt': 'You built {word}! +{coins} coins',
-  'srv.wearable': 'Wearable reward unlocked! (stub: not delivered yet)',
   'srv.handsFull': 'Hands full. Click a frame to throw it, E to break it or F to throw it away.',
   'srv.handsFull.mobile': 'Hands full. Tap a frame to throw it, E to break it or F to throw it away.',
   'srv.stepOff': 'Step off the platform to pick up letters.',

@@ -63,8 +63,8 @@ export function addPassportBlocker(arena: Entity) {
   })
 }
 
-let slotEntities: Entity[] = []
-let slotHits: Entity[] = []
+const slots: { target: Entity; frame: Entity }[] = []
+export const slotHitScale = Vector3.create(C.SLOT_HIT_WIDTH, C.SLOT_HIT_HEIGHT, C.SLOT_HIT_DEPTH)
 let startArrow: Entity | null = null
 let onSlotClick: (index: number) => void = () => {}
 export function setSlotClickHandler(fn: (index: number) => void) {
@@ -86,30 +86,36 @@ export function slotPosition(index: number, count: number): Vector3 {
 export function buildSlots(count: number) {
   clearSlots()
   for (let i = 0; i < count; i++) {
-    const e = engine.addEntity()
-    Transform.create(e, { position: slotPosition(i, count), scale: Vector3.scale(Vector3.One(), C.CUBE_SCALE) })
-    GltfContainer.create(e, {
+    // Like Kickoff's dispensers, the pointer collider is the parent of the visible model.
+    const target = engine.addEntity()
+    Transform.create(target, { position: slotPosition(i, count), scale: slotHitScale })
+    MeshCollider.setBox(target, ColliderLayer.CL_POINTER)
+    const frame = engine.addEntity()
+    Transform.create(frame, {
+      parent: target,
+      scale: Vector3.create(C.CUBE_SCALE / slotHitScale.x, C.CUBE_SCALE / slotHitScale.y, C.CUBE_SCALE / slotHitScale.z)
+    })
+    GltfContainer.create(frame, {
       src: 'assets/models/CubeFrame.glb',
-      // the frame GLB has no `_collider` node, so make the visible mesh clickable
-      visibleMeshesCollisionMask: ColliderLayer.CL_POINTER,
+      visibleMeshesCollisionMask: 0,
       invisibleMeshesCollisionMask: 0
     })
-    // Invisible click box around the frame (SLOT_HIT_*), so the whole area works, not just the thin border.
-    // Child of the frame: it follows the frame's pulse/shake/wave.
-    const hit = engine.addEntity()
-    Transform.create(hit, { parent: e, scale: Vector3.create(C.SLOT_HIT_WIDTH / C.CUBE_SCALE, C.SLOT_HIT_HEIGHT / C.CUBE_SCALE, C.SLOT_HIT_DEPTH / C.CUBE_SCALE) })
-    MeshCollider.setBox(hit, ColliderLayer.CL_POINTER)
-    for (const target of [e, hit]) {
-      pointerEventsSystem.onPointerDown(
-        { entity: target, opts: { button: InputAction.IA_POINTER, hoverText: t('hover.place'), maxDistance: cs.game === PRACTICE_GAME ? 16 : C.INTERACT_DISTANCE } },
-        () => {
-          if (cs.tutorialActive && cs.practiceUiOnly) return
-          onSlotClick(i)
+    pointerEventsSystem.onPointerDown(
+      {
+        entity: target,
+        opts: {
+          button: InputAction.IA_POINTER,
+          hoverText: t('hover.place'),
+          maxDistance: cs.game === PRACTICE_GAME ? 16 : C.INTERACT_DISTANCE,
+          showHighlight: true
         }
-      )
-    }
-    slotEntities.push(e)
-    slotHits.push(hit)
+      },
+      () => {
+        if (cs.tutorialActive && cs.practiceUiOnly) return
+        onSlotClick(i)
+      }
+    )
+    slots.push({ target, frame })
   }
   buildStartArrow(count)
 }
@@ -134,19 +140,19 @@ function buildStartArrow(count: number) {
   Animator.create(startArrow, { states: [{ clip: 'Cube.008Action', playing: true, loop: true }] })
 }
 
-export function getSlotEntities(): Entity[] {
-  return slotEntities
+export function getSlots(): ReadonlyArray<{ target: Entity; frame: Entity }> {
+  return slots
 }
 
 export function startArrowEntity(): Entity | null { return startArrow }
 
 export function clearSlots() {
-  for (const e of [...slotHits, ...slotEntities]) {
-    pointerEventsSystem.removeOnPointerDown(e)
-    engine.removeEntity(e)
+  for (const { target, frame } of slots) {
+    pointerEventsSystem.removeOnPointerDown(target)
+    engine.removeEntity(frame)
+    engine.removeEntity(target)
   }
-  slotEntities = []
-  slotHits = []
+  slots.length = 0
   if (startArrow) engine.removeEntity(startArrow)
   startArrow = null
 }

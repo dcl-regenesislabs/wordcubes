@@ -2,6 +2,13 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { loadTs, loadI18n } = require('./load-ts.cjs')
 
+// The ready-made cube heaps are pure data: settle them once for every harness (each takes a few hundred ms).
+const heaps = (() => {
+  const config = loadTs('src/config.ts')
+  const world = loadTs('src/shared/world.ts', { '../config': config, './env': {} })
+  return loadTs('src/server/heaps.ts', { '../config': config, '../shared/world': world, '../sim/physics': loadTs('src/sim/physics.ts') })
+})()
+
 function harness() {
   const config = loadTs('src/config.ts')
   const noop = () => {}
@@ -55,6 +62,7 @@ function harness() {
   const say = loadTs('src/server/say.ts', { '../shared/i18n': i18n })
   const cubenet = loadTs('src/shared/cubenet.ts')
   const cubesync = loadTs('src/server/cubesync.ts', { '../config': config, '../shared/messages': { room }, '../shared/cubenet': cubenet })
+  const physics = loadTs('src/sim/physics.ts')
   const game = loadTs('src/server/game.ts', {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/math': math,
     '../config': config, './words': { pickWord: (level, exclude, lang) => { picks.push(lang); return { answer: 'DOG', question: 'A pet?' } } },
@@ -62,13 +70,13 @@ function harness() {
     '../shared/player-label': loadTs('src/shared/player-label.ts'),
     '../shared/world': world, './common': common,
     '../shared/pushers': { PusherTracker: class { update() { return { x: 0, y: 0, z: 0, vx: 0, vz: 0 } } prune() {} } },
-    '../sim/physics': loadTs('src/sim/physics.ts'),
-    '../shared/cubenet': cubenet, './cubesync': cubesync, '../shared/lang': lang, './say': say, '../shared/i18n': i18n
+    '../sim/physics': physics,
+    '../shared/cubenet': cubenet, './cubesync': cubesync, './heaps': heaps, '../shared/lang': lang, './say': say, '../shared/i18n': i18n
   })
   const server = loadTs('src/server/server.ts', {
     '@dcl/sdk/ecs': ecs, '@dcl/sdk/network': { syncEntity: noop }, '@dcl/sdk/server': { Storage },
     '../config': config, './profiles': profiles, '../shared/messages': { room }, '../shared/env': env,
-    '../shared/schemas': schemas, './common': common, './game': game, '../shared/tutorial': loadTs('src/shared/tutorial.ts'), '../shared/lang': lang, './say': say, '../shared/i18n': i18n,
+    '../shared/schemas': schemas, './common': common, './game': game, './heaps': heaps, '../shared/tutorial': loadTs('src/shared/tutorial.ts'), '../shared/lang': lang, './say': say, '../shared/i18n': i18n,
     './netstats': { setupNetStats: noop, recordTick: noop, netAccessTick: noop, forgetNetAccess: noop, isPreview: () => false } // the dev-only live monitor is not under test
   }, 'exports.games = games; exports.publishRanks = publishRanks')
   server.initServer()
@@ -79,12 +87,11 @@ function harness() {
   AvatarBase.create(1, { name: 'Alice' })
   const send = (name, data = {}, from = 'alice') => handlers.get(name)(data, { from })
   send('enter', { game: 0 }) // alice takes a seat in game 0 (the player stands in its arena)
-  const fill = () => server.testing.settlePile()
   const grab = cube => {
     Transform.get(1).position = Vector3.create(cube.body.x, cube.body.y, cube.body.z)
     send('grab', { cubeId: cube.id })
   }
-  return { config, profiles, server, Transform, Vector3, send, fill, grab, sent, systems, PlayerIdentityData, PlayerRanks, GameState, picks }
+  return { config, profiles, server, Transform, Vector3, send, grab, sent, systems, PlayerIdentityData, PlayerRanks, GameState, picks }
 }
 
 test('pickup requires proximity in three dimensions, including requests sent directly to the server', () => {
@@ -95,7 +102,6 @@ test('pickup requires proximity in three dimensions, including requests sent dir
     { x: 2, y: 0, z: 2 }
   ]) {
     const h = harness()
-    h.fill()
     const cube = [...h.server.testing.cubes.values()].find(c => c.mode === 'free')
     // Keep the player inside the arena for every case; only distance should reject the grab.
     Object.assign(cube.body, { x: 8, y: h.config.CUBE_RADIUS, z: 0 })
@@ -112,7 +118,6 @@ test('pickup requires proximity in three dimensions, including requests sent dir
 
 test('server accepts the client surface reach plus the rotated collider corner margin', () => {
   const h = harness()
-  h.fill()
   const cube = [...h.server.testing.cubes.values()].find(c => c.mode === 'free')
   Object.assign(cube.body, { x: 8, y: h.config.CUBE_HALF, z: 0 })
   const corner = Math.sqrt(3) * 0.25 * h.config.CUBE_SCALE
@@ -123,7 +128,6 @@ test('server accepts the client surface reach plus the rotated collider corner m
 
 test('platform edge cannot grab a cube resting against the pedestal, but nearby ground can', () => {
   const h = harness()
-  h.fill()
   const cube = [...h.server.testing.cubes.values()].find(c => c.mode === 'free')
   Object.assign(cube.body, { x: h.config.STAGE_RADIUS + h.config.CUBE_RADIUS, y: h.config.CUBE_HALF, z: 0 })
   h.Transform.get(1).position = h.Vector3.create(h.config.STAGE_RADIUS, h.config.STAGE_TOP, 0)
@@ -140,7 +144,6 @@ test('each successful power-up sends one toast to every game member only', async
     const h = harness()
     const profile = await h.profiles.retain('alice')
     profile.items[item.id] = 2
-    h.fill()
     for (const [entity, address] of [[2, 'bob'], [3, 'outsider']]) {
       h.PlayerIdentityData.create(entity, { address })
       h.Transform.create(entity, { position: h.Vector3.create(8, 0, 0), rotation: {} })
@@ -174,7 +177,6 @@ test('repeated paid rerolls cannot replenish break rewards, while a new round ca
   const h = harness()
   const profile = await h.profiles.retain('alice')
   profile.coins = 500
-  h.fill()
   const decoy = () => [...h.server.testing.cubes.values()].find(c => !'DOG'.includes(c.letter))
   h.grab(decoy())
   h.send('breakCube')
@@ -184,7 +186,6 @@ test('repeated paid rerolls cannot replenish break rewards, while a new round ca
     h.send('buy', { item: 'reroll' })
     h.send('useItem', { item: 'reroll' })
     assert.equal(profile.items.reroll, 0, 'the purchased item was consumed')
-    h.fill()
     const before = profile.coins
     for (const cube of [...h.server.testing.cubes.values()]) {
       if ('DOG'.includes(cube.letter)) continue
@@ -196,7 +197,6 @@ test('repeated paid rerolls cannot replenish break rewards, while a new round ca
   }
   assert.equal(profile.coins, 505 - 3 * 60)
   h.server.testing.startRound()
-  h.fill()
   h.grab(decoy())
   h.send('breakCube')
   assert.equal(profile.coins, 330, 'the next actual round restores normal rewards')
@@ -206,7 +206,6 @@ test('a reroll keeps a held original reward without duplicating it into the new 
   const h = harness()
   const profile = await h.profiles.retain('alice')
   profile.coins = 100
-  h.server.testing.settlePile()
   const decoy = () => [...h.server.testing.cubes.values()].find(c => c.mode === 'free' && !'DOG'.includes(c.letter))
   h.grab(decoy())
   h.send('buy', { item: 'reroll' })
@@ -216,7 +215,6 @@ test('a reroll keeps a held original reward without duplicating it into the new 
   assert.equal(profile.coins, 45, 'the original held cube pays once')
   h.send('breakCube')
   assert.equal(profile.coins, 45, 'duplicate break messages cannot pay twice')
-  h.fill()
   h.grab(decoy())
   h.send('breakCube')
   assert.equal(profile.coins, 45, 'the replacement queue cannot inherit original rewards')
@@ -267,7 +265,6 @@ test('a complete winning round awards the vote bonus only to actual contributors
   const bob = await h.profiles.retain('bob')
   h.PlayerIdentityData.create(2, { address: 'bob' })
   h.Transform.create(2, { position: h.Vector3.create(8, 0, 0), rotation: {} })
-  h.fill()
   for (const [slot, letter] of [...'DOG'].entries()) {
     const cube = [...h.server.testing.cubes.values()].find(c => c.mode === 'free' && c.letter === letter)
     h.grab(cube)
@@ -291,13 +288,69 @@ test('a complete winning round awards the vote bonus only to actual contributors
   assert.equal(bob.coins, 0, 'voting without building the word does not earn passive coins')
 })
 
+test('only cast votes decide the next level: a silent player does not hold it back, a tie keeps it', async () => {
+  const h = harness()
+  await h.profiles.retain('alice')
+  await h.profiles.retain('bob')
+  h.PlayerIdentityData.create(2, { address: 'bob' })
+  h.Transform.create(2, { position: h.Vector3.create(8, 0, 0), rotation: {} })
+  h.send('enter', { game: 0 }, 'bob')
+  const game = () => [...h.GameState.values.values()][0]
+  assert.equal(h.server.games[0].seats.size, 2, 'both players are seated in the arena')
+  const lastToast = () => h.sent.filter(m => m.name === 'toast').pop().data
+  const finishVote = () => {
+    h.systems.get('word-cubes-server')(h.config.NEXT_ROUND_DELAY)
+    assert.equal(game().phase, 'vote')
+  }
+  h.server.testing.timeUp()
+  finishVote()
+  h.send('vote', { choice: 1 }) // alice wants harder, bob says nothing
+  h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  assert.equal(game().phase, 'playing')
+  assert.equal(game().difficulty, 2, 'one Harder vote and one abstention raise the level')
+  h.server.testing.timeUp()
+  finishVote()
+  h.send('vote', { choice: 1 })
+  h.send('vote', { choice: 0 }, 'bob')
+  h.systems.get('word-cubes-server')(0.1)
+  assert.equal(game().difficulty, 2, 'Harder against Same is a tie and keeps the level')
+  assert.equal(lastToast().key, 'srv.levelKept', 'a kept level explains itself')
+  assert.deepEqual(JSON.parse(lastToast().args), { n: 2, up: 1, same: 1, down: 0 }, 'with the tally')
+  h.server.testing.timeUp()
+  finishVote()
+  h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  assert.equal(game().difficulty, 2, 'nobody voting keeps the level')
+  assert.equal(lastToast().key, 'srv.levelSame', 'no votes, no tally')
+  h.server.testing.timeUp()
+  finishVote()
+  h.send('vote', { choice: 1 })
+  h.send('vote', { choice: 'same' }, 'bob') // malformed votes are ignored, not counted as Same
+  h.send('vote', { choice: null }, 'bob')
+  h.send('vote', {}, 'bob')
+  h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  assert.equal(game().difficulty, 3, 'a malformed vote cannot block a Harder majority')
+  assert.equal(lastToast().key, 'srv.levelChanged')
+  for (let level = 3; level > 1; level--) { // walk down to the easiest level
+    h.server.testing.timeUp()
+    finishVote()
+    h.send('vote', { choice: -1 })
+    h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  }
+  assert.equal(game().difficulty, 1)
+  h.server.testing.timeUp()
+  finishVote()
+  h.send('vote', { choice: -1 })
+  h.systems.get('word-cubes-server')(h.config.VOTE_SECONDS)
+  assert.equal(game().difficulty, 1, 'the level never goes below 1')
+  assert.equal(lastToast().key, 'srv.levelMin', 'a winning Easier vote at level 1 says it is already the easiest')
+})
+
 test('needed letters cannot be destroyed and another player cannot steal a held or placed cube', async () => {
   const h = harness()
   await h.profiles.retain('alice')
   await h.profiles.retain('bob')
   h.PlayerIdentityData.create(2, { address: 'bob' })
   h.Transform.create(2, { position: h.Vector3.create(8, 0, 0), rotation: {} })
-  h.fill()
   const needed = [...h.server.testing.cubes.values()].find(c => c.letter === 'D')
   h.grab(needed)
   h.send('breakCube')
@@ -314,12 +367,29 @@ test('needed letters cannot be destroyed and another player cannot steal a held 
   assert.equal(needed.mode, 'placed')
 })
 
+test('a wrong cube landing while another is still in the air collapses the word without breaking the tick', () => {
+  const h = harness()
+  h.PlayerIdentityData.create(2, { address: 'bob' })
+  h.Transform.create(2, { position: h.Vector3.create(8, 0, 0), rotation: {} })
+  h.send('enter', { game: 0 }, 'bob')
+  const right = [...h.server.testing.cubes.values()].find((c) => c.letter === 'D')
+  const wrong = [...h.server.testing.cubes.values()].find((c) => !'DOG'.includes(c.letter))
+  h.grab(right)
+  h.send('place', { slot: 0 }) // in the air first...
+  h.Transform.get(2).position = h.Vector3.create(wrong.body.x, wrong.body.y, wrong.body.z)
+  h.send('grab', { cubeId: wrong.id }, 'bob')
+  h.send('place', { slot: 1 }, 'bob') // ...and this one lands in the same tick: the collapse drops the first flight
+  assert.doesNotThrow(() => h.systems.get('word-cubes-server')(1))
+  assert.equal(right.mode, 'free', 'the good cube falls with the word')
+  assert.equal(wrong.mode, 'free')
+  h.systems.get('word-cubes-server')(1 / 30)
+})
+
 test('collapse blocks grabbing, breaking and power-ups and releases a cube held during the throw', async () => {
   const h = harness()
   const profile = await h.profiles.retain('alice')
   profile.coins = 100
   profile.items.bomb = 1
-  h.fill()
   const wrong = [...h.server.testing.cubes.values()].find(c => !'DOG'.includes(c.letter))
   h.grab(wrong)
   h.send('place', { slot: 0 })
@@ -344,7 +414,6 @@ test('collapse blocks grabbing, breaking and power-ups and releases a cube held 
 test('disconnecting keeps the seat through the reconnect grace, then releases held letters', async () => {
   const h = harness()
   await h.profiles.retain('alice')
-  h.fill()
   const needed = [...h.server.testing.cubes.values()].find(c => c.letter === 'D')
   h.grab(needed)
   h.send('breakCube')
@@ -364,7 +433,6 @@ test('disconnecting keeps the seat through the reconnect grace, then releases he
 
 test('a temporary missing player transform cannot clear the room or its clue', () => {
   const h = harness()
-  h.fill()
   const state = () => h.GameState.get(h.server.games[0].stateEntity)
   const tick = h.systems.get('word-cubes-server')
   tick(0.1) // the player has arrived, so reconnect grace applies
@@ -384,7 +452,6 @@ test('a timeout settles contributors and returns to play through voting', async 
   const h = harness()
   const profile = await h.profiles.retain('alice')
   profile.rating = 400
-  h.fill()
   const cube = [...h.server.testing.cubes.values()].find(c => c.letter === 'D')
   h.grab(cube)
   h.send('place', { slot: 0 })
@@ -423,7 +490,6 @@ test('a game holds at most MAX_PLAYERS_PER_GAME seats and a full game says no', 
 test('players without a seat cannot act in a game, and an idle game has no cubes', () => {
   const h = harness()
   assert.ok(h.server.games[1].cubes.size === 0 && !h.server.games[1].isActive(), 'game 2 has not been started')
-  h.fill()
   const cube = [...h.server.testing.cubes.values()][0]
   h.send('grab', { cubeId: cube.id }, 'stranger')
   assert.equal(cube.mode, 'free', 'a stranger cannot grab')
@@ -459,22 +525,49 @@ test('re-sending enter cannot hold a seat you never arrive at', () => {
   assert.ok(seated <= span * 0.4, `held a seat ${seated}s of ${span}s`)
 })
 
-test('a new pile settles unseen and its cubes are created once, at rest, marked for the client fall', () => {
+test('a new pile is created at once from a ready-made heap: at rest, marked for the client fall, no physics', () => {
   const h = harness()
   const g = h.server.games[0]
-  assert.equal(g.cubes.size, 0, 'nothing is created while the pile settles')
-  let ticks = 0
-  while (g.cubes.size === 0 && ticks < 60) { g.tick(1 / 30); ticks++ }
-  assert.equal(g.cubes.size, h.config.CUBES_PER_ROUND, 'the whole pile appears at once')
-  assert.ok(ticks > 1, 'settling is spread over several ticks')
   const cubes = [...g.cubes.values()]
-  // The pile is random: now and then a cube or two still slides when the settle time runs out. Those are created awake
-  // and keep being sent until they stop, like any moving cube; everything else needs no transform after its create.
+  assert.equal(cubes.length, h.config.CUBES_PER_ROUND, 'the whole pile exists as soon as the round starts')
+  // The heap is random: now and then a cube or two was still sliding when its settle time ran out. Those are created
+  // awake and keep being sent until they stop, like any moving cube; everything else needs no transform after its create.
   const awake = cubes.filter((c) => !c.body.asleep)
   assert.ok(awake.length <= 5, `created at rest (${awake.length} still moving)`)
   assert.ok(cubes.every((c) => c.sentAsleep === c.body.asleep), 'only the moving ones are sent again')
   const born = cubes.map((c) => h.server.testing.cubeData(c.entity).born)
   assert.ok(born.every((b) => b > 0 && b === born[0]), 'one birth time for the pile')
+  // one sim step moves nothing that rests: the heap's spots are a real resting state, not just positions
+  const before = cubes.map((c) => [c.body.x, c.body.y, c.body.z])
+  g.tick(1 / 30)
+  const moved = cubes.filter((c, i) => c.body.asleep && Math.hypot(c.body.x - before[i][0], c.body.y - before[i][1], c.body.z - before[i][2]) > 1e-6)
+  assert.equal(moved.length, 0, 'resting cubes stay put')
+})
+
+test('turned and mirrored heaps stay inside the arena, off the platform and without overlaps', () => {
+  const config = loadTs('src/config.ts')
+  const h = config.CUBE_HALF
+  for (let n = 0; n < 8; n++) {
+    const spots = heaps.takeHeap()
+    assert.equal(spots.length, config.CUBES_PER_ROUND)
+    for (const p of spots) {
+      const r = Math.hypot(p.x, p.z)
+      assert.ok(r < config.ARENA_RADIUS, `inside the wall (r ${r.toFixed(2)})`)
+      assert.ok(p.y >= config.FLOOR_Y + h - 0.1, 'not under the floor')
+      assert.ok(r > config.STAGE_RADIUS || p.y >= config.STAGE_TOP + h - 0.1, 'not inside the platform')
+    }
+    // separating-axis test on the two squares seen from above, like sim/physics.ts
+    let deep = 0
+    for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++) {
+      const a = spots[i], b = spots[j]
+      if (Math.abs(a.y - b.y) >= 2 * h - 0.05 || Math.hypot(a.x - b.x, a.z - b.z) >= 2 * h * Math.SQRT2) continue
+      const axes = [a.yaw, b.yaw].flatMap((y) => [[Math.cos(y), -Math.sin(y)], [Math.sin(y), Math.cos(y)]])
+      const ext = (y, ux, uz) => h * (Math.abs(ux * Math.cos(y) - uz * Math.sin(y)) + Math.abs(ux * Math.sin(y) + uz * Math.cos(y)))
+      const overlap = Math.min(...axes.map(([ux, uz]) => ext(a.yaw, ux, uz) + ext(b.yaw, ux, uz) - Math.abs((b.x - a.x) * ux + (b.z - a.z) * uz)))
+      if (overlap > 0.05) deep++
+    }
+    assert.ok(deep <= 2, `${deep} overlapping pairs`)
+  }
 })
 
 test('Start game runs one shared countdown: nobody enters early, everyone enters at the end', () => {
