@@ -256,7 +256,8 @@ export const PAD_INFO_GAP = 2.9 // m from the number cube's centre down to the s
 // The plate behind the status line: a 4:1 image, as wide as the longest line ("In progress - Level 7 - 5/5") needs.
 // The rank badge over every player's head (src/client/ranktags.ts): one picture per rank, rank 0 = Letter.
 const RANK_BADGE_FILES = ['rank1_letter', 'rank2_syllable', 'rank3_word', 'rank4_phrase', 'rank5_sentence', 'rank6_paragraph', 'rank7_author']
-export const rankBadgeImage = (rank: number) => `assets/images/sign_plates/${RANK_BADGE_FILES[rank]}.png`
+export const RANK_BADGE_IMAGES = RANK_BADGE_FILES.map((file) => `assets/images/sign_plates/${file}.png`)
+export const rankBadgeImage = (rank: number) => RANK_BADGE_IMAGES[rank]
 export const RANK_BADGE_SIZE = 0.6 // m across
 export const RANK_BADGE_HEIGHT = 0.35 // m from the name tag up to the badge's centre (phones)
 export const RANK_BADGE_HEIGHT_DESKTOP = 0.6 // desktop and Bevy draw a taller name tag: higher, so the badge clears it

@@ -89,7 +89,7 @@ export const EN: Record<string, string> = {
   // game HUD
   'hud.frozen': 'Frozen {s}s',
   'hud.levelShort': 'Lv{n}',
-  'hud.levelRank': 'Level {n}   {rank}',
+  'hud.level': 'Level {n}',
   'hud.hint': 'Hint',
   'hud.noHints': 'No hints',
   'hud.howTo': 'How to play',
@@ -180,7 +180,11 @@ export const EN: Record<string, string> = {
   'sign.full': 'FULL',
 
   // lobby
-  'lobby.rank': 'Rank',
+  'lobby.rankOf': 'Rank {n} of {total}',
+  'ranks.title': 'Ranks',
+  'ranks.intro': 'Win words in rooms at your level or harder to climb. Each rank matches a room level.',
+  'ranks.room': 'Level {n} rooms',
+  'ranks.you': 'You',
   'lobby.left': 'You left game {n}',
   'lobby.gameFull': 'Game {n} is full. Try another pad.',
   'lobby.starting': 'Starting game #{n}',
@@ -209,6 +213,7 @@ export const EN: Record<string, string> = {
   // NPCs
   'npc.lexi.name': 'Lexi, Keeper of Ranks',
   'npc.lexi.short': 'Lexi',
+  'npc.lexi.ranks': 'See ranks',
   'npc.cubby.name': 'Cubby, Your Guide',
   'npc.cubby.short': 'Cubby',
   "npc.cubby.replayPrompt": "Would you like to do the tutorial again? I can take you to the laboratory to practice together.",
@@ -219,7 +224,7 @@ export const EN: Record<string, string> = {
   'npc.bix.short': 'Bix',
   'npc.shopSign': 'SHOP',
   'npc.lexi.1': 'Welcome to Word Cubes! Everyone here has a rank, and it shows next to your coins in the lobby.',
-  'npc.lexi.2': 'You start as a {first}. Win words in harder rooms and you climb: {all}.',
+  'npc.lexi.2': 'You start as a {first}. Win words in harder rooms and you climb. Tap See ranks for the full table.',
   'npc.lexi.3': 'After every round the players in the room vote: easier, the same, or harder. Harder rooms are worth more.',
   'npc.lexi.4': 'Only the players who put the final letters in place earn the reward, so dig for your cubes and help build the word!',
 

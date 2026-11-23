@@ -127,7 +127,7 @@ function standPosition(def: NpcDef): Vector3 | undefined {
 function pagesOf(def: NpcDef): string[] {
   if (def.talk !== 'lexi') return def.pages
   const ranks = RANK_NAMES.map((_, i) => t(`rank.${i}`))
-  return [t('npc.lexi.1'), t('npc.lexi.2', { first: ranks[0], all: ranks.join(', ') }), t('npc.lexi.3'), t('npc.lexi.4')]
+  return [t('npc.lexi.1'), t('npc.lexi.2', { first: ranks[0] }), t('npc.lexi.3'), t('npc.lexi.4')]
 }
 
 // Texts that sit on world entities (name tag, prompt, SHOP sign), redone when the UI language changes.
@@ -144,10 +144,11 @@ function setTalkPrompt(def: NpcDef, hit: Entity) {
       if (def.talk === 'cubby') {
         cs.shop = false
         cs.showHowTo = false
+        cs.showRanks = false
         cs.dialog = { name: t('npc.cubby.name'), pages: [t('npc.cubby.replayPrompt')], page: 0, replayTutorial: true }
       }
       else if (def.shop) cs.shop = true
-      else cs.dialog = { name: t(`npc.${def.talk}.name`), pages: pagesOf(def), page: 0 }
+      else cs.dialog = { name: t(`npc.${def.talk}.name`), pages: pagesOf(def), page: 0, ranks: def.talk === 'lexi' }
     }
   )
 }
@@ -264,7 +265,7 @@ export function setupNpcs() {
       if (dx * dx + dz * dz < 12 * 12) t.rotation = Quaternion.fromEulerDegrees(0, (Math.atan2(dx, dz) * 180) / Math.PI, 0)
     }
     // a conversation or the shop closes when you walk away
-    if (cs.dialog || cs.shop) {
+    if (cs.dialog || cs.shop || cs.showRanks) {
       let near = false
       for (const npc of spawned.values()) {
         const p = Transform.get(npc).position
@@ -273,6 +274,7 @@ export function setupNpcs() {
       if (!near) {
         cs.dialog = null
         cs.shop = false
+        cs.showRanks = false
       }
     }
   }, 1, 'word-cubes-npcs')

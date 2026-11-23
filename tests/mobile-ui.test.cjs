@@ -472,3 +472,36 @@ for (const phone of [false, true]) test(`every HUD screen renders with the real 
     cs.dialog = null
   }
 })
+
+test('in-game rank row fits the side panel card for every rank, level and language', () => {
+  const h = harness(false)
+  const { format } = loadI18n()
+  for (const lang of ['en', 'es', 'pt']) {
+    for (let r = 0; r < h.config.MAX_DIFFICULTY; r++) {
+      for (let n = 1; n <= h.config.MAX_DIFFICULTY; n++) {
+        const name = format(lang, `rank.${r}`)
+        const row = h.module.sideRankRow(format(lang, 'hud.level', { n }), name)
+        assert.ok(row.total <= row.inner, `${lang} level ${n} ${name}: ${row.total} > ${row.inner}`)
+        assert.ok(row.nameFont >= h.platform.S(14), `${lang} ${name} stays readable`)
+        assert.ok(row.nameFont <= h.platform.S(22))
+      }
+    }
+  }
+})
+
+for (const [name, phone, canvas] of [
+  ['a 1920x1080 desktop', false, undefined],
+  ['a short 1280x600 desktop window', false, { width: 1280, height: 600, devicePixelRatio: 1 }],
+  ['a phone at pixel ratio 1', true, undefined],
+  ['a 2400x1080 phone at pixel ratio 3', true, { width: 2400, height: 1080, devicePixelRatio: 3 }]
+]) {
+  test(`rank table fits on ${name}`, () => {
+    const h = harness(phone, canvas)
+    const L = h.module.ranksLayout()
+    const v = h.platform.view()
+    assert.ok(L.h <= v.h, `panel height ${L.h} fits the ${v.h} canvas`)
+    assert.ok(L.w <= v.w)
+    assert.ok(L.rowContent <= L.inner, `the highlighted row (${L.rowContent}) fits inside the card (${L.inner})`)
+    assert.ok(L.content <= L.innerH, `title, rows and Close (${L.content}) fit inside the card (${L.innerH})`)
+  })
+}

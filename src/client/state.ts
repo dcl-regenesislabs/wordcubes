@@ -28,7 +28,8 @@ export const cs = {
   earned: 0, // coins you got for the last finished word
   earnedRound: -1, // the round that was
   showHowTo: false, // the how-to-play card is open (only from the buttons)
-  dialog: null as null | { name: string; pages: string[]; page: number; replayTutorial?: boolean }, // open NPC conversation
+  dialog: null as null | { name: string; pages: string[]; page: number; replayTutorial?: boolean; ranks?: boolean }, // open NPC conversation (ranks: offers Lexi's rank table)
+  showRanks: false, // Lexi's rank table is open
   lockoutUntil: 0, // Date.now() time when you may place again (after you collapsed the word)
   lockoutTotal: 0, // seconds that lockout lasts in all (the banner's bar runs down over it)
   lockoutPing: 0, // Date.now() of the last thing you tried while locked out: the banner gives a little hop

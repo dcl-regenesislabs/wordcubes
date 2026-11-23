@@ -22,3 +22,14 @@ test('rank labels merge every synced page, update later pages, and clear departe
   ranks.readRatings()
   assert.equal(ranks.ratingOf('alice'), 0)
 })
+
+test('the rank table maps rank r to room level r + 1, as the rating model rates each level', () => {
+  const config = loadTs('src/config.ts')
+  const profiles = loadTs('src/server/profiles.ts', { '@dcl/sdk/server': { Storage: {} } })
+  const rank = loadTs('src/client/ui/rank.ts', { '../../config': config })
+  assert.equal(rank.RANK_NAMES.length, config.MAX_DIFFICULTY, 'one rank per room level')
+  for (let level = 1; level <= config.MAX_DIFFICULTY; level++) {
+    // the panel shows "Level {r + 1} rooms" on rank r's row
+    assert.equal(rank.rankIndex(profiles.levelRating(level, config.RATING_PER_RANK)), level - 1)
+  }
+})

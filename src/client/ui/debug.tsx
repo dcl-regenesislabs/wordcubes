@@ -24,6 +24,7 @@ export type Screen =
   | 'howto'
   | 'settings'
   | 'shop'
+  | 'ranks'
   | 'npc'
 
 const SCREENS: { id: Screen; label: string; game: boolean }[] = [
@@ -44,6 +45,7 @@ const SCREENS: { id: Screen; label: string; game: boolean }[] = [
   { id: 'howto', label: 'How to play', game: true },
   { id: 'settings', label: 'Settings', game: true },
   { id: 'shop', label: 'Shop', game: false },
+  { id: 'ranks', label: 'Rank table', game: false },
   { id: 'npc', label: 'NPC dialog', game: false }
 ]
 
@@ -76,6 +78,7 @@ function pick(screen: Screen) {
   cs.showHowTo = screen === 'howto'
   cs.showSettings = screen === 'settings'
   cs.shop = screen === 'shop'
+  cs.showRanks = screen === 'ranks'
   cs.itemsOpen = screen === 'items'
   cs.confirmLeave = screen === 'leave'
   cs.dialog =

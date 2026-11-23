@@ -9,7 +9,8 @@ const react = {
   UiEntity: 'UiEntity'
 }
 const flags = loadTs('src/client/ui/flags.tsx', { '@dcl/sdk/react-ecs': react })
-const warmer = loadTs('src/client/ui/textureWarmer.tsx', { '@dcl/sdk/react-ecs': react, './flags': flags })
+const config = loadTs('src/config.ts')
+const warmer = loadTs('src/client/ui/textureWarmer.tsx', { '@dcl/sdk/react-ecs': react, './flags': flags, '../../config': config })
 const nodes = warmer.UiTextureWarmer().children
 
 test('language icons use full-image textures containing the original atlas artwork', () => {
@@ -60,6 +61,13 @@ test('warmer matches the cache options of buttons, icons, flags and tutorial art
     assert.deepEqual({ ...byPath.get(texture.src) }, { ...texture })
   }
   assert.equal(byPath.get('assets/images/ui-kit/hand.png').filterMode, undefined)
+  // Screens that build a path through a config.ts helper are invisible to the .tsx scan below: list those helpers here.
+  assert.equal(config.RANK_BADGE_IMAGES.length, 7)
+  for (const [rank, src] of config.RANK_BADGE_IMAGES.entries()) {
+    assert.equal(config.rankBadgeImage(rank), src)
+    assert.ok(byPath.has(src), `rank badge ${src} (C.rankBadgeImage) needs a matching UI cache entry`)
+    assert.deepEqual({ ...byPath.get(src) }, { src }, 'RankIcon uses the bare src, so the warmer must too')
+  }
   // Discover screens recursively; new UI files and template paths must be covered.
   const images = walk('assets/images').filter(file => /\.(png|jpe?g|webp)$/.test(file))
   const screens = [...walk('src/client'), ...walk('src/ui')].filter(file => file.endsWith('.tsx') && !file.endsWith('/textureWarmer.tsx'))
