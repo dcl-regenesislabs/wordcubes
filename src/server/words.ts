@@ -318,7 +318,7 @@ const BANK: Record<number, [string, string][]> = {
     ['PALACE', 'Large home of a king'],
     ['TEMPLE', 'Building for worship'],
     ['CINEMA', 'Where you watch films on a big screen'],
-    ['THEATER', 'Where actors perform plays'],
+    ['CONCERT', 'Live music show in front of an audience'],
     ['STADIUM', 'Big arena for football matches'],
     ['BAKERY', 'Shop that sells bread'],
     ['FACTORY', 'Building where things are made'],
@@ -457,7 +457,7 @@ const BANK: Record<number, [string, string][]> = {
     ['EARRING', 'Jewellery worn on the ear'],
     ['SLIPPERS', 'Soft shoes for indoors'],
     ['SWEATER', 'Warm knitted top'],
-    ['PAJAMAS', 'Clothes you sleep in'],
+    ['BATHROBE', 'Fluffy gown you wear after a bath'],
     ['UNIFORM', 'Same clothes worn by a team or school'],
     ['PRINTER', 'Puts documents on paper'],
     ['CAMPFIRE', 'Fire you sit around outdoors at night'],
@@ -771,7 +771,7 @@ const BANK: Record<number, [string, string][]> = {
     ['CASSOWARY', 'Large flightless bird with a helmet on its head'],
     ['MICROORGANISM', 'Living thing too small to see without a microscope'],
     ['CONSERVATORY', 'Glass room attached to a house'],
-    ['AMPHITHEATER', 'Open-air arena with rising rows of seats']
+    ['STRATOSPHERE', 'High layer of the atmosphere above the clouds']
   ],
 }
 

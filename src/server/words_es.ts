@@ -5,7 +5,7 @@ export const BANK_ES: Record<number, [string, string][]> = {
   1: [
     ['SOL', 'Brilla en el cielo durante el día'],
     ['MAR', 'Agua salada con olas y peces'],
-    ['PAN', 'Lo compras en la panadería'],
+    ['PAN', 'Alimento horneado de harina y levadura'],
     ['LUZ', 'Se enciende con un interruptor'],
     ['GATO', 'Maúlla y caza ratones'],
     ['PERRO', 'Ladra y mueve la cola'],
@@ -237,7 +237,7 @@ export const BANK_ES: Record<number, [string, string][]> = {
     ['ABRIGO', 'Te lo pones cuando hace frío'],
     ['BALLENA', 'El animal más grande del mar'],
     ['PULPO', 'Tiene ocho brazos y vive en el mar'],
-    ['COCINA', 'Parte de la casa donde se cocina'],
+    ['COCINA', 'Habitación de la casa donde se preparan las comidas'],
     ['DOCTOR', 'Te cura cuando estás enfermo'],
     ['BOMBERO', 'Apaga incendios'],
     ['NARANJA', 'Fruta y color a la vez'],
@@ -254,7 +254,7 @@ export const BANK_ES: Record<number, [string, string][]> = {
     ['PANTERA', 'Felino negro de la selva'],
     ['GAVIOTA', 'Ave blanca que vuela sobre el mar'],
     ['CANARIO', 'Pajarito amarillo que canta en una jaula'],
-    ['MAESTRA', 'Enseña en la escuela'],
+    ['MAESTRA', 'Mujer que enseña a los niños en la escuela'],
     ['CARTERO', 'Reparte las cartas'],
     ['PINTOR', 'Pinta cuadros'],
     ['BUFANDA', 'Prenda que abriga el cuello'],
@@ -316,7 +316,9 @@ export const BANK_ES: Record<number, [string, string][]> = {
     ['AJEDREZ', 'Juego de tablero con reyes y caballos'],
     ['ESGRIMA', 'Deporte de espadas'],
     ['TRACTOR', 'Vehículo que tira del arado en el campo'],
-    ['ABOGADO', 'Defiende a las personas en un juicio']
+    ['ABOGADO', 'Defiende a las personas en un juicio'],
+    ['ZANCUDO', 'Mosquito de patas largas que pica de noche'],
+    ['CHUPETE', 'Lo chupa el bebé para calmarse']
   ],
   4: [
     ['GUITARRA', 'Instrumento de seis cuerdas'],
@@ -517,8 +519,8 @@ export const BANK_ES: Record<number, [string, string][]> = {
     ['ACROBACIA', 'Ejercicio difícil de equilibrio en el circo'],
     ['TITIRITERO', 'Maneja los títeres'],
     ['CAPERUZA', 'Capucha roja del cuento del lobo'],
-    ['ZANCUDO', 'Mosquito de patas largas que pica de noche'],
-    ['CHUPETE', 'Lo chupa el bebé para calmarse'],
+    ['CHUBASCO', 'Lluvia fuerte y corta'],
+    ['PAJARERA', 'Jaula grande para muchos pájaros'],
     ['SONAJERO', 'Juguete de bebé que hace ruido al agitarlo'],
     ['BOMBONES', 'Chocolates pequeños rellenos en una caja'],
     ['PERCHERO', 'Mueble para colgar abrigos'],
