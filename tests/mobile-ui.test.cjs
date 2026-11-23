@@ -65,13 +65,23 @@ for (const [name, canvas] of [['pixel ratio 1', undefined], ['a 2400x1080 phone 
       assert.equal(L.top, Math.round(height * h.config.MOBILE_TOP_BAR_TOP), 'bar aligns with the native top row')
       assert.equal(L.barH, Math.round(height * h.config.MOBILE_TOP_BAR_HEIGHT), 'bar matches the native button height')
       const word = h.hud.WordPanel({ g })
-      assert.equal(word.props.pad.left, L.left)
+      assert.equal(word.props.pad.left, L.clueLeft, 'the layer starts at the wider of the bar and the question panel')
+      assert.ok(L.clueLeft <= L.left, 'the question panel is at least as wide as the bar')
+      assert.ok(L.clueLeft >= Math.round(w * h.config.MOBILE_APP_BUTTONS_RIGHT), 'the question panel stays right of the app buttons')
       assert.equal(word.props.pad.right, L.reserve)
       const bar = word.children[0]
       assert.equal(bar.props.dir, 'row', 'time and level | tiles | coins on one row')
       assert.equal(bar.props.width, L.panelW)
-      assert.equal(word.children[1].type, 'OutlineLabel', 'the question is bare outlined text under the bar')
+      const clue = word.children[1]
+      assert.equal(clue.type, 'Frame', 'the question sits on a cream panel under the bar, not as bare text over the world (#98)')
+      assert.equal(clue.props.width, L.clueW, 'the question panel ends at the same right edge as the bar')
+      assert.ok([].concat(clue.children)[0].props.fontSize >= h.platform.S(32), 'the question is as big as on desktop')
+      assert.ok(clue.props.height <= Math.round(h.platform.S(32) * 1.35 * 3) + h.platform.S(16), 'a very long question stops at three lines')
     }
+    // the longest clue in the bank (61 characters) keeps the panel in the top quarter of the screen
+    const real = h.hud.WordPanel({ g: { ...longGame, length: 3, masked: '___', question: 'Ave que corre por el desierto, famosa en los dibujos animados' } })
+    const Lr = h.module.hudLayout({ length: 3 })
+    assert.ok(Lr.top + Lr.barH + h.platform.S(6) + real.children[1].props.height <= Math.round(height * 0.3), 'the question panel stays near the top')
     assert.equal(h.hud.SidePanel({ g: longGame }), null, 'no side column on phones: the stats are in the bar')
     assert.equal(h.hud.ItemBar({ g: longGame }), null, 'phones open the items from a native button')
     const bottom = h.hud.BottomArea()
@@ -81,7 +91,7 @@ for (const [name, canvas] of [['pixel ratio 1', undefined], ['a 2400x1080 phone 
     assert.equal(toast.props.pad.left, 0, 'toast starts at the device safe-area edge without an extra margin')
     const L = h.module.hudLayout(longGame)
     assert.equal(toast.props.pad.top, L.top + L.barH + h.platform.S(24), 'toast sits below the native top row with a gap')
-    assert.ok(toast.props.pad.left + toast.children[0].props.width <= L.left, 'toast stays left of the top bar and its question')
+    assert.ok(toast.props.pad.left + toast.children[0].props.width <= Math.min(L.left, L.clueLeft, Lr.clueLeft), 'toast stays left of the top bar and its question panel')
     assert.equal(h.module.Toast({ text: '' }), null)
     // How to play: centred in the free middle, clear of the native buttons on the right and of the top bar
     const card = h.module.HowToPlay().children[0]
