@@ -272,7 +272,7 @@ export const LEADERBOARD_WIDTH = 7.6 // m between the place number's left edge a
 export const LEADERBOARD_ROW_HEIGHT = 1.65 // m
 export const LEADERBOARD_FONT = 5.5
 export const LEADERBOARD_NAME_X = 1 // m from the place number to the name
-export const LEADERBOARD_NAME_CHARS = 12 // longer names are cut with "…"
+export const LEADERBOARD_NAME_CHARS = 12 // name portion only; the wallet suffix is always kept
 
 export const PAD_PLATE_IMAGE = 'assets/images/sign_plate.png'
 export const PAD_PLATE_WIDTH = 5.6 // m

@@ -1,6 +1,6 @@
 // The top players, written on the lobby's Leaderboard sign itself (Leaderboard.glb): one row per player on its wooden
 // planks, from the board text the server keeps in every GameState. Client only.
-import { engine, Transform, TextShape, TextAlignMode } from '@dcl/sdk/ecs'
+import { engine, Transform, TextShape, TextAlignMode, executeTask } from '@dcl/sdk/ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
 import { getPlayer } from '@dcl/sdk/players'
@@ -26,11 +26,36 @@ let root: Entity | undefined
 const rows: Row[] = []
 let shown = ''
 
-const shortAddress = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`
+const names = new Map<string, string>()
+const nextLookup = new Map<string, number>()
+
 function nameOf(address: string): string {
   const p = getPlayer({ userId: address })
-  const name = p && p.name ? p.name : shortAddress(address)
-  return name.length > C.LEADERBOARD_NAME_CHARS ? `${name.slice(0, C.LEADERBOARD_NAME_CHARS - 1)}…` : name
+  if (p?.name) names.set(address, p.name)
+  // getPlayer only knows players in this scene; the board also includes offline players.
+  if (!p?.name && !names.has(address) && Date.now() >= (nextLookup.get(address) ?? 0)) {
+    nextLookup.set(address, Infinity) // one request per address in flight
+    executeTask(async () => {
+      try {
+        const response = await fetch(`https://peer.decentraland.org/lambdas/profile/${encodeURIComponent(address)}`)
+        if (response.ok) {
+          const profile = await response.json()
+          const name = profile?.avatars?.[0]?.name
+          if (typeof name === 'string' && name.trim()) names.set(address, name)
+        }
+      } catch {
+        // Keep the fallback and retry later if the profile service is unavailable.
+      } finally {
+        nextLookup.set(address, Date.now() + 60_000)
+      }
+    })
+  }
+  const name = (names.get(address) ?? '').trim().replace(/\s*#[0-9a-f]{4}$/i, '').trim() || 'Player'
+  const chars = Array.from(name)
+  const short = chars.length > C.LEADERBOARD_NAME_CHARS
+    ? `${chars.slice(0, C.LEADERBOARD_NAME_CHARS - 1).join('')}…`
+    : name
+  return `${short} #${address.slice(-4)}`
 }
 
 function makeText(parent: Entity, x: number, y: number, fontSize: number, color: Color4, align: TextAlignMode): Entity {
